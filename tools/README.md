@@ -10592,3 +10592,96 @@ Er hat nach Build 322 das Log eines Kaltstarts geschickt
   Schleifen ueber `ansichten_der_seite()` statt „genau vier" (Abschnitt
   Q ist die fuenfte; dass keine daran vorbeigeht, sichern die Pruefungen
   darueber).
+
+## Nachtrag Build 324 - die Hauptseite ohne Vollbild und ohne Nachrechnen
+
+**Stand:** 15.11.2026, `Dragend_Build_324.zip` (build_id
+`2026-11-15-324`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat nach Build 323 Log und Bench 24 geschickt.
+
+### Was Log und Bench zeigen
+
+* **Kein SYN_DROPPED im Log.** (In Bench L.1b steht einmal „SYN
+  DROPPED 1 je Sekunde" - das ist der Bench selbst: vor L.1b liest
+  niemand das Pad, der Waechter laeuft im Bench nicht, und die
+  Schlange ist voll, wenn L.1b anfaengt. Kein Befund ueber den
+  Betrieb.)
+* **Maske wirkt:** „Nur genutzte Achsen bestellt 3 von 3", in L.1b nur
+  noch SYN, ABS X, ABS Y.
+* **Kein EINGABE-STAU mehr mit „Warmlauf".** Der VorarbeitFaden aus
+  Build 323 hat PSX in 9,6 s gebaut - im Hintergrund, und niemand hat
+  darauf gewartet.
+* **Aber dreimal „Vorauslader" als laengste Leerlauf-Arbeit**, einmal
+  **705 ms**, in den ersten 16 Sekunden auf der Hauptseite. Ursache im
+  Code: `_prewarm_anstossen()` lief auf der Hauptseite nach JEDER Pause
+  und rechnete jedes Mal die ganze Liste der Kategoriebilder neu -
+  rund 30 Kategorien x 4 Ansichten x bis zu 3 Groessen, je Eintrag Pfad
+  und Schluessel (SHA-1 plus stat() der Quelle), und das dreimal
+  (`thumb_cache_schuetzen`, `thumb_cache_has`, `nur_im_ram_fehlt`).
+* **RUCKLER mit Ansicht:** Kachelwand „right" 85-244 ms, Dashboard
+  „down/up" 80-147 ms.
+* **Bench Q** (Hauptseite durchblaettern, ohne Vsync):
+
+  | Ansicht | Mittel | Median | langsamster | Vollbild |
+  |---|---|---|---|---|
+  | liste | 48,7 | 42,9 | 86,1 | 0/58 |
+  | raster | 32,5 | 20,5 | 218,6 | 6/58 |
+  | galerie | 47,4 | 41,1 | 154,9 | 8/58 |
+  | kachelwand | 28,5 | 19,5 | 281,5 | 4/58 |
+  | dashboard | 50,3 | 34,3 | 81,8 | **24/58** |
+  | karussell | 61,9 | 55,4 | 99,3 | 0/58 |
+
+### Was Build 324 aendert
+
+1. **Dashboard: Wandern ohne Vollbild** (`_draw_cats_dashboard`). Hat
+   sich gegenueber dem vorigen Bild NUR `cat_scroll` geaendert (gleiche
+   Groesse, gleiche Kategorien, kein fremdes Vollbild dazwischen, kein
+   erzwungener Neuaufbau), werden nur die Zeilen der Liste neu
+   geschrieben - jede raeumt ihren Streifen selbst frei
+   (`_restore_row_bg`) - und die Tafel nimmt ihren schnellen Weg; hinaus
+   gehen nur die Rechtecke. `tools/test_dashboard_blaettern.py`:
+   zweimal durch alle Kategorien in beide Richtungen, Bildpunkt fuer
+   Bildpunkt wie ein voller Aufbau, 0 Vollbilder (vorher 24 von 58 im
+   Bench), Gegenprobe mit einer vergessenen Zeile.
+2. **Vorauslader der Hauptseite aus einem Vorrat**
+   (`_logo_vorrat`, `_prewarm_hauptseite`). Die Liste haengt nur an
+   Bild, Ansicht, Kategorien und den Fotos und wird gemerkt; je Eintrag
+   wird gemerkt, dass seine Miniatur auf der Karte LIEGT (ein Ja bleibt
+   ein Ja, bis „Zwischenspeicher leeren" den Vorrat verwirft). Nach dem
+   ersten Durchgang fragt der Vorauslader nur noch nach Fehlendem; alle
+   acht Eintraege ein Blick auf das Pad. Dieselben Listen wie vorher
+   (Test 6 in `tools/test_vorauslader_einmal.py`).
+3. **Kein Namensverzeichnis nebenbei** (`cover_index_bereit` in
+   `fe/art.py`). In der Spieleliste ueberspringt der Vorauslader
+   Eintraege, deren Cover-Verzeichnis noch nicht steht - sonst haette
+   `cover_quelle()` es auf der Hauptschleife am Stueck gebaut (ARCADE
+   2,2 s). Das baut der VorarbeitFaden.
+
+### Was offen ist
+
+* **Kachelwand und Raster: einzelne Schritte bis 220-280 ms** (Q,
+  „langsamster"), Median 20 ms - das sind die Schritte mit Vollbild
+  (4 bzw. 6 von 58), also wieder das Mitwandern. Derselbe Weg wie beim
+  Dashboard waere moeglich, ist aber je Ansicht ein eigener Eingriff
+  mit eigenem Bildvergleich.
+* **Karussell:** kein Vollbild, aber 55-62 ms je Schritt (restore
+  12 ms in J).
+* **Liste: 48,7 ms in Q gegen 20 ms in J** - das Mitwandern ist dort
+  kein Vollbild, aber ein voller Aufbau der Liste.
+
+### Pruefungen
+
+* **neu** `tools/test_dashboard_blaettern.py` (s. o.; schreibt die
+  Ansicht der Hauptseite in eine eigene Datei - beim ersten Anlauf blieb
+  „dashboard" in der echten stehen und `test_hauptseite_spuren` wurde
+  rot).
+* **geaendert** `tools/test_vorauslader_einmal.py` - Test 6
+  (Hauptseite: dieselben Listen, dritter Durchgang ohne Frage an die
+  Karte, Gegenprobe nach dem Leeren, Abbruch bei Eingabe), Test 7
+  (kein Cover-Pfad, solange das Verzeichnis fehlt; Gegenprobe;
+  `cover_index_bereit`).
+* **geaendert** `tools/test_ansichten.py` - die Quelltext-Pruefung des
+  Hauptseiten-Leerlaufs sieht in `_prewarm_hauptseite` und
+  `_logo_vorrat` nach.

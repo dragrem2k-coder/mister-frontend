@@ -216,6 +216,10 @@ class InpAttrappe(object):
 
 
 _echt_inp = f.inp
+# Build 324: der Vorauslader ueberspringt Systeme, deren Cover-Verzeichnis
+# noch nicht steht (Test 7). Hier soll es stehen.
+_echt_bereit = fm.cover_index_bereit
+fm.cover_index_bereit = lambda sk: True
 try:
     for ansicht in ("liste", "coverflow"):
         f.ansicht_setzen(ansicht)
@@ -257,6 +261,7 @@ finally:
     P.thumb_cache_has = _echt_has_p
     f.cover_pfad_und_kasten = _echt_cpk
     f.inp = _echt_inp
+    fm.cover_index_bereit = _echt_bereit
 
 # ---------------------------------------------------------------------------
 print()
@@ -278,6 +283,126 @@ check("GEGENPROBE: nie benutzt und nicht Vorgabe - nicht dabei",
       not any(g in ohne for g in flow), ohne)
 check("in dieser Sitzung benutzt - alle drei dabei",
       all(g in mit for g in flow), mit)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 6: die Hauptseite rechnet ihre Liste einmal (Build 324)")
+# ---------------------------------------------------------------------------
+# Im Log vom 15.11.: "laengste Leerlauf-Arbeit davor: Vorauslader 705 ms"
+# - auf der Hauptseite, nach jeder Pause von vorn.
+f3 = H.make_frontend(page=0)
+f3.cats = [(k, {"items": [], "folders": {}}, k)
+           for k in ("NES", "SNES", "GBA", "PSX", "N64", "ARCADE")]
+f3._last_input_time = 0
+A.ART.auslagern = None
+uebergeben.update(prewarm=None, lader=None)
+fm.PREWARMER = PrewarmAttrappe()
+f3.lader = LaderAttrappe()
+f3.inp = InpAttrappe(False)
+gefragt_karte = [0]
+_auf_karte = set()
+
+
+def _has_f3(p, w, h):
+    gefragt_karte[0] += 1
+    return (p, w, h) in _auf_karte
+
+
+_echt_has_fm = fm.thumb_cache_has
+fm.thumb_cache_has = _has_f3
+try:
+    alt_auftraege = f3.kategorie_logo_auftraege()
+    alt_nachladen = [a for a in f3.kategorie_logo_alle()
+                     if a in _auf_karte and not A.ART.im_ram(*a)]
+    gefragt_karte[0] = 0
+    f3._prewarm_hauptseite()
+    erster = gefragt_karte[0]
+    check("erster Durchgang: dieselbe Auftragsliste wie bisher",
+          uebergeben["prewarm"] == alt_auftraege,
+          "%d gegen %d" % (len(uebergeben["prewarm"] or []),
+                           len(alt_auftraege)))
+    check("und dieselbe Nachladeliste (leer, nichts liegt da)",
+          (uebergeben["lader"] or []) == alt_nachladen)
+    # Jetzt liegt alles auf der Karte (der Vorauslader hat gerechnet).
+    _auf_karte.update(alt_auftraege)
+    gefragt_karte[0] = 0
+    f3._prewarm_hauptseite()
+    zweiter = gefragt_karte[0]
+    gefragt_karte[0] = 0
+    uebergeben.update(prewarm=None, lader=None)
+    f3._prewarm_hauptseite()
+    dritter = gefragt_karte[0]
+    check("zweiter Durchgang: jede fehlende einmal nachgefragt",
+          zweiter == erster, "%d / %d" % (zweiter, erster))
+    check("dritter Durchgang: KEINE Frage mehr an die Karte",
+          dritter == 0 and uebergeben["prewarm"] is None, dritter)
+    check("und das Nachladen bekommt, was nur im Speicher fehlt",
+          uebergeben["lader"] == [a for a in f3.kategorie_logo_alle()
+                                  if not A.ART.im_ram(*a)])
+    f3.logo_vorrat_vergessen()
+    gefragt_karte[0] = 0
+    f3._prewarm_hauptseite()
+    check("GEGENPROBE: nach 'Zwischenspeicher leeren' wird neu gefragt",
+          gefragt_karte[0] == erster, gefragt_karte[0])
+    f3.logo_vorrat_vergessen()
+    f3.inp = InpAttrappe(True)
+    gefragt_karte[0] = 0
+    f3._prewarm_hauptseite()
+    check("steht eine Eingabe an: nach dem ersten Happen Schluss",
+          0 < gefragt_karte[0] <= 8, gefragt_karte[0])
+finally:
+    fm.thumb_cache_has = _echt_has_fm
+    fm.PREWARMER = _echt_pw
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: kein Namensverzeichnis nebenbei (Build 324)")
+# ---------------------------------------------------------------------------
+f4 = H.make_frontend(page=1, titles=titel)
+f4.item_i = 10
+fm.PREWARMER = PrewarmAttrappe()
+f4.lader = LaderAttrappe()
+f4.inp = InpAttrappe(False)
+gefragt = [0]
+
+
+def _cpk4(item, syskey, geo):
+    gefragt[0] += 1
+    return ("/cover/%s.png" % item[0], 200, 280)
+
+
+f4.cover_pfad_und_kasten = _cpk4
+_echt_bereit = fm.cover_index_bereit
+try:
+    fm.cover_index_bereit = lambda sk: False
+    f4._prewarm_anstossen()
+    check("Verzeichnis fehlt: kein einziger Cover-Pfad bestimmt",
+          gefragt[0] == 0, gefragt[0])
+    fm.cover_index_bereit = lambda sk: True
+    f4._prewarm_anstossen()
+    check("GEGENPROBE: Verzeichnis steht - dann schon", gefragt[0] > 0,
+          gefragt[0])
+finally:
+    fm.cover_index_bereit = _echt_bereit
+    fm.PREWARMER = _echt_pw
+A.INDEX_WARM_WURZELN, _wz = ("/x/hd", "/x/base"), A.INDEX_WARM_WURZELN
+try:
+    A._art_index_cache.pop(("/x/hd", "TESTSYS"), None)
+    A._art_index_cache.pop(("/x/base", "TESTSYS"), None)
+    A._docs_index_cache.pop("TESTSYS", None)
+    vorher = A.cover_index_bereit("TESTSYS")
+    A._art_index_cache[("/x/hd", "TESTSYS")] = {}
+    A._art_index_cache[("/x/base", "TESTSYS")] = {}
+    halb = A.cover_index_bereit("TESTSYS")
+    A._docs_index_cache["TESTSYS"] = {}
+    ganz = A.cover_index_bereit("TESTSYS")
+finally:
+    A.INDEX_WARM_WURZELN = _wz
+    for k in (("/x/hd", "TESTSYS"), ("/x/base", "TESTSYS")):
+        A._art_index_cache.pop(k, None)
+    A._docs_index_cache.pop("TESTSYS", None)
+check("cover_index_bereit: erst nein, halb nein, ganz ja",
+      (vorher, halb, ganz) == (False, False, True), (vorher, halb, ganz))
 
 print()
 if fails:

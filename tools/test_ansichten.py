@@ -830,12 +830,24 @@ check("und faengt dabei jeden Fehler ab - ein Abzeichen darf den "
                                    _kopf.index("_logo_nachladen") + 400])
 _leer = quelle[quelle.index("def _prewarm_anstossen"):]
 _leer = _leer[:_leer.index("if self.page != 1:")]
+# Build 324: der Leerlauf der Hauptseite steht in _prewarm_hauptseite()
+# und rechnet aus einem gemerkten Vorrat (_logo_vorrat) - die Liste der
+# Ansicht, in der man steht, kommt dort aus _kat_logo_eintraege(), also
+# aus derselben Funktion wie kategorie_logo_alle(). Dass beide Listen
+# GLEICH sind, prueft tools/test_vorauslader_einmal.py (Test 6).
+_haupt = quelle[quelle.index("def _prewarm_hauptseite"):]
+_haupt = _haupt[:_haupt.index("\n    def ", 10)]
+_vorrat = quelle[quelle.index("def _logo_vorrat"):]
+_vorrat = _vorrat[:_vorrat.index("\n    def ", 10)]
 check("und der Leerlauf der Hauptseite tut dasselbe",
-      "kategorie_logo_alle()" in _leer
-      and "self.lader.uebergeben(nachladen)" in _leer)
+      ("kategorie_logo_alle()" in _leer
+       or ("self._prewarm_hauptseite()" in _leer
+           and '"jetzt": self._kat_logo_eintraege(_jetzt' in _vorrat))
+      and ("self.lader.uebergeben(nachladen)" in _leer
+           or "self.lader.uebergeben(nachladen)" in _haupt))
 check("beide fragen vorher, was im Speicher wirklich fehlt",
       _kopf.count("nur_im_ram_fehlt") >= 1
-      and "nur_im_ram_fehlt" in _leer)
+      and ("nur_im_ram_fehlt" in _leer or "ART.im_ram(" in _haupt))
 
 print()
 print("Test 20: die Wiederholrate folgt der Ansicht (Build 136)")

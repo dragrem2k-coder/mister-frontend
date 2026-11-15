@@ -13,6 +13,25 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Faster: the dashboard while scrolling.** Your bench 24 (section Q)
+  shows that in 24 of 58 steps the dashboard redrew the whole screen —
+  every time the list on the left scrolls along. Your log: 80–147 ms
+  per step while holding. Now only the list rows are rewritten in that
+  case; the panel on the right takes its fast path. Checked pixel by
+  pixel against a full redraw (build 324).
+- **Fixed: the main page stalls briefly after every pause.** Your log:
+  "up lag 757 ms … Vorauslader 705 ms". On the main page the preloader
+  recomputed the full list of category images after every key release
+  — about thirty categories times four views times up to three sizes,
+  each with a look at the card. Now it remembers the list and what is
+  already on the card; after the first pass it only asks for what is
+  missing, and it stops as soon as you press (build 324).
+- **The preloader no longer builds cover directories on the side.** If
+  a system's directory was still missing, it built it while working
+  out the cover path — on the main loop and in one go (ARCADE 2.2 s per
+  the bench). It now skips such entries; the background thread from
+  build 323 builds the directory (build 324).
+
 - **Fixed: 2.6 seconds of standstill shortly after startup.** Your log
   after build 322: not a single "SYN_DROPPED" any more — the watcher
   holds on to the input. But: "down lag 2622 ms ungelesen … Warmlauf

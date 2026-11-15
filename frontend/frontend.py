@@ -1298,7 +1298,7 @@ from fe.art import (
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
     zeiger_leeren as _c_zeiger_leeren,
-    IndexUnterbrochen, INDEX_ABHOLER,
+    IndexUnterbrochen, INDEX_ABHOLER, cover_index_bereit,
     rechtecke_maske as _c_rechtecke_maske,
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
@@ -12003,6 +12003,28 @@ class Frontend:
                    and not self._overlay_active())
         alt = getattr(self, "_kat_dash_markiert", None)
         platz_neu = self.cat_i - self.cat_scroll
+        # BUILD 324: DAS FENSTER IST NUR GEWANDERT. Bench 24, Abschnitt Q:
+        # beim Durchblaettern zeichnet das Dashboard in 24 von 58
+        # Schritten ein VOLLBILD (Bildschirm leeren, Kopf, alle Zeilen,
+        # die ganze Tafel, alles hinaus) - jedes Mal, wenn das Fenster
+        # der Liste mitwandert, weil cat_scroll im fast_key steht. Im
+        # Log vom 15.11. dazu 80 bis 147 ms je Schritt beim Halten.
+        #
+        # Hat sich NUR cat_scroll geaendert, steht alles andere aber
+        # noch da: Kopf, Fusszeile, die Tafel. Dann reicht es, die
+        # Zeilen der Liste neu zu schreiben - jede raeumt ihren eigenen
+        # Streifen frei (_restore_row_bg), genau wie im schnellen
+        # Schritt - und die Tafel ueber ihren schnellen Weg.
+        # tools/test_dashboard_blaettern.py vergleicht das Ergebnis
+        # Bildpunkt fuer Bildpunkt mit einem vollen Aufbau.
+        _alt_key = getattr(self, "_kat_dash_fast_key", None)
+        gewandert = (not schnell and _alt_key is not None
+                     and _alt_key[:3] + _alt_key[4:]
+                     == fast_key[:3] + fast_key[4:]
+                     and getattr(self, "_kat_dash_fast_gen", -1)
+                     == fb.full_redraw_gen
+                     and not self._force_full_redraw
+                     and not self._overlay_active())
 
         if schnell:
             self._flip_spuren = []
@@ -12010,6 +12032,14 @@ class Frontend:
                 self._dash_zeile_zeichnen(geo, alt, self.cat_scroll + alt,
                                           False, True)
             self._dash_zeile_zeichnen(geo, platz_neu, self.cat_i, True, True)
+        elif gewandert:
+            self._flip_spuren = []
+            for platz in range(min(zeilen, gesamt - self.cat_scroll)):
+                self._dash_zeile_zeichnen(geo, platz,
+                                          self.cat_scroll + platz,
+                                          platz == platz_neu, True)
+            self._kat_dash_fast_key = fast_key
+            schnell = True
         else:
             fb.clear(C_BG)
             self._kat_kopf(KL)
@@ -14699,11 +14729,7 @@ class Frontend:
         # Ein dict als geordnete Menge: bei sechs Kaesten mal dreissig
         # Kategorien waere "if eintrag not in liste" ein Vergleich je
         # schon vorhandenem Eintrag.
-        gesehen = {}
-        for _a in ansichten:
-            for eintrag in self._kat_logo_eintraege(_a, L):
-                gesehen[eintrag] = True
-        alle = list(gesehen)
+        alle = self._kat_logo_alle_ansichten(ansichten, L)
         # Build 84: ALLE Logos vor der Verdraengung schuetzen, nicht nur
         # die noch fehlenden. Genau das war der zweite Teil eines
         # gemeldeten Fehlers - die Logos lagen im Zwischenspeicher,
@@ -14714,6 +14740,114 @@ class Frontend:
         thumb_cache_schuetzen(alle)
         # Zurueckgegeben wird weiterhin nur, was tatsaechlich noch fehlt.
         return [a for a in alle if not thumb_cache_has(*a)]
+
+    def _kat_logo_alle_ansichten(self, ansichten, L=None):
+        """Alle (pfad, breite, hoehe) dieser Ansichten der Hauptseite, ohne
+        Doppelte, in fester Reihenfolge (Build 324 herausgeloest - der
+        Vorauslader merkt sich die Liste, siehe _logo_vorrat())."""
+        if L is None:
+            L = self.layout_cats()
+        gesehen = {}
+        for _a in ansichten:
+            for eintrag in self._kat_logo_eintraege(_a, L):
+                gesehen[eintrag] = True
+        return list(gesehen)
+
+    def _logo_vorrat(self):
+        """Was der Vorauslader auf der HAUPTSEITE braucht - gemerkt, solange
+        sich Bild, Kategorien und Ansicht nicht aendern (Build 324).
+
+        DER ANLASS, aus seinem Log vom 15.11.:
+
+            EINGABE-STAU: up lag 757 ms ungelesen beim Kernel (15.7 s
+            nach dem Start; laengste Leerlauf-Arbeit davor: Vorauslader
+            705 ms)
+
+        _prewarm_anstossen() lief auf der Hauptseite nach JEDER Pause
+        (jede Eingabe setzt _prefetched_done zurueck) und hat dabei
+        jedes Mal von vorn gerechnet: fuer rund dreissig Kategorien mal
+        vier Ansichten mal bis zu drei Kastengroessen den Pfad und den
+        Schluessel der Miniatur (SHA-1 plus ein stat() der Quelle) - und
+        das dreimal (thumb_cache_schuetzen, thumb_cache_has,
+        nur_im_ram_fehlt). Bis zu 0,7 s auf dem Hauptfaden, nach jedem
+        Loslassen.
+
+        Gemerkt wird die LISTE (sie haengt nur an Bild, Kategorien,
+        Ansicht und den Fotos) und, je Eintrag, dass seine Miniatur auf
+        der Karte LIEGT - ein Ja bleibt ein Ja, bis jemand den
+        Zwischenspeicher leert (dann wird der Vorrat verworfen, siehe
+        logo_vorrat_vergessen()). Nach dem ersten Durchgang fragt der
+        Vorauslader auf der Hauptseite nur noch nach dem, was wirklich
+        fehlt."""
+        try:
+            _jetzt = self.aktuelle_ansicht_haupt()
+        except Exception:                                # noqa: BLE001
+            _jetzt = "liste"
+        schluessel = (self.fb.width, self.fb.height, _jetzt,
+                      tuple((n, sk) for n, _nd, sk in self.cats),
+                      tuple(sorted(self._sysart_foto_namen() or ())))
+        v = getattr(self, "_logo_vorrat_merk", None)
+        if v is not None and v["schluessel"] == schluessel:
+            return v
+        ansichten = [a for a in ANSICHTEN_HAUPT
+                     if a not in ANSICHTEN_HAUPT_NUR_HD]
+        if _jetzt not in ansichten:
+            ansichten.append(_jetzt)
+        L = self.layout_cats()
+        alle = self._kat_logo_alle_ansichten(ansichten, L)
+        thumb_cache_schuetzen(alle)
+        v = self._logo_vorrat_merk = {
+            "schluessel": schluessel,
+            "alle": alle,
+            "jetzt": self._kat_logo_eintraege(_jetzt, L),
+            "da": set(),
+        }
+        return v
+
+    def logo_vorrat_vergessen(self):
+        """Nach "Zwischenspeicher leeren": die gemerkten Ja sind falsch."""
+        self._logo_vorrat_merk = None
+
+    def _prewarm_hauptseite(self):
+        """Der Vorauslader fuer die Hauptseite (Build 324): dieselben zwei
+        Listen wie bisher - was zu rechnen ist (PREWARMER) und was nur im
+        Arbeitsspeicher fehlt (Nachlade-Faden) -, aber aus dem gemerkten
+        Vorrat und alle acht Eintraege mit einem Blick auf das Pad."""
+        try:
+            v = self._logo_vorrat()
+        except Exception:                                # noqa: BLE001
+            LOG("Vorauslader Hauptseite:\n" + traceback.format_exc())
+            return
+        da = v["da"]
+        auftraege = []
+        for k, a in enumerate(v["alle"]):
+            if k and not k % 8:
+                try:
+                    self._leerlauf_zwischendurch()
+                except IndexUnterbrochen:
+                    break
+            if a in da:
+                continue
+            if thumb_cache_has(*a):
+                da.add(a)
+            else:
+                auftraege.append(a)
+        if auftraege:
+            PREWARMER.start()
+            PREWARMER.uebergeben(auftraege)
+            if profiling_an():
+                LOG("PREWARM: %d Kategorie-Logos vorgemerkt"
+                    % len(auftraege))
+        # Was auf der Karte liegt, aber nicht im Arbeitsspeicher - fuer
+        # die Ansicht, in der man steht (wie kategorie_logo_alle()).
+        nachladen = [a for a in v["jetzt"]
+                     if a in da and not ART.im_ram(*a)]
+        if nachladen:
+            self.lader.start()
+            self.lader.uebergeben(nachladen)
+            if profiling_an():
+                LOG("NACHLADEN: %d Kategorie-Abzeichen vorgemerkt"
+                    % len(nachladen))
 
     def kategorie_logo_alle(self, ansicht=None):
         """[(pfad, breite, hoehe), ...] fuer ALLE Kategorie-Abzeichen in
@@ -14813,43 +14947,16 @@ class Frontend:
         im Hintergrund vorberechnen lassen (siehe fe/prewarm.py fuer die
         Begruendung und die beiden ehrlichen Einschraenkungen)."""
         if self.page == 0:
-            # Hauptseite: die Kategorie-Logos vorwaermen. Bewusst nur
-            # hier und nicht dauernd - sind sie einmal berechnet, liefert
-            # kategorie_logo_auftraege() eine leere Liste und es passiert
-            # gar nichts mehr.
-            auftraege = self.kategorie_logo_auftraege()
-            if auftraege:
-                PREWARMER.start()
-                PREWARMER.uebergeben(auftraege)
-                if profiling_an():
-                    LOG("PREWARM: %d Kategorie-Logos vorgemerkt"
-                        % len(auftraege))
-            # NEU (Build 127, Nutzer-Rueckmeldung mit Aufnahme: "das
-            # passiert bei jedem Neustart vom MiSTer, die Icons/Logos
-            # muessen schon da sein und nicht jedesmal neu aufploppen").
+            # Hauptseite: die Kategorie-Logos vorwaermen - und seit
+            # Build 127 auch in den Arbeitsspeicher holen, was schon auf
+            # der Karte liegt ("die Icons/Logos muessen schon da sein und
+            # nicht jedesmal neu aufploppen").
             #
-            # Build 125 hat den Nachlade-Thread gebaut, aber nur die
-            # SPIELELISTE daran angeschlossen. Die Hauptseite hatte
-            # weiterhin nur den Vorauslader - und der rechnet nur, was
-            # FEHLT. Ein Abzeichen, das laengst auf der Karte liegt,
-            # meldet er als "Treffer" und geht weiter; im
-            # Arbeitsspeicher liegt es deswegen trotzdem nicht.
-            #
-            # Nach einem Neustart ist der Speicher aber leer. Also kam
-            # jedes Abzeichen einzeln im Zeichenpfad an - genau das
-            # Aufploppen.
-            #
-            # Es sind rund zwei Dutzend Bilder, alle klein: die ganze
-            # Liste auf einmal ist hier richtig, keine Vorausschau
-            # noetig.
-            nachladen = [a for a in self.kategorie_logo_alle()
-                         if ART.nur_im_ram_fehlt(*a)]
-            if nachladen:
-                self.lader.start()
-                self.lader.uebergeben(nachladen)
-                if profiling_an():
-                    LOG("NACHLADEN: %d Kategorie-Abzeichen vorgemerkt"
-                        % len(nachladen))
+            # BUILD 324: aus einem gemerkten Vorrat und unterbrechbar -
+            # siehe _logo_vorrat() und _prewarm_hauptseite(). Vorher
+            # wurde hier nach jeder Pause alles von vorn gerechnet, im
+            # Log vom 15.11. bis zu 705 ms auf dem Hauptfaden.
+            self._prewarm_hauptseite()
             return
         if self.page != 1:
             return
@@ -14892,13 +14999,29 @@ class Frontend:
                 _abbruch[0] = True
                 raise
 
+        # BUILD 324: kein Namensverzeichnis nebenbei bauen. Fehlt es fuer
+        # ein System noch, haette cover_pfad_und_kasten() es ueber
+        # cover_quelle() gleich hier gebaut - am Stueck, auf dem
+        # Hauptfaden (ARCADE 2,2 s laut Bench 22). Solche Eintraege
+        # ueberspringt der Vorauslader; das Verzeichnis baut der
+        # VorarbeitFaden, und beim naechsten Ruhemoment sind sie dran.
+        _bereit = {}
+
+        def _kasten(it, _gg):
+            sk = self._item_syskey(it, cat_syskey)
+            ok = _bereit.get(sk)
+            if ok is None:
+                ok = _bereit[sk] = cover_index_bereit(sk)
+            if not ok:
+                return None
+            return self.cover_pfad_und_kasten(it, cat_syskey, _gg)
+
         for _g in geos:
             if _abbruch[0]:
                 break
             _fehlt, _da = auftraege_und_nachladen(
                 items, self.item_i,
-                lambda it, _gg=_g: self.cover_pfad_und_kasten(it,
-                                                              cat_syskey, _gg),
+                lambda it, _gg=_g: _kasten(it, _gg),
                 vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
                 voraus=_voraus, zwischendurch=_zw)
             auftraege.extend(_fehlt)
@@ -14989,6 +15112,7 @@ class Frontend:
         entfernt = 0
         try:
             if wahl in (0, 2):
+                self.logo_vorrat_vergessen()      # Build 324
                 entfernt += thumb_cache_leeren(False)
             if wahl in (1, 2):
                 entfernt += thumb_cache_leeren(True)

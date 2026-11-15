@@ -13,6 +13,27 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Schneller: das Dashboard beim Blättern.** Dein Bench 24 (Abschnitt
+  Q) zeigt: in 24 von 58 Schritten hat das Dashboard den ganzen
+  Bildschirm neu gezeichnet — jedes Mal, wenn die Liste links
+  mitscrollt. Dein Log dazu: 80–147 ms je Schritt beim Halten. Jetzt
+  werden in diesem Fall nur die Zeilen der Liste neu geschrieben; die
+  Tafel rechts nimmt ihren schnellen Weg. Geprüft Bildpunkt für
+  Bildpunkt gegen einen vollen Aufbau (Build 324).
+- **Behoben: die Hauptseite hängt nach jeder Pause kurz.** Dein Log:
+  „up lag 757 ms … Vorauslader 705 ms". Der Vorauslader hat auf der
+  Hauptseite nach jedem Loslassen die komplette Liste aller
+  Kategoriebilder neu durchgerechnet — rund dreißig Kategorien mal vier
+  Ansichten mal bis zu drei Größen, jedes mit einem Blick auf die
+  Karte. Jetzt merkt er sich die Liste und was schon auf der Karte
+  liegt; nach dem ersten Durchgang fragt er nur noch nach dem, was
+  fehlt, und hört auf, sobald du drückst (Build 324).
+- **Der Vorauslader baut keine Cover-Verzeichnisse mehr nebenbei.**
+  Fehlte das Verzeichnis eines Systems noch, hat er es beim Bestimmen
+  des Cover-Pfads gleich mitgebaut — auf der Hauptschleife und am
+  Stück (ARCADE laut Bench 2,2 s). Solche Einträge überspringt er jetzt;
+  das Verzeichnis baut der Hintergrundfaden aus Build 323 (Build 324).
+
 - **Behoben: 2,6 Sekunden Stillstand kurz nach dem Start.** Dein Log
   nach Build 322: kein einziges „SYN_DROPPED" mehr — der Wächter hält
   die Eingaben fest. Aber: „down lag 2622 ms ungelesen … Warmlauf

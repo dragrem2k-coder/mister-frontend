@@ -5442,6 +5442,24 @@ def _docs_index(syskey, bildart="boxart", zwischendurch=None):
 INDEX_WARM_WURZELN = (ART_HD, ART_BASE)
 
 
+def cover_index_bereit(syskey):
+    """Stehen die Namensverzeichnisse, die das COVER dieses Systems
+    braucht, schon im Zwischenspeicher? (Build 324)
+
+    Dieselbe Gruppe, die ein Warmlauf-Tick baut (beide Cover-Ordner und
+    das Cover der fremden Datenbank). Der Vorauslader fragt das, bevor
+    er fuer einen Eintrag den Cover-Pfad bestimmt: sonst baut ihm
+    cover_quelle() das fehlende Verzeichnis gleich mit - auf dem
+    Hauptfaden und am Stueck (Bench 22, Abschnitt P: ARCADE 2,2 s). Das
+    ist Arbeit fuer den VorarbeitFaden in frontend.py, nicht fuer den
+    Leerlauf."""
+    if not syskey:
+        return True
+    return (_docs_index_fertig(syskey, "boxart")
+            and all((w, syskey) in _art_index_cache
+                    for w in INDEX_WARM_WURZELN))
+
+
 def index_warm_offen(syskeys):
     """Die Systeme aus syskeys, deren Namensverzeichnisse noch FEHLEN -
     in der uebergebenen Reihenfolge, ohne Doppelte.
