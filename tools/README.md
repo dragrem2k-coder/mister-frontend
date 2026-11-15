@@ -10826,3 +10826,65 @@ RetroAchievements, und der Ausstieg aus dem Spiel per Pad
   `"pad_combo"` angepasst).
 * Volle Suite: 192 gruen, 0 rot.
 * Handbuch/Manual (md und PDF-Quelle), Funktionsliste neu erzeugt.
+
+## Nachtrag Build 327 - RetroAchievements 1, 2, 5 und das Kontextmenue
+
+**Stand:** 15.11.2026, `Dragend_Build_327.zip` (build_id
+`2026-11-15-327`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Rueckmeldung nach Build 326: "super pad ausstiegt laeuft !!! 1,2 und 5
+machen !!" - dazu: das Kontextmenue (X in der Spieleliste) zeigt die
+Eintraege unter "Zu Buchstaben springen" nicht.
+
+### Was Build 327 aendert
+
+1. **`_wizard_choice()` scrollt** (`_wahl_sichtbar`, `_wahl_fenster`):
+   nur, was ueber die Bedienhilfe passt (1080p: 7 Zeilen, 240p: 4),
+   das Fenster folgt der Auswahl, `^`/`v` am rechten Rand. Kurze
+   Listen sehen aus wie vorher. Gilt fuer alle Auswahlen ueber
+   `_wizard_choice()`, nicht nur das Kontextmenue.
+2. **Fortschritt ueber alle Seiten** (`fetch_ra_progress`): `c=500`,
+   `o=Versatz`, bis `Total` - vorher kamen nur die ersten 100 Spiele an.
+   Nebenbei `RA_AUSZEICHNUNGEN` aus `HighestAwardKind` (ohne Feld aus
+   den Zahlen); ein leerer/fehlgeschlagener Abruf ersetzt nichts.
+3. **Vorschlag 1 - Auszeichnungen:** `_zeilen_praefix()` (EINE Stelle
+   fuer `draw_list_row()` und `marquee_needed()`, die vorher je eine
+   Kopie der Rechnung hatten), `_ra_auszeichnung()` mit Merker je
+   (Name, System), ungueltig bei neuer Tabelle oder neuem
+   `RA_AUSZEICHNUNGEN_STAND`; `_ra_abzeichen()` fuers Cover; Infozeile.
+4. **Vorschlag 2 - Sitzungsbilanz:** `run_core(..., ra=True)` nur beim
+   Setnamen `RA_...`; `_ra_bilanz_beginnen()` (Faden: Spielnummer, schon
+   freie Erfolge), `_ra_bilanz_auswerten()` (Differenz bzw.
+   `ra_sitzung_neu()` nach Datum, Fortschritt und Auszeichnung
+   nachziehen), `_ra_bilanz_zeigen()` / `ra_bilanz_bildschirm()`.
+5. **Vorschlag 5 - Profil:** `fetch_ra_profil()` (API_GetUserSummary),
+   `ra_profil_lesen()`, `ra_profil_zaehlen()`, `ra_profil_bildschirm()`,
+   Menuepunkt `ra_profil`.
+
+### Ehrlich dazu
+
+Die Feldnamen der RA-Antworten (HighestAwardKind, Total, Rank,
+RecentAchievements) stammen aus der oeffentlichen Dokumentation und
+sind hier nicht gegen den echten Server geprueft. Wie ueberall in
+`fe/retroachievements.py` wird jedes Feld einzeln und nachsichtig
+gelesen - ein anders benanntes Feld ist eine fehlende Zeile, kein
+Absturz.
+
+### Pruefungen
+
+* **neu** `tools/test_ra_auszeichnungen.py` - nachgestellter Server
+  (1100 Spiele in drei Seiten, Fehler auf Seite 2), Vorzeichen an der
+  echten `draw_list_row()`, Laufschrift mit Gegenprobe, Abzeichen,
+  Infozeile, Bilanz (Vergleich, Datum, keins), Bildschirm nur bei neuen
+  Erfolgen, Profil mit und ohne Verbindung, Menuepunkt mit Gegenproben.
+* **neu** `tools/test_auswahl_scrollt.py` - 12 Optionen auf 1080p und
+  240p am echten `_wizard_choice()`, jede einmal markiert und sichtbar,
+  keine in der Bedienhilfe, `^`/`v` genau dann, wenn etwas fehlt.
+* **geaendert** `tools/liste_erzeugen.py` (RA-Profil als vierte Zeile
+  der Einrichtungs-Ausnahme), Funktionsliste neu erzeugt.
+* **geaendert** `tools/test_erfolg_wand.py` - der Schnitt durch den
+  Waechter endete am naechsten `@staticmethod`; seit der Bilanz stehen
+  dazwischen weitere Methoden mit eigenen Abrufen (gezaehlt: 3 statt 1).
+  Jetzt am Ende des Waechters selbst (`koerper()`).
+* Volle Suite: 194 gruen, 0 rot.

@@ -13,6 +13,25 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Neu: RA-Auszeichnungen in der Liste und am Cover.** Vor dem Namen
+  steht „M " für gemeistert (alle Erfolge) und „B " für beendet (RA:
+  durchgespielt); auf dem Cover ein Abzeichen MEISTER, 100% oder
+  BEENDET; in der Infozeile z.B. „RA: 40/40 - gemeistert". Dabei
+  gefunden: der Abgleich holte bisher nur deine ersten 100 Spiele —
+  jetzt alle (Build 327).
+- **Neu: Sitzungsbilanz nach dem Spiel.** Hast du mit dem RA-Core
+  Erfolge freigeschaltet, zeigt das Frontend nach der Rückkehr kurz
+  „+3 Erfolge +25 Punkte", den neuen Stand mit Balken und die Namen.
+  Ohne neue Erfolge kommt nichts (Build 327).
+- **Neu: RA-Profil.** Unter System → RetroAchievements: Punkte, Rang,
+  Mitglied seit, Motto, zuletzt freigeschaltete Erfolge und wie viele
+  Spiele deiner Sammlung gemeistert, abgeschlossen, beendet oder
+  angefangen sind (Build 327).
+- **Behoben: Kontextmenü zeigt nicht alle Einträge.** Mit X in der
+  Spieleliste standen unter „Zu Buchstaben springen" noch Einträge
+  außerhalb des Bildes. Die Liste scrollt jetzt mit; ^ und v am Rand
+  zeigen, dass oben oder unten noch etwas kommt (Build 327).
+
 - **Neu: per Pad aus dem Spiel zurück.** **Start + Select + L + R**
   zusammen kurz halten bringt dich zurück ins Frontend, genau wie F1.
   Warum das bisher nicht ging: Sobald ein Spiel läuft, sperrt MiSTer

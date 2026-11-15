@@ -247,7 +247,14 @@ print("Test 3: geschickt wird nur bei Aenderung")
 # ---------------------------------------------------------------------------
 _blk = _FE_CODE.split("def _ra_watch_loop")[1].split("\n    @staticmethod")[0] \
     if "def _ra_watch_loop" in _FE_CODE else _FE_CODE
-_blk = _FE_CODE.split("wand_stand = None")[1].split("\n    @staticmethod")[0]
+# Build 327: geschnitten wird am Ende des Waechters selbst (koerper()),
+# nicht am naechsten "@staticmethod" - seit der Sitzungsbilanz stehen
+# zwischen beiden weitere Methoden mit eigenen Abrufen, und der Schnitt
+# nach dem Wort zaehlte sie mit (3 statt 1).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _quelle import koerper as _koerper                  # noqa: E402
+_blk = _koerper(_FE_CODE, "_watch_ra_achievements_during_play")
+_blk = _blk.split("wand_stand = None")[1]
 check("es gibt einen Vergleichsstand", "wand_stand" in _FE_CODE)
 check("verglichen werden Badge und freigeschaltet",
       "(a[3] or a[0], bool(a[4]))" in _blk,

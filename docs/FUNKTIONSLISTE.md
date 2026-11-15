@@ -48,6 +48,7 @@ zusaetzlich:
 
 - `RetroAchievements: <Benutzername> (neu laden)`
 - `RetroAchievements: AN -> ausschalten (Fortschritt/Abzeichen/Listen pausieren, RA-fähige Cores starten weiterhin normal)`
+- `RA-Profil (Punkte, Rang, zuletzt)`
 - `Popups & Anzeige (MiSTer-RA-Einstellungen)`
 
 Und in **MiSTer selbst** (nicht im Frontend) muessen

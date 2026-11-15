@@ -55,12 +55,15 @@ def ra_zusatz():
     nur "nicht eingerichtet", und die Liste waere genau an der Stelle
     unvollstaendig, an der sie vollstaendig sein soll.
 
-    DIESE DREI SIND DER EINZIGE ZUSATZ, den die Gegenprobe durchlaesst,
+    DIESE VIER SIND DER EINZIGE ZUSATZ, den die Gegenprobe durchlaesst,
     und er steht hier namentlich. Eine Ausnahme, die man aufzaehlen
     muss, ist keine Luecke - eine Ausnahme "alles, was so aussieht",
     waere eine."""
     return [de("sys_ra_configured", "<Benutzername>"),
             de("sys_ra_toggle_on"),
+            # Build 327: das RA-Profil - steht nur mit Zugangsdaten und
+            # eingeschaltetem RA im Menue (siehe fe/menu.py).
+            de("sys_ra_profil"),
             de("sys_ra_settings")]
 
 import fe.menu as MENU                                   # noqa: E402

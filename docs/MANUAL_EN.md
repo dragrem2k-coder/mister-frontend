@@ -400,6 +400,7 @@ real network traffic.
 | F7                                  | Toggle completed status (game entries only) |
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
 | In a running game: **F1** on the keyboard | Straight back to the frontend, no hold time and no detour through the MiSTer OSD |
+| **X** (pad) / **F1** (keyboard) in the list | Context menu (game info, manual, favourite, search, filter, letter, view, random) - since build 327 it scrolls when not all entries fit on screen (^ and v at the edge) |
 | In a running game: Esc on the keyboard, hold ~0.6 s | Same as F1, but with a hold time - needed because many games use Esc for their own pause menu |
 | In a running game: **Start + Select + L + R** on the pad, hold together briefly (since build 326) | Same as F1. Works with the Nintendo Pro Controller, Joy-Con and pads in Switch mode (e.g. 8BitDo) - Start is "+" there, Select is "−" |
 | In a running game: **F5** on the keyboard | Reset the running core, no hold time (all cores, including RA - does NOT reload the core, RA progress is kept) |
@@ -1390,6 +1391,35 @@ the data live on each call; icons are downloaded once and cached
 permanently locally (a custom PNG decoder built directly into the
 frontend). Completely standalone - if something doesn't fit here, the
 normal progress display is unaffected.
+
+**Awards (since build 327):** RetroAchievements gives every game a
+highest award, and the frontend shows it in three places:
+
+- **In the list** the name is prefixed with **"M "** for *mastered* (all
+  achievements; "completed" = all in softcore counts too) and **"B "**
+  for *beaten* (RA: finished, but not all achievements yet) — just like
+  "* " for favourites and "V " for your own completed mark.
+- **On the cover** a badge sits top right: **MASTERED** (gold, all in
+  hardcore), **100%** (gold, all) or **BEATEN** (silver).
+- **In the info line** after the progress, e.g. "RA: 40/40 - mastered".
+
+The sync now also fetches **all** your games — before, only the first
+100 arrived.
+
+**Session summary (since build 327):** If you start a game with the
+**RA core** (see 8l) and unlock achievements, the frontend briefly shows
+a summary when you come back: how many achievements and points you
+gained, the new progress with a bar and the names of the new
+achievements. Any button continues (after 20 seconds it moves on by
+itself). Without new achievements there is no screen — the progress in
+the list is updated anyway. With the normal core nothing is fetched.
+
+**RA profile (since build 327):** System → RetroAchievements → "RA
+profile" shows your points (hardcore, softcore, true points), your rank,
+member since, your motto, how many games of your collection are
+mastered/completed/beaten/started, and your most recent achievements
+(hardcore bright, softcore dimmed). Without internet it at least shows
+the numbers of your collection.
 
 ## 8l. Choosing a standard or RA core
 
@@ -2591,6 +2621,7 @@ does …") and it does not change with the language.
 |---|---|
 | RetroAchievements: configured as … (reload) / *not configured* | `ra_status`, `ra_setup` |
 | RetroAchievements: ON/OFF | `ra_toggle` |
+| RA profile (points, rank, recent) - since build 327 | `ra_profil` |
 | Popups & display (MiSTer RA settings) | `ra_settings` |
 
 The last line configures the popups **MiSTer itself** shows, so it hangs

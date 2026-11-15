@@ -226,6 +226,9 @@ from fe.retroachievements import (
     fetch_ra_progress_bounded, load_ra_config, lookup_ra_game_id,
     lookup_ra_progress, ra_enabled, ra_spiel_nummer_finden,
     toggle_ra_enabled,
+    # Build 327: Auszeichnungen, Sitzungsbilanz, Profil.
+    lookup_ra_auszeichnung, RA_AUSZEICHNUNGEN_STAND, ra_auszeichnung_aendern,
+    ra_lookup_fortschritt_setzen, fetch_ra_profil_bounded, ra_sitzung_neu,
 )
 from fe.playtime import (
     DIARY_FILE, DIARY_RETENTION_DAYS, FIRST_PLAYED_FILE, MILESTONE_DEFS,
@@ -12609,10 +12612,9 @@ class Frontend:
         # geladenen Speicher-Cache nachgeschlagen (kein Datei-Zugriff
         # hier - das waere bei haeufigem Neuzeichnen ein echtes
         # Performance-Problem).
-        is_fav = item_kind == "game" and full in self._favorites_set
-        is_done = item_kind == "game" and hasattr(self, "_completed_set") \
-            and full in self._completed_set
-        prefix = ("* " if is_fav else "") + ("V " if is_done else "")
+        # Build 327: das Vorzeichen kommt aus EINER Stelle - dieselbe,
+        # die marquee_needed() fragt (dort stand bisher eine Kopie).
+        prefix = self._zeilen_praefix(full, item_kind, item_syskey)
         maxc = (list_right - list_x - 8 * s) // (8 * s) - len(prefix)
         mq_off = None      # != None: markierte Zeile laeuft als Laufschrift
         if sel:
@@ -12682,6 +12684,46 @@ class Frontend:
         self._zeilen_spur[y_top] = spur
         return y
 
+    # Build 327: Vorzeichen fuer die RA-Auszeichnung in der Liste.
+    RA_VORZEICHEN = {"mastered": "M ", "completed": "M ",
+                     "beaten-hardcore": "B ", "beaten-softcore": "B "}
+
+    def _zeilen_praefix(self, name, kind, syskey):
+        """Was vor dem Namen einer Listenzeile steht: "* " Favorit,
+        "V " durchgespielt (eigene Markierung) und seit Build 327 die
+        RA-Auszeichnung - "M " gemeistert (alle Erfolge), "B " beendet
+        (RA: durchgespielt). EINE Stelle fuer Zeile und Laufschrift."""
+        if kind != "game":
+            return ""
+        prefix = ""
+        if name in self._favorites_set:
+            prefix += "* "
+        if name in getattr(self, "_completed_set", ()):
+            prefix += "V "
+        return prefix + self.RA_VORZEICHEN.get(
+            self._ra_auszeichnung(name, syskey), "")
+
+    def _ra_auszeichnung(self, name, syskey):
+        """Die RA-Auszeichnung eines Spiels oder None (Build 327) -
+        gemerkt, weil die Liste je Schritt siebzehn Zeilen fragt. Der
+        Merker gilt, solange dieselbe Fortschrittstabelle und derselbe
+        Stand der Auszeichnungen gelten."""
+        lookup = getattr(self, "_ra_lookup", None)
+        if not lookup or not syskey:
+            return None
+        stand = (id(lookup), RA_AUSZEICHNUNGEN_STAND[0])
+        merk = getattr(self, "_ra_marken", None)
+        if merk is None or merk[0] != stand:
+            merk = self._ra_marken = (stand, {})
+        schluessel = (name, syskey)
+        if schluessel not in merk[1]:
+            try:
+                merk[1][schluessel] = lookup_ra_auszeichnung(lookup, name,
+                                                             syskey)
+            except Exception:                            # noqa: BLE001
+                merk[1][schluessel] = None
+        return merk[1][schluessel]
+
     def marquee_needed(self):
         v = getattr(self, "view", None)
         if not v or self.page != 1 or not v["items"]:
@@ -12692,10 +12734,9 @@ class Frontend:
             return False
         s = v["s"]
         label, kind, _arg = v["items"][self.item_i]
-        is_fav = kind == "game" and label in self._favorites_set
-        is_done = kind == "game" and hasattr(self, "_completed_set") \
-            and label in self._completed_set
-        prefix_len = (2 if is_fav else 0) + (2 if is_done else 0)
+        prefix_len = len(self._zeilen_praefix(
+            label, kind,
+            self._item_syskey(v["items"][self.item_i], v.get("syskey"))))
         maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s) - prefix_len
         return len(label) > maxc
 
@@ -15801,14 +15842,46 @@ class Frontend:
         ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
             if hasattr(self, "_ra_lookup") and self._ra_lookup else None
         if ra_progress:
-            info_src.append(t("ra_progress_shown", ra_progress[0],
-                              ra_progress[1]))
+            # Build 327: mit Auszeichnung, wenn es eine gibt.
+            _art = self._ra_auszeichnung(name, syskey)
+            if _art:
+                info_src.append(t("ra_progress_shown", ra_progress[0],
+                                  ra_progress[1])
+                                + " - " + t("ra_award_" + _art.replace(
+                                    "-", "_")))
+            else:
+                info_src.append(t("ra_progress_shown", ra_progress[0],
+                                  ra_progress[1]))
         if hasattr(self, "_completed_set") and name in self._completed_set:
             info_src.append(t("completed_shown"))
         info_lines = []
         for ln in info_src:
             info_lines.extend(self._wrap(ln, maxc, max_lines=1))
         return info_lines, ra_progress
+
+    RA_GOLD = (210, 175, 70)
+    RA_SILBER = (170, 176, 188)
+
+    def _ra_abzeichen(self, item, syskey, ra_progress):
+        """(Text, Farbe) fuer das Abzeichen auf dem Cover, oder None
+        (Build 327). Dieselbe Quelle wie das Vorzeichen in der Liste."""
+        try:
+            name = item[0]
+            if item[1] != "game":
+                return None
+        except (TypeError, IndexError):
+            return None
+        art = self._ra_auszeichnung(name, self._item_syskey(item, syskey))
+        if art == "mastered":
+            return (t("ra_badge_mastered"), self.RA_GOLD)
+        if art == "completed":
+            return ("100%", self.RA_GOLD)
+        if art in ("beaten-hardcore", "beaten-softcore"):
+            return (t("ra_badge_beaten"), self.RA_SILBER)
+        if ra_progress and ra_progress[1] > 0 \
+                and ra_progress[0] >= ra_progress[1]:
+            return ("100%", self.RA_GOLD)
+        return None
 
     def _beschreibung_zeichnen(self, x, y, y_ende, breite, item, syskey, s):
         """NEUES FEATURE (Build 139): die Spielbeschreibung aus der
@@ -16482,13 +16555,19 @@ class Frontend:
             # Dieselbe Gold-Farbe wie beim SNES-ALTTP-Tracker-Akzent
             # (SYSTEM_ACCENT), damit keine neue, willkuerliche Farbe in
             # den Code kommt.
-            if ra_progress and ra_progress[1] > 0 and ra_progress[0] >= ra_progress[1]:
-                badge_w, badge_h = 34 * s, 12 * s
+            # BUILD 327: das Abzeichen nennt die AUSZEICHNUNG -
+            # "MEISTER" (alles im Hardcore-Modus), "100%" (alles),
+            # "BEENDET" (RA: durchgespielt, silbern). Ohne bekannte
+            # Auszeichnung wie bisher "100%", wenn alles erreicht ist.
+            _badge = self._ra_abzeichen(item, syskey, ra_progress)
+            if _badge:
+                _btext, _bfarbe = _badge
+                badge_w, badge_h = (len(_btext) * 8 + 6) * s, 12 * s
                 bx = min(ax + aw - badge_w - 2 * s, fb.width - badge_w - 2 * s)
                 by = ay + 2 * s
-                gold = (210, 175, 70)
-                fb.rect_rounded(bx, by, badge_w, badge_h, gold)
-                fb.text(bx + 3 * s, by + 2 * s, "100%", s, (10, 10, 14), gold)
+                fb.rect_rounded(bx, by, badge_w, badge_h, _bfarbe)
+                fb.text(bx + 3 * s, by + 2 * s, _btext, s, (10, 10, 14),
+                        _bfarbe)
             # DER VERMERK ZUR BILDART (Build 294).
             #
             # NUTZERWUNSCH: "Mit kleiner Info das wenn sie vorhanden
@@ -16830,6 +16909,267 @@ class Frontend:
                         pass   # Overlay-Push ist nie kritisch
             stop_event.wait(self.RA_WATCH_POLL_INTERVAL)
 
+    # ------------------------------------------------------------------
+    # BUILD 327: DIE RA-SITZUNGSBILANZ.
+    #
+    # Nutzerwunsch (Vorschlag 2): nach dem Spiel kurz zeigen, was die
+    # Sitzung gebracht hat - "+3 Erfolge, +25 Punkte, jetzt 18/40".
+    #
+    # WIE. Beim Start holt ein Faden einmal die Erfolgsliste des Spiels
+    # (welche waren schon frei), nach dem Spiel wird sie noch einmal
+    # geholt, und die Differenz ist die Bilanz. Hat der Abruf beim Start
+    # nicht geklappt, entscheidet das Datum der Freischaltung (seit dem
+    # Start, UTC) - siehe ra_sitzung_neu() in fe/retroachievements.py.
+    #
+    # NUR MIT DEM RA-CORE (run_core(..., ra=True)): mit dem normalen Core
+    # kann es keine neuen Erfolge geben, und niemand soll nach jedem
+    # Spiel auf einen Abruf warten, der nichts bringen kann.
+    #
+    # NUR WENN ES WAS ZU ZEIGEN GIBT: ohne neue Erfolge kein Bildschirm -
+    # aber der Fortschritt in der Liste wird trotzdem nachgezogen.
+    # ------------------------------------------------------------------
+    RA_BILANZ_ANZEIGE = 20.0        # Sekunden, dann geht es von selbst weiter
+
+    def _ra_bilanz_beginnen(self, label, syskey):
+        """Beim Spielstart: Spielnummer suchen und die schon freien
+        Erfolge merken - auf einem Faden. Liefert das Bilanz-dict oder
+        None (RA nicht eingerichtet/abgeschaltet, kein Name)."""
+        if not label or not ra_enabled():
+            return None
+        try:
+            if load_ra_config()[0] is None:
+                return None
+        except Exception:                                # noqa: BLE001
+            return None
+        bilanz = {"game_id": None, "vorher": None,
+                  "start_utc": time.strftime("%Y-%m-%d %H:%M:%S",
+                                             time.gmtime()),
+                  "fertig": threading.Event()}
+        lookup = getattr(self, "_ra_lookup", None) or {}
+
+        def _vorher():
+            try:
+                gid = lookup_ra_game_id(lookup, label, syskey) \
+                    if lookup else None
+                if not gid:
+                    gid = ra_spiel_nummer_finden(lookup, label, syskey)
+                bilanz["game_id"] = gid
+                if gid:
+                    achs = fetch_ra_game_achievements_bounded(gid,
+                                                              timeout=5.0)
+                    if achs:
+                        bilanz["vorher"] = set(a[0] for a in achs if a[4])
+            except Exception:                            # noqa: BLE001
+                LOG("RA-Sitzungsbilanz (Start):\n" + traceback.format_exc())
+            finally:
+                bilanz["fertig"].set()
+        threading.Thread(target=_vorher, name="ra-bilanz",
+                         daemon=True).start()
+        return bilanz
+
+    def _ra_bilanz_auswerten(self, bilanz, achievements):
+        """Die Bilanz aus der Liste nach dem Spiel - und dabei den
+        Fortschritt in der Tabelle nachziehen. Liefert ein dict
+        (neu, punkte, erreicht, gesamt, gemeistert) oder None."""
+        if not achievements:
+            return None
+        neu = ra_sitzung_neu(bilanz.get("vorher"), achievements,
+                             bilanz.get("start_utc"))
+        erreicht = sum(1 for a in achievements if a[4])
+        gesamt = len(achievements)
+        gid = bilanz.get("game_id")
+        ra_lookup_fortschritt_setzen(getattr(self, "_ra_lookup", None),
+                                     gid, erreicht)
+        gemeistert = None
+        if gesamt and erreicht >= gesamt:
+            gemeistert = ("mastered" if all(a[6] for a in achievements
+                                            if len(a) > 6)
+                          else "completed")
+            ra_auszeichnung_aendern(gid, gemeistert)
+        return {"neu": neu,
+                "punkte": sum(int(a[2] or 0) for a in neu),
+                "erreicht": erreicht, "gesamt": gesamt,
+                "gemeistert": gemeistert if neu else None}
+
+    def _ra_bilanz_zeigen(self, bilanz, label):
+        """Nach dem Spiel: auswerten und, wenn es neue Erfolge gab, den
+        Bildschirm zeigen. True, wenn er gezeigt wurde."""
+        bilanz["fertig"].wait(2.0)
+        gid = bilanz.get("game_id")
+        if not gid:
+            LOG("RA-Sitzungsbilanz: keine Spielnummer fuer %r" % (label,))
+            return False
+        self.draw(message=t("ra_bilanz_holen"))
+        achs = fetch_ra_game_achievements_bounded(gid, timeout=5.0)
+        erg = self._ra_bilanz_auswerten(bilanz, achs)
+        if erg is None:
+            LOG("RA-Sitzungsbilanz: Erfolgsliste nicht abrufbar")
+            self.draw()
+            return False
+        LOG("RA-Sitzungsbilanz: %d neu (%d Punkte), Stand %d/%d"
+            % (len(erg["neu"]), erg["punkte"], erg["erreicht"],
+               erg["gesamt"]))
+        if not erg["neu"]:
+            self.draw()
+            return False
+        self.ra_bilanz_bildschirm(label, erg)
+        self._force_full_redraw = True
+        self.draw()
+        return True
+
+    def ra_bilanz_bildschirm(self, label, erg):
+        """Der Bildschirm der Sitzungsbilanz."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        gold = self.RA_GOLD
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        fb.clear(C_BG)
+        titel = t("ra_bilanz_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 8 * s
+        name = display_name(label or "")
+        fb.text(ox, y, name[:maxc], s, C_DIM, C_BG)
+        y += 16 * s
+        gross = t("ra_bilanz_neu", len(erg["neu"]), erg["punkte"])
+        gs = self._fit_scale(gross, W - 2 * ox, 2 * s)
+        fb.text(ox, y, gross, gs, gold, C_BG)
+        y += 10 * gs + 6 * s
+        if erg["gesamt"]:
+            pz = erg["erreicht"] * 100 // erg["gesamt"]
+            fb.text(ox, y, t("ra_bilanz_stand", erg["erreicht"],
+                             erg["gesamt"], pz)[:maxc], s, C_TEXT, C_BG)
+            y += 12 * s
+            bw = W - 2 * ox
+            fb.rect(ox, y, bw, 4 * s, fb._darken(C_TEXT, 0.25))
+            fb.rect(ox, y, max(1, bw * erg["erreicht"] // erg["gesamt"]),
+                    4 * s, gold)
+            y += 10 * s
+        if erg.get("gemeistert"):
+            fb.text(ox, y, t("ra_bilanz_" + erg["gemeistert"])[:maxc], s,
+                    gold, C_BG)
+            y += 14 * s
+        hint = t("ra_bilanz_hinweis")
+        sc = s - 1 if s > 1 else 1
+        unten = H - oy - self._hinweis_hoehe(hint, sc)
+        for a in erg["neu"]:
+            if y + 10 * s > unten:
+                break
+            zeile = "+ %s (%d)" % (a[0], int(a[2] or 0))
+            fb.text(ox, y, zeile[:maxc], s, C_TEXT, C_BG)
+            y += 12 * s
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+        self.inp.read_action(timeout=self.RA_BILANZ_ANZEIGE)
+
+    # ------------------------------------------------------------------
+    # BUILD 327: DAS RA-PROFIL (Vorschlag 5) - Punkte, Rang, letzte
+    # Erfolge und was die eigene Sammlung an Auszeichnungen traegt.
+    # ------------------------------------------------------------------
+    def ra_profil_zaehlen(self):
+        """Aus der eigenen Fortschrittstabelle: (gemeistert,
+        abgeschlossen, beendet, angefangen) - je RA-Spielnummer einmal."""
+        from fe.retroachievements import RA_AUSZEICHNUNGEN
+        lookup = getattr(self, "_ra_lookup", None) or {}
+        spiele = {}
+        for liste in lookup.values():
+            for _sys, erreicht, moeglich, gid in liste:
+                if gid is not None:
+                    spiele[gid] = (erreicht, moeglich)
+        g = a = b = n = 0
+        for gid, (erreicht, moeglich) in spiele.items():
+            art = RA_AUSZEICHNUNGEN.get(gid)
+            if art is None and moeglich and erreicht >= moeglich:
+                art = "completed"
+            if art == "mastered":
+                g += 1
+            elif art == "completed":
+                a += 1
+            elif art in ("beaten-hardcore", "beaten-softcore"):
+                b += 1
+            elif erreicht:
+                n += 1
+        return g, a, b, n
+
+    def ra_profil_bildschirm(self, profil=None, abrufen=True):
+        """Der Profil-Bildschirm. profil: fuer den Test vorgegeben;
+        sonst wird es geholt (mit Hinweis, solange es dauert)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        user = (load_ra_config()[0] or "")
+        titel = t("ra_profil_titel", user)
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        if profil is None and abrufen:
+            fb.clear(C_BG)
+            fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+            fb.text(ox, oy + 10 * ts + 8 * s, t("ra_showcase_loading"), s,
+                    C_DIM, C_BG)
+            fb.flip()
+            profil = fetch_ra_profil_bounded(timeout=6.0)
+        fb.clear(C_BG)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 8 * s
+        gold = self.RA_GOLD
+        if profil:
+            if profil.get("punkte") is not None:
+                gross = t("ra_profil_punkte", profil["punkte"])
+                gs = self._fit_scale(gross, W - 2 * ox, 2 * s)
+                fb.text(ox, y, gross, gs, gold, C_BG)
+                y += 10 * gs + 6 * s
+            zeilen = []
+            if profil.get("softcore"):
+                zeilen.append(t("ra_profil_softcore", profil["softcore"]))
+            if profil.get("true_points"):
+                zeilen.append(t("ra_profil_true", profil["true_points"]))
+            if profil.get("rang"):
+                if profil.get("gewertet"):
+                    zeilen.append(t("ra_profil_rang_von", profil["rang"],
+                                    profil["gewertet"]))
+                else:
+                    zeilen.append(t("ra_profil_rang", profil["rang"]))
+            if profil.get("seit"):
+                zeilen.append(t("ra_profil_seit", profil["seit"]))
+            if profil.get("motto"):
+                zeilen.append('"%s"' % profil["motto"])
+            for z in zeilen:
+                fb.text(ox, y, z[:maxc], s, C_TEXT, C_BG)
+                y += 12 * s
+        else:
+            fb.text(ox, y, t("ra_profil_offline")[:maxc], s, C_DIM, C_BG)
+            y += 12 * s
+        g, a, b, n = self.ra_profil_zaehlen()
+        y += 4 * s
+        # Auf der Roehre passt die Zeile nicht in eine - umbrechen statt
+        # abschneiden, sonst fehlen genau die letzten Zahlen.
+        for _z in self._wrap_text(t("ra_profil_sammlung", g, a, b, n), maxc):
+            fb.text(ox, y, _z, s, gold, C_BG)
+            y += 12 * s
+        y += 4 * s
+        hint = t("ra_bilanz_hinweis")
+        sc = s - 1 if s > 1 else 1
+        unten = H - oy - self._hinweis_hoehe(hint, sc)
+        letzte = (profil or {}).get("letzte") or []
+        if letzte and y + 22 * s <= unten:
+            fb.text(ox, y, t("ra_profil_letzte"), s, C_TITLE, C_BG)
+            y += 13 * s
+            for e in letzte:
+                if y + 10 * s > unten:
+                    break
+                zeile = "%s - %s (%d)" % (e["titel"], e["spiel"], e["punkte"])
+                fb.text(ox, y, zeile[:maxc], s,
+                        C_TEXT if e.get("hardcore") else C_DIM, C_BG)
+                y += 12 * s
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+        return profil
+
     @staticmethod
     def _ra_wand_daten(achievements):
         """Die Erfolgsliste in die Form bringen, die das Overlay
@@ -16870,7 +17210,7 @@ class Frontend:
                 "anzahl": [an, len(items)],
                 "punkte": [erreicht, gesamt_punkte]}
 
-    def run_core(self, path, label=None, syskey=None):
+    def run_core(self, path, label=None, syskey=None, ra=False):
         """label (optional): Anzeigename fuer die Spielzeit-Aufzeichnung
         (siehe record_playtime()) - nur die Zeit vom bestaetigten Core-
         Start bis zur Rueckkehr ins Menue zaehlt, Ladezeiten und
@@ -16971,6 +17311,9 @@ class Frontend:
         # nicht hierher: es kann ins Netz gehen, und der Spielstart
         # darf darauf nicht warten.
         ra_watch_stop = None
+        # Build 327: die Sitzungsbilanz - nur fuer einen Start mit dem
+        # RA-Core (ra=True), siehe _ra_bilanz_beginnen().
+        bilanz = self._ra_bilanz_beginnen(label, syskey) if ra else None
         if self.stream and self._ra_lookup and label:
             ra_watch_stop = threading.Event()
             threading.Thread(
@@ -17043,6 +17386,12 @@ class Frontend:
         # damit die Einblendung diesen Redraw ueberschreibt statt sofort
         # wieder zu verschwinden.
         self._notify_new_achievements()
+        # Build 327: die RA-Sitzungsbilanz, wenn es neue Erfolge gab.
+        if bilanz is not None:
+            try:
+                self._ra_bilanz_zeigen(bilanz, label)
+            except Exception:                            # noqa: BLE001
+                LOG("RA-Sitzungsbilanz:\n" + traceback.format_exc())
 
     def run_script(self, path, args=None):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
@@ -18827,6 +19176,8 @@ class Frontend:
         # Platz wird VOR dem Erklaertext abgezogen, sonst schiebt er
         # sich ueber die unterste Option.
         maxc_opt = max(8, (W - 2 * ox) // (8 * s) - 2)
+        # Build 327: die oberste sichtbare Zeile - siehe unten.
+        oben = 0
         while True:
             fb.clear(C_BG)
             title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
@@ -18857,7 +19208,18 @@ class Frontend:
                         fb.text(ox, y, wrapped, s, C_TEXT, C_BG)
                         y += 24 * s
                     y += 18 * s
-            for i, label in enumerate(options):
+            # BUILD 327: DIE LISTE SCROLLT MIT. Nutzermeldung: im
+            # Kontextmenue (X in der Spieleliste) standen unter "Zu
+            # Buchstaben springen" noch Eintraege, die man nicht sah - auf
+            # 1080p passen bei 36*s Zeilenabstand acht Zeilen, das Menue
+            # hat bis zu zwoelf. Jetzt wird nur gezeigt, was ueber die
+            # Bedienhilfe passt, und das Fenster folgt der Auswahl; ^ und
+            # v am rechten Rand sagen, dass oben bzw. unten noch etwas
+            # steht.
+            sichtbar = self._wahl_sichtbar(y, hint, sc, s, len(options))
+            oben = self._wahl_fenster(choice, oben, sichtbar, len(options))
+            for i in range(oben, min(len(options), oben + sichtbar)):
+                label = options[i]
                 sel = i == choice
                 color = accent if sel else C_TEXT
                 prefix = "> " if sel else "  "
@@ -18867,6 +19229,14 @@ class Frontend:
                 if len(label) > maxc_opt:
                     label = label[:max(1, maxc_opt - 1)] + "~"
                 fb.text(ox, y, prefix + label, s, color, C_BG)
+                zeichen = None
+                if i == oben and oben > 0:
+                    zeichen = "^"
+                elif (i == oben + sichtbar - 1
+                      and oben + sichtbar < len(options)):
+                    zeichen = "v"
+                if zeichen:
+                    fb.text(W - ox - 8 * s, y, zeichen, s, C_DIM, C_BG)
                 y += 36 * s
             self._hinweis_unten(hint, sc)
             fb.flip()
@@ -18879,6 +19249,27 @@ class Frontend:
                 return choice
             elif act in ("back", "exit"):
                 return None
+
+    def _wahl_sichtbar(self, y0, hint, sc, s, anzahl):
+        """Wie viele Zeilen einer Auswahl ab y0 sichtbar sind, ohne in
+        die Bedienhilfe unten zu laufen (Build 327). Mindestens eine."""
+        H = self.fb.height
+        oy = H * OVERSCAN_Y // 100
+        unten = H - oy - self._hinweis_hoehe(hint, sc)
+        # Eine Zeile braucht 8*s Schrift; der Abstand 36*s gehoert nur
+        # ZWISCHEN die Zeilen, die letzte darf bis knapp an die Hilfe.
+        frei = unten - y0 - 8 * s
+        return max(1, min(anzahl, 1 + max(0, frei) // (36 * s)))
+
+    @staticmethod
+    def _wahl_fenster(choice, oben, sichtbar, anzahl):
+        """Die oberste sichtbare Zeile so schieben, dass choice im
+        Fenster steht - nur so weit wie noetig (Build 327)."""
+        if choice < oben:
+            oben = choice
+        elif choice >= oben + sichtbar:
+            oben = choice - sichtbar + 1
+        return max(0, min(oben, max(0, anzahl - sichtbar)))
 
     def _wizard_info(self, title, lines, skippable=True):
         """Generischer Info-Bildschirm: Text (an Wortgrenzen umgebrochen,
@@ -26580,7 +26971,16 @@ class Frontend:
                             record_recent(label, arg)
                             record_core_choice(label, ra_choice)
                             mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
-                            self.run_core(mgl, label=label, syskey=syskey)
+                            # Build 327: mit dem RA-Core gestartet? Dann
+                            # gibt es nach dem Spiel eine Sitzungsbilanz.
+                            # Erkannt am Setnamen "RA_..." (find_ra_core()
+                            # in fe/ra_core.py) - load_last_core_choice()
+                            # liefert eine Liste statt eines Tupels, ein
+                            # Vergleich mit ra_core griffe dort daneben.
+                            _ist_ra = bool(setname) and str(
+                                setname).startswith("RA_")
+                            self.run_core(mgl, label=label, syskey=syskey,
+                                          ra=_ist_ra)
                             continue
                         elif kind == "script":
                             self.run_script(arg)
@@ -27349,6 +27749,13 @@ class Frontend:
                                 self._refresh_system_category()
                                 self.draw(message=msg)
                                 time.sleep(1.5)
+                            self.draw()
+                        elif kind == "ra_profil":
+                            # Build 327: der Profil-Bildschirm, siehe
+                            # ra_profil_bildschirm().
+                            self.ra_profil_bildschirm()
+                            self.inp.read_action()
+                            self._force_full_redraw = True
                             self.draw()
                         elif kind == "ra_toggle":
                             # NEU (Nutzerwunsch: RetroAchievements aus

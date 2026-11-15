@@ -13,6 +13,23 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **New: RA awards in the list and on the cover.** The name is prefixed
+  with "M " for mastered (all achievements) and "B " for beaten (RA:
+  finished); the cover gets a MASTERED, 100% or BEATEN badge; the info
+  line reads e.g. "RA: 40/40 - mastered". Found along the way: the sync
+  only fetched your first 100 games — now it fetches all (build 327).
+- **New: session summary after a game.** If you unlocked achievements
+  with the RA core, the frontend briefly shows "+3 achievements +25
+  points", the new progress with a bar and the names when you come back.
+  Without new achievements nothing appears (build 327).
+- **New: RA profile.** Under System → RetroAchievements: points, rank,
+  member since, motto, recent achievements and how many games of your
+  collection are mastered, completed, beaten or started (build 327).
+- **Fixed: context menu doesn't show all entries.** With X in the game
+  list, entries below "Jump to letter" were off screen. The list now
+  scrolls along; ^ and v at the edge show there is more above or below
+  (build 327).
+
 - **New: leave a game with the pad.** Holding **Start + Select + L + R**
   together briefly takes you back to the frontend, just like F1. Why
   this didn't work before: as soon as a game runs, MiSTer locks the

@@ -445,6 +445,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | **F3 / F4** (Tastatur) / **Select halten + L / R** (Pad) | An den Listenanfang bzw. ans Listenende springen (seit Build 114) |
 | **F6** (Tastatur) | RA-Erfolgs-Vitrine für das markierte Spiel (Abschnitt 8k) |
 | Im laufenden Spiel: **F1** auf der Tastatur | Sofort zurück ins Frontend, ohne Haltezeit und ohne Umweg über MiSTers OSD |
+| **X** (Pad) / **F1** (Tastatur) in der Liste | Kontextmenü (Spiel-Infos, Anleitung, Favorit, Suche, Filter, Buchstabe, Ansicht, Zufall) - seit Build 327 scrollt es mit, wenn nicht alle Einträge aufs Bild passen (^ und v am Rand) |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Dasselbe wie F1, nur mit Haltezeit - die ist nötig, weil viele Spiele Esc selbst für ihr Pausemenü benutzen |
 | Im laufenden Spiel: **Start + Select + L + R** am Pad, kurz zusammen halten (seit Build 326) | Dasselbe wie F1. Geht mit dem Nintendo Pro Controller, Joy-Con und Pads im Switch-Modus (z.B. 8BitDo) - Start ist dort „+", Select „−" |
 | Im laufenden Spiel: **F5** auf der Tastatur | Reset im laufenden Core, ohne Haltezeit (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
@@ -1640,6 +1641,39 @@ einmalig heruntergeladen und dauerhaft lokal zwischengespeichert
 (eigener PNG-Decoder, direkt im Frontend gebaut). Komplett
 eigenständig - falls hier mal etwas nicht passt, ist die normale
 Fortschrittsanzeige davon unberührt.
+
+**Auszeichnungen (seit Build 327):** RetroAchievements vergibt je Spiel
+eine höchste Auszeichnung, und das Frontend zeigt sie an drei Stellen:
+
+- **In der Liste** steht vor dem Namen **„M "** für *gemeistert* (alle
+  Erfolge; dazu zählt auch „abgeschlossen" = alle im Softcore-Modus) und
+  **„B "** für *beendet* (RA: durchgespielt, aber noch nicht alle
+  Erfolge) — so wie „* " für Favoriten und „V " für deine eigene
+  Durchgespielt-Markierung.
+- **Auf dem Cover** steht oben rechts ein Abzeichen: **MEISTER** (gold,
+  alles im Hardcore-Modus), **100%** (gold, alles) oder **BEENDET**
+  (silber).
+- **In der Infozeile** hinter dem Fortschritt, z.B. „RA: 40/40 -
+  gemeistert".
+
+Außerdem holt der Abgleich jetzt **alle** deine Spiele — vorher kamen
+nur die ersten 100 an.
+
+**Sitzungsbilanz (seit Build 327):** Startest du ein Spiel mit dem
+**RA-Core** (siehe 8l) und schaltest dabei Erfolge frei, zeigt das
+Frontend nach der Rückkehr kurz eine Bilanz: wie viele Erfolge und
+Punkte dazugekommen sind, den neuen Stand mit Balken und die Namen der
+neuen Erfolge. Beliebige Taste geht weiter (nach 20 Sekunden von
+selbst). Ohne neue Erfolge kommt kein Bildschirm — der Fortschritt in
+der Liste wird trotzdem nachgezogen. Mit dem normalen Core wird gar
+nicht erst nachgefragt.
+
+**RA-Profil (seit Build 327):** System → RetroAchievements → „RA-Profil"
+zeigt deine Punkte (Hardcore, Softcore, True Points), deinen Rang, seit
+wann du dabei bist, dein Motto, wie viele Spiele deiner Sammlung
+gemeistert/abgeschlossen/beendet/angefangen sind, und die zuletzt
+freigeschalteten Erfolge (Hardcore hell, Softcore gedimmt). Ohne
+Internet zeigt es wenigstens die Zahlen deiner Sammlung.
 
 ## 8l. Standard- oder RA-Core wählen
 
@@ -2990,6 +3024,7 @@ passiert …"), und er ändert sich nicht mit der Sprache.
 |---|---|
 | RetroAchievements: eingerichtet als … (neu laden) bzw. *nicht eingerichtet* | `ra_status`, `ra_setup` |
 | RetroAchievements: AN/AUS | `ra_toggle` |
+| RA-Profil (Punkte, Rang, zuletzt) - seit Build 327 | `ra_profil` |
 | Popups & Anzeige (MiSTer-RA-Einstellungen) | `ra_settings` |
 
 Die letzte Zeile stellt die Popups ein, die **MiSTer selbst** anzeigt,

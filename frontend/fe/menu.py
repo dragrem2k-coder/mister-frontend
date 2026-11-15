@@ -431,6 +431,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     ra_items = [(ra_label, "ra_status", None)]
     if ra_user:
         ra_items.append((ra_toggle_label, "ra_toggle", None))
+    # Build 327: das RA-Profil (Punkte, Rang, letzte Erfolge, die
+    # Auszeichnungen der eigenen Sammlung) - nur mit Zugangsdaten und
+    # eingeschaltetem RA, sonst gaebe es nichts abzufragen.
+    if ra_user and ra_toggle_enabled():
+        ra_items.append((t("sys_ra_profil"), "ra_profil", None))
 
     # NEU (Build 95, Nutzerwunsch: "Sute hat eine neue Main MiSTer
     # gebaut, die hat nun RA Settings - koennen wir das mit ins Frontend

@@ -160,30 +160,87 @@ def fetch_ra_progress(username, api_key, timeout=5.0):
     beim ersten echten Test ein Feldname als falsch herausstellt,
     liefert die Funktion einfach eine leere oder unvollstaendige Liste
     statt abzustuerzen."""
+    # BUILD 327: ALLE SEITEN. Die Abfrage liefert ohne Angabe nur die
+    # ersten 100 Spiele (Parameter c, hoechstens 500, dazu o = Versatz) -
+    # wer mit mehr Spielen zu tun hatte, sah bei den uebrigen nie einen
+    # Fortschritt. Jetzt Seite fuer Seite, bis "Total" erreicht ist oder
+    # eine Seite leer bleibt; hoechstens RA_SEITEN_MAX Seiten.
+    entries = []
+    versatz = 0
+    for _seite in range(RA_SEITEN_MAX):
+        try:
+            params = urllib.parse.urlencode(
+                {"u": username, "y": api_key, "c": RA_SEITE, "o": versatz})
+            url = RA_API_URL + "?" + params
+            req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 200:
+                    LOG("fetch_ra_progress: HTTP-Status %d" % resp.status)
+                    return None if not entries else _ra_fortschritt_lesen(entries)
+                raw = resp.read()
+            data = json.loads(raw)
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+            LOG("fetch_ra_progress: fehlgeschlagen: %s" % e)
+            return None if not entries else _ra_fortschritt_lesen(entries)
+        gesamt = None
+        if isinstance(data, dict):
+            seite = data.get("Results") or data.get("results") or []
+            try:
+                gesamt = int(data.get("Total") or data.get("total") or 0)
+            except (TypeError, ValueError):
+                gesamt = None
+        elif isinstance(data, list):
+            seite = data
+        else:
+            seite = []
+        if not isinstance(seite, list) or not seite:
+            break
+        entries.extend(seite)
+        versatz += len(seite)
+        if not gesamt or versatz >= gesamt or len(seite) < RA_SEITE:
+            break
+    return _ra_fortschritt_lesen(entries)
+
+
+# Build 327: Seitengroesse und Obergrenze fuer fetch_ra_progress().
+RA_SEITE = 500
+RA_SEITEN_MAX = 20
+
+# Build 327: die hoechste Auszeichnung je RA-Spielnummer, aus derselben
+# Abfrage wie der Fortschritt (Feld HighestAwardKind): "mastered"
+# (alles im Hardcore-Modus), "completed" (alles, Softcore), "beaten-
+# hardcore" / "beaten-softcore" (Spiel durchgespielt, nicht alle Erfolge).
+# Fehlt das Feld, wird aus den Zahlen abgeleitet, was sich ableiten laesst
+# (mastered/completed - "beaten" kennt nur der Server).
+RA_AUSZEICHNUNGEN = {}
+RA_AUSZEICHNUNGEN_STAND = [0]      # zaehlt jede neue Liste hoch
+RA_AUSZEICHNUNG_ARTEN = ("mastered", "completed", "beaten-hardcore",
+                         "beaten-softcore")
+
+
+def ra_auszeichnung_art(roh, moeglich=0, erreicht=0, erreicht_hc=0):
+    """Die Auszeichnung in einer der vier Formen aus
+    RA_AUSZEICHNUNG_ARTEN - oder None. roh ist das Feld des Servers."""
+    art = str(roh or "").strip().lower()
+    if art in RA_AUSZEICHNUNG_ARTEN:
+        return art
     try:
-        params = urllib.parse.urlencode({"u": username, "y": api_key})
-        url = RA_API_URL + "?" + params
-        req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status != 200:
-                LOG("fetch_ra_progress: HTTP-Status %d" % resp.status)
-                return None
-            raw = resp.read()
-        data = json.loads(raw)
-    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
-        LOG("fetch_ra_progress: fehlgeschlagen: %s" % e)
+        moeglich, erreicht, erreicht_hc = (int(moeglich or 0),
+                                           int(erreicht or 0),
+                                           int(erreicht_hc or 0))
+    except (TypeError, ValueError):
         return None
+    if moeglich > 0 and erreicht_hc >= moeglich:
+        return "mastered"
+    if moeglich > 0 and erreicht >= moeglich:
+        return "completed"
+    return None
 
-    # Die Ergebnisliste kann je nach Antwortform direkt eine Liste sein
-    # ODER unter einem Schluessel wie "Results" liegen - beides
-    # abdecken.
-    if isinstance(data, dict):
-        entries = data.get("Results") or data.get("results") or []
-    elif isinstance(data, list):
-        entries = data
-    else:
-        entries = []
 
+def _ra_fortschritt_lesen(entries):
+    """Die Eintraege aller Seiten in (titel, system, erreicht, moeglich,
+    spielnummer) wandeln - und nebenbei RA_AUSZEICHNUNGEN neu fuellen."""
+    auszeichnungen = {}
     out = []
     for e in entries:
         if not isinstance(e, dict):
@@ -204,6 +261,21 @@ def fetch_ra_progress(username, api_key, timeout=5.0):
         if total <= 0:
             continue
         out.append((str(title), str(system) if system else "", earned, total, game_id))
+        if game_id is not None:
+            art = ra_auszeichnung_art(
+                e.get("HighestAwardKind") or e.get("highestAwardKind"),
+                total, e.get("NumAwarded") or e.get("numAwarded") or 0,
+                e.get("NumAwardedHardcore") or e.get("numAwardedHardcore")
+                or 0)
+            if art:
+                auszeichnungen[game_id] = art
+    if out:
+        # Nur bei einer echten Liste ersetzen - ein leerer oder
+        # fehlgeschlagener Abruf darf bekannte Auszeichnungen nicht
+        # wegwischen (dieselbe Regel wie bei build_ra_lookup()).
+        RA_AUSZEICHNUNGEN.clear()
+        RA_AUSZEICHNUNGEN.update(auszeichnungen)
+        RA_AUSZEICHNUNGEN_STAND[0] += 1
     return out
 
 def fetch_ra_progress_bounded(timeout=5.0):
@@ -955,3 +1027,163 @@ def _lookup_ra_candidate(lookup, our_name, our_syskey):
                 best = (earned, total, game_id)
     return best
 
+
+
+
+def lookup_ra_auszeichnung(lookup, our_name, our_syskey):
+    """Die hoechste RA-Auszeichnung fuer ein Spiel unserer Bibliothek
+    (Build 327) - "mastered", "completed", "beaten-hardcore",
+    "beaten-softcore" oder None. Ueber dieselbe Zuordnung wie der
+    Fortschritt (lookup_ra_game_id())."""
+    best = _lookup_ra_candidate(lookup, our_name, our_syskey)
+    if not best:
+        return None
+    art = RA_AUSZEICHNUNGEN.get(best[2]) if best[2] is not None else None
+    if art:
+        return art
+    # Ohne Eintrag (alte Liste, Feld fehlte): aus den Zahlen, soweit
+    # moeglich. Ohne Hardcore-Zahl ist "alles erreicht" ein completed.
+    if best[1] > 0 and best[0] >= best[1]:
+        return "completed"
+    return None
+
+
+def ra_auszeichnung_aendern(game_id, art):
+    """Nach einer Sitzung (Build 327): die Auszeichnung eines Spiels
+    selbst nachtragen, bis die naechste volle Liste kommt. Nur eine
+    HOEHERE Auszeichnung ersetzt eine vorhandene."""
+    if game_id is None or art not in RA_AUSZEICHNUNG_ARTEN:
+        return
+    alt = RA_AUSZEICHNUNGEN.get(game_id)
+    rang = {a: i for i, a in enumerate(RA_AUSZEICHNUNG_ARTEN)}
+    if alt is None or rang[art] < rang.get(alt, 99):
+        RA_AUSZEICHNUNGEN[game_id] = art
+        RA_AUSZEICHNUNGEN_STAND[0] += 1
+
+
+def ra_lookup_fortschritt_setzen(lookup, game_id, erreicht):
+    """Nach einer Sitzung (Build 327): den Fortschritt EINES Spiels in
+    der Nachschlagetabelle nachziehen, ohne die ganze Liste neu zu holen.
+    Liefert die Zahl der geaenderten Eintraege."""
+    if not lookup or game_id is None:
+        return 0
+    n = 0
+    for schluessel, liste in lookup.items():
+        for i, (system, alt, moeglich, gid) in enumerate(liste):
+            if gid == game_id and alt != erreicht:
+                liste[i] = (system, erreicht, moeglich, gid)
+                n += 1
+    return n
+
+
+RA_SUMMARY_URL = "https://retroachievements.org/API/API_GetUserSummary.php"
+
+
+def fetch_ra_profil(username, api_key, timeout=6.0, letzte=10):
+    """Das RA-Profil fuer den Profil-Bildschirm (Build 327), oder None.
+
+    Aus API_GetUserSummary: Punkte (Hardcore, Softcore, "True Points"),
+    Rang und Zahl der Gewerteten, Mitglied seit, Motto und die letzten
+    Erfolge. Wie ueberall in dieser Datei: jedes Feld wird einzeln und
+    nachsichtig gelesen, ein fehlendes Feld ist eine fehlende Zeile und
+    kein Absturz."""
+    data = _ra_json(RA_SUMMARY_URL, {"u": username, "y": api_key,
+                                     "g": 0, "a": int(letzte)}, timeout)
+    if not isinstance(data, dict):
+        return None
+    return ra_profil_lesen(data, letzte)
+
+
+def _zahl(wert):
+    try:
+        return int(wert)
+    except (TypeError, ValueError):
+        try:
+            return int(float(wert))
+        except (TypeError, ValueError):
+            return None
+
+
+def ra_profil_lesen(data, letzte=10):
+    """Die Antwort von API_GetUserSummary in ein schlichtes dict - fuer
+    den Test getrennt von der Abfrage."""
+    profil = {
+        "punkte": _zahl(data.get("TotalPoints")),
+        "softcore": _zahl(data.get("TotalSoftcorePoints")),
+        "true_points": _zahl(data.get("TotalTruePoints")),
+        "rang": _zahl(data.get("Rank")),
+        "gewertet": _zahl(data.get("TotalRanked")),
+        "seit": str(data.get("MemberSince") or "")[:10],
+        "motto": str(data.get("Motto") or "").strip(),
+        "letzte": [],
+    }
+    neu = data.get("RecentAchievements")
+    zeilen = []
+    # Form laut Dokumentation: {Spielnummer: {Erfolgsnummer: {...}}};
+    # nachsichtig auch eine flache Liste.
+    if isinstance(neu, dict):
+        for spiel in neu.values():
+            if isinstance(spiel, dict):
+                zeilen.extend(v for v in spiel.values() if isinstance(v, dict))
+    elif isinstance(neu, list):
+        zeilen = [v for v in neu if isinstance(v, dict)]
+    for z in zeilen:
+        titel = z.get("Title")
+        if not titel:
+            continue
+        profil["letzte"].append({
+            "titel": str(titel),
+            "spiel": str(z.get("GameTitle") or ""),
+            "punkte": _zahl(z.get("Points")) or 0,
+            "datum": str(z.get("DateAwarded") or z.get("Date") or ""),
+            "hardcore": str(z.get("HardcoreAchieved") or "0")
+            not in ("0", "False", "false", ""),
+        })
+    profil["letzte"].sort(key=lambda e: e["datum"], reverse=True)
+    profil["letzte"] = profil["letzte"][:int(letzte)]
+    return profil
+
+
+def fetch_ra_profil_bounded(timeout=6.0):
+    """fetch_ra_profil() mit hartem Zeitlimit in einem Faden - dasselbe
+    Prinzip wie fetch_ra_progress_bounded()."""
+    username, api_key = load_ra_config()
+    if username is None:
+        return None
+    if not _has_network():
+        return None
+    result = {"data": None}
+
+    def worker():
+        result["data"] = fetch_ra_profil(username, api_key, timeout=timeout)
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout + 0.5)
+    return result["data"]
+
+
+def ra_sitzung_neu(vorher, achievements, start_utc=None):
+    """Welche Erfolge in einer Sitzung dazugekommen sind (Build 327).
+
+    vorher: die Namen, die beim Start schon frei waren - oder None, wenn
+    der Abruf beim Start nicht geklappt hat. Dann entscheidet das Datum:
+    frei seit start_utc ("JJJJ-MM-TT hh:mm:ss", UTC, wie RA es liefert).
+    Ohne beides: keine Aussage (leere Liste) - lieber keine Bilanz als
+    eine, die alte Erfolge als neu meldet.
+
+    achievements: Tupel wie von fetch_ra_game_achievements() -
+    (name, beschreibung, punkte, badge, frei, datum, hardcore)."""
+    neu = []
+    for a in achievements or ():
+        try:
+            name, _desc, _punkte, _badge, frei, datum = a[:6]
+        except (TypeError, ValueError):
+            continue
+        if not frei:
+            continue
+        if vorher is not None:
+            if name not in vorher:
+                neu.append(a)
+        elif start_utc and datum and str(datum) >= start_utc:
+            neu.append(a)
+    return neu
