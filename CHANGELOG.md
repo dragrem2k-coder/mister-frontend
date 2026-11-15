@@ -13,6 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Schneller: Seitenwechsel in Raster und Kachelwand.** Dein Bench 24
+  zeigt: beim Blättern hat das Raster in 6 und die Kachelwand in 4 von
+  58 Schritten den ganzen Bildschirm neu gezeichnet — das sind die
+  Seitenwechsel, die langsamsten Schritte mit 217 und 260 ms. Jetzt
+  werden dabei nur die Kacheln neu gezeichnet und hinausgeschickt;
+  Hintergrund, Kopf und Fußzeile bleiben stehen. Geprüft Bildpunkt für
+  Bildpunkt gegen einen vollen Aufbau (Build 328).
+
 - **Neu: RA-Auszeichnungen in der Liste und am Cover.** Vor dem Namen
   steht „M " für gemeistert (alle Erfolge) und „B " für beendet (RA:
   durchgespielt); auf dem Cover ein Abzeichen MEISTER, 100% oder

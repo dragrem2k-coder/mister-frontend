@@ -11093,6 +11093,49 @@ class Frontend:
             basis = SYSART_FOTO_BASE
         return os.path.join(basis, "%s.art" % art_key)
 
+    def _seite_gewechselt(self, alt_key, neu_key, alt_gen):
+        """Hat sich gegenueber dem vorigen Bild NUR die Seite geaendert
+        (Build 328)? Fuer Raster und Kachelwand der Hauptseite.
+
+        DER ANLASS: Bench 24, Abschnitt Q - Raster 6 und Kachelwand 4
+        Vollbilder in 58 Schritten, langsamste Schritte 217 und 260 ms;
+        das sind die Seitenwechsel. Ein Vollbild loescht den GANZEN
+        Schirm, zeichnet Kopf und Fusszeile neu und schickt 7,9 MB
+        hinaus - obwohl sich nur die Kacheln aendern.
+
+        Die Schluessel der beiden Ansichten haben die Seite (cat_scroll)
+        an Stelle 3; alles andere (Zahl der Kategorien, Bildgroesse,
+        Spalten, Zeilen) muss gleich sein. Dazu die uebrigen
+        Bedingungen des schnellen Pfads: kein fremdes Vollbild
+        dazwischen, kein erzwungener Neuaufbau, keine Ueberlagerung."""
+        if alt_key is None or len(alt_key) != len(neu_key) \
+                or len(neu_key) < 4:
+            return False
+        if alt_key[:3] != neu_key[:3] or alt_key[4:] != neu_key[4:]:
+            return False
+        return (alt_gen == self.fb.full_redraw_gen
+                and not self._force_full_redraw
+                and not self._overlay_active())
+
+    def _seite_neu_zeichnen(self, geo, proseite, gesamt, platz_neu,
+                            kachel):
+        """Eine neue Seite in Raster oder Kachelwand OHNE Vollbild
+        (Build 328): erst ALLE Kachelfelder freiraeumen, dann die
+        Kacheln der neuen Seite zeichnen. In dieser Reihenfolge, weil
+        sich benachbarte Felder am Rand ueberlappen koennen - wer Feld
+        fuer Feld raeumt und zeichnet, wischt mit dem naechsten Feld den
+        Rand des vorigen weg. Leere Plaetze (die letzte Seite ist meist
+        nicht voll) bleiben geraeumt. Liefert die Felder fuer den
+        Bandweg; die Rechtecke sammelt _restore_row_bg() selbst."""
+        self._flip_spuren = []
+        felder = [self._kachel_feld(geo, platz) for platz in range(proseite)]
+        for feld in felder:
+            self._restore_row_bg(*feld)
+        for platz in range(min(proseite, gesamt - self.cat_scroll)):
+            kachel(geo, platz, self.cat_scroll + platz, platz == platz_neu,
+                   False)
+        return felder
+
     def _kat_kachel_zeichnen(self, geo, platz, i, markiert, freiraeumen):
         fb = self.fb
         s = geo["s"]
@@ -11161,7 +11204,17 @@ class Frontend:
         alt = getattr(self, "_kat_raster_markiert", None)
 
         baender = None
-        if schnell and alt is not None and 0 <= alt < proseite:
+        # BUILD 328: DER SEITENWECHSEL OHNE VOLLBILD - siehe
+        # _seite_gewechselt(), dasselbe Vorgehen wie beim Dashboard
+        # (Build 324).
+        gewandert = (not schnell and self._seite_gewechselt(
+            getattr(self, "_kat_raster_fast_key", None), fast_key,
+            getattr(self, "_kat_raster_fast_gen", -1)))
+        if gewandert:
+            baender = self._seite_neu_zeichnen(
+                geo, proseite, gesamt, platz_neu, self._kat_kachel_zeichnen)
+            self._kat_raster_fast_key = fast_key
+        elif schnell and alt is not None and 0 <= alt < proseite:
             baender = []
             self._flip_spuren = []            # Build 215, siehe dort
             if alt != platz_neu:
@@ -11754,7 +11807,16 @@ class Frontend:
                    and not self._overlay_active())
         alt = getattr(self, "_kat_wand_markiert", None)
 
-        if schnell and alt is not None and 0 <= alt < proseite:
+        # BUILD 328: der Seitenwechsel ohne Vollbild, siehe
+        # _seite_gewechselt().
+        gewandert = (not schnell and self._seite_gewechselt(
+            getattr(self, "_kat_wand_fast_key", None), fast_key,
+            getattr(self, "_kat_wand_fast_gen", -1)))
+        if gewandert:
+            self._seite_neu_zeichnen(geo, proseite, gesamt, platz_neu,
+                                     self._wand_kachel_zeichnen)
+            self._kat_wand_fast_key = fast_key
+        elif schnell and alt is not None and 0 <= alt < proseite:
             self._flip_spuren = []
             if alt != platz_neu and self.cat_scroll + alt < gesamt:
                 self._wand_kachel_zeichnen(geo, alt, self.cat_scroll + alt,
@@ -11777,7 +11839,7 @@ class Frontend:
         _spuren = self._flip_spuren
         self._flip_spuren = None
         if flip:
-            if not (schnell and not self._search_mode
+            if not ((schnell or gewandert) and not self._search_mode
                     and self._rechtecke_flippen(_spuren)):
                 fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 

@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Faster: page changes in grid and tile wall.** Your bench 24 shows
+  that while scrolling, the grid redrew the whole screen in 6 and the
+  tile wall in 4 of 58 steps — those are the page changes, the slowest
+  steps at 217 and 260 ms. Now only the tiles are redrawn and sent out;
+  background, header and footer stay. Checked pixel by pixel against a
+  full redraw (build 328).
+
 - **New: RA awards in the list and on the cover.** The name is prefixed
   with "M " for mastered (all achievements) and "B " for beaten (RA:
   finished); the cover gets a MASTERED, 100% or BEATEN badge; the info

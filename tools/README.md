@@ -10888,3 +10888,42 @@ Absturz.
   dazwischen weitere Methoden mit eigenen Abrufen (gezaehlt: 3 statt 1).
   Jetzt am Ende des Waechters selbst (`koerper()`).
 * Volle Suite: 194 gruen, 0 rot.
+
+## Nachtrag Build 328 - der Seitenwechsel ohne Vollbild
+
+**Stand:** 15.11.2026, `Dragend_Build_328.zip` (build_id
+`2026-11-15-328`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Rueckmeldung nach Build 327: "scheint zu laufen", dann "2 noch machen
+ansonsten bin ich zufrieden" - Punkt 2 der offenen Liste: Kachelwand
+und Raster.
+
+### Was Build 328 aendert
+
+* **`_seite_gewechselt(alt_key, neu_key, alt_gen)`**: nur die Seite
+  (`cat_scroll`, Stelle 3 der Schluessel von Raster und Kachelwand) hat
+  sich geaendert, sonst gelten die Bedingungen des schnellen Pfads.
+* **`_seite_neu_zeichnen(geo, proseite, gesamt, platz_neu, kachel)`**:
+  erst alle Kachelfelder freiraeumen, dann die Kacheln der neuen Seite
+  zeichnen (Feld fuer Feld raeumen und zeichnen wuerde bei Ueberlappung
+  am Rand den Nachbarn anschneiden); hinaus gehen die gesammelten
+  Rechtecke. Kein `fb.clear()`, kein Kopf, kein Vollflip.
+
+### Ehrlich dazu
+
+Im Container wird ein Seitenwechsel nur um 5 bis 10 % schneller -
+dort kosten Loeschen und Vollflip fast nichts. Am Geraet sind genau
+das die teuren Posten (Vollflip 13,4 ms ohne Vsync laut Bench B, dazu
+das Warten), das Zeichnen der 10 bzw. 18 Kacheln bleibt. Der naechste
+Bench (Abschnitt Q) zeigt die echte Zahl; die Spalte "Vollbild" muss
+dort fuer beide Ansichten 0 sein.
+
+### Pruefungen
+
+* **neu** `tools/test_seitenwechsel_hauptseite.py` - je Ansicht zweimal
+  durch alle 29 Kategorien in beide Richtungen, Bildpunkt fuer
+  Bildpunkt wie ein voller Aufbau, 0 Vollbilder bei 4-6 Seitenwechseln;
+  Gegenprobe mit einem ungeraeumten leeren Platz; erzwungener Aufbau und
+  fremdes Vollbild nehmen den vollen Weg; Schirm gleich Puffer
+  (Mutationsprobe: ohne gesammelte Rechtecke rot).
