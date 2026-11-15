@@ -944,6 +944,39 @@ def _mit_lesesperre(fn):
     return innen
 
 
+def _wartezeit_zaehlen(fn):
+    """Die Zeit in fn auf wartezeit_summe buchen (Build 325).
+
+    Fuer die Lesewege, die auf einen DRUCK warten: read_action() und
+    read_raw_key(). Die Hauptschleife in frontend.py misst, wie lange
+    eine Aktion gebraucht hat - und ein Dialog, der waehrend dieser
+    Aktion auf den Nutzer wartet (die Core-Auswahl beim Betreten einer
+    Kategorie, jede Ja/Nein-Frage), stand bisher mit in dieser Zahl.
+    Im Log vom 15.11.:
+
+        RUCKLER: 956 ms busy (stream=224 haus=3 zeichnen=53 rest=676
+        | ... vorige Aktion=ok Seite=1 Ansicht=liste)
+
+    Wie viel von rest=676 die Maschine war und wie viel der Daumen,
+    stand nirgends. Mit dieser Summe zieht die Hauptschleife das Warten
+    heraus und weist es getrennt aus.
+
+    Gebucht wird AUCH die Wartezeit von next_action() - die Hauptschleife
+    nimmt ihren Stand deshalb an genau den Stellen, zwischen denen nur
+    die Verarbeitung liegt (siehe run())."""
+    def innen(self, *a, **k):
+        t0 = time.monotonic()
+        try:
+            return fn(self, *a, **k)
+        finally:
+            self.wartezeit_summe = (getattr(self, "wartezeit_summe", 0.0)
+                                    + (time.monotonic() - t0))
+    innen.__name__ = fn.__name__
+    innen.__doc__ = fn.__doc__
+    innen.__wrapped__ = fn
+    return innen
+
+
 class Device:
     def __init__(self, path, name, is_kbd):
         self.path = path
@@ -1278,6 +1311,9 @@ class InputManager:
     # Wiederholung war. Die Hauptschleife meldet grosse Werte als
     # EINGABE-STAU.
     eingabe_wartezeit = 0.0
+    # Build 325: alle Zeit, die read_action() und read_raw_key() bisher
+    # zusammen gelaufen sind (Sekunden) - siehe _wartezeit_zaehlen().
+    wartezeit_summe = 0.0
     # Hoechstens so viele SYN_DROPPED-Zeilen je Sitzung im Log; danach
     # nur noch jede fuenfzigste. Gezaehlt wird immer.
     DROPPED_LOG_MAX = 20
@@ -2178,6 +2214,7 @@ class InputManager:
             n += 1
         return n
 
+    @_wartezeit_zaehlen
     @_mit_lesesperre
     def read_action(self, timeout=None):
         """Blockierend (oder mit Timeout) auf die naechste logische
@@ -2491,6 +2528,7 @@ class InputManager:
             if deadline is not None and time.monotonic() >= deadline:
                 return None
 
+    @_wartezeit_zaehlen
     @_mit_lesesperre
     def read_raw_key(self, timeout=None, allow_axis_skip=False):
         """Blockierend auf den naechsten PHYSISCHEN Tastendruck warten

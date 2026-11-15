@@ -13,6 +13,23 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: the pad stalls when you enter a category.** Your log:
+  "RUCKLER: 956 ms … stream=224 … vorige Aktion=ok". `stream=` is the
+  update for the web overlay: it asked the first game of the new list
+  for genre and year and thereby loaded the whole system's game data
+  once — 224 ms in which no press was read. Now a background thread
+  loads it as soon as you stop pressing; genre and year show up in the
+  overlay a moment later. And if an input is already waiting, it goes
+  before the overlay (build 325).
+- **Honest measurement: waiting in a dialog is not a stutter.** When a
+  dialog waits for you during an action — the core choice when entering
+  a category, for example — that time used to count as "work" in the
+  RUCKLER line (in `rest=`) and in the latency. Now it is taken out and
+  shown separately as "im Dialog gewartet=…". Also, "vorige Aktion: ok
+  4 ms" in the EINGABE-STAU line was measured wrongly (the time for
+  logging instead of processing) — it now shows the real duration
+  (build 325).
+
 - **Faster: the dashboard while scrolling.** Your bench 24 (section Q)
   shows that in 24 of 58 steps the dashboard redrew the whole screen —
   every time the list on the left scrolls along. Your log: 80–147 ms

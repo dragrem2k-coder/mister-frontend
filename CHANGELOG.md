@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Behoben: beim Betreten einer Kategorie hängt das Pad.** Dein Log:
+  „RUCKLER: 956 ms … stream=224 … vorige Aktion=ok". `stream=` ist die
+  Meldung ans Web-Overlay: sie hat beim ersten Spiel der neuen Liste
+  nach Genre und Jahr gefragt und dafür einmalig die Spieledaten des
+  ganzen Systems geladen — 224 ms, in denen kein Druck gelesen wurde.
+  Jetzt lädt das ein Hintergrundfaden, sobald du nicht bedienst; Genre
+  und Jahr erscheinen im Overlay einen Augenblick später. Und wartet
+  schon eine Eingabe, hat sie Vorrang vor dem Overlay (Build 325).
+- **Ehrlichere Messung: Warten im Dialog ist kein Ruckler.** Wartet
+  während einer Aktion ein Dialog auf dich — etwa die Core-Auswahl beim
+  Betreten einer Kategorie —, stand diese Zeit bisher als „Arbeit" in
+  der RUCKLER-Zeile (in `rest=`) und in der Latenz. Jetzt wird sie
+  herausgerechnet und als „im Dialog gewartet=…" getrennt genannt.
+  Außerdem war „vorige Aktion: ok 4 ms" in der EINGABE-STAU-Zeile
+  falsch gemessen (die Zeit fürs Loggen statt für die Verarbeitung) —
+  dort steht jetzt die echte Dauer (Build 325).
+
 - **Schneller: das Dashboard beim Blättern.** Dein Bench 24 (Abschnitt
   Q) zeigt: in 24 von 58 Schritten hat das Dashboard den ganzen
   Bildschirm neu gezeichnet — jedes Mal, wenn die Liste links

@@ -404,7 +404,9 @@ try:
     # Build 323: die RUCKLER-Zeile nennt die Ansicht. Im Log vom 14.11.
     # standen 32 Zeilen "Seite=0" mit 80 bis 110 ms - auf der Hauptseite
     # gibt es sechs Ansichten, und welche es war, stand nirgends.
-    check("RUCKLER nennt die Ansicht", "Ansicht=%s)" in open(
+    # Build 325: dahinter steht jetzt noch die Wartezeit im Dialog -
+    # gesucht wird deshalb nach dem Feld, nicht nach dem Zeilenende.
+    check("RUCKLER nennt die Ansicht", "Ansicht=%s " in open(
         H.FRONTEND_PY, encoding="utf-8").read()
         and "self._ansicht_fuer_log()" in _run)
     f.page = 0

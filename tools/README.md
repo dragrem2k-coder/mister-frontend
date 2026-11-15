@@ -10685,3 +10685,83 @@ Er hat nach Build 323 Log und Bench 24 geschickt.
 * **geaendert** `tools/test_ansichten.py` - die Quelltext-Pruefung des
   Hauptseiten-Leerlaufs sieht in `_prewarm_hauptseite` und
   `_logo_vorrat` nach.
+
+## Nachtrag Build 325 - das Overlay wartet, der Dialog zaehlt nicht
+
+**Stand:** 15.11.2026, `Dragend_Build_325.zip` (build_id
+`2026-11-15-325`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat nach Build 324 einen Log geschickt (nur die Zeilen
+EINGABE-STAU und RUCKLER).
+
+### Was der Log zeigt
+
+* **Beim Betreten einer Kategorie:**
+  `RUCKLER: 956 ms busy (stream=224 haus=3 zeichnen=53 rest=676 | ...
+  vorige Aktion=ok Seite=1 Ansicht=liste)`, danach
+  `EINGABE-STAU: down lag 542 ms ... vorige Aktion: ok 4 ms`.
+* **stream=224:** `_publish_stream()` -> `stream_state()` fragt das
+  erste Spiel der neuen Liste nach Genre und Jahr. Der ERSTE
+  `get_meta()`-Aufruf fuer ein System laedt einmalig seine Tabellen
+  (`meta/<System>.json`, gamelist.xml, fremde Datenbank,
+  Ausweich-Index) - und diese Meldung war der erste.
+* **rest=676:** darin liegt alles, was die Verarbeitung von „ok" ausser
+  dem Zeichnen tat - UND jedes Warten in einem Dialog, der dabei
+  aufging (die Core-Auswahl aus Build 309-316 liest selbst per
+  `read_action()`). Wie viel davon die Maschine war, liess sich nicht
+  sagen.
+* **„vorige Aktion: ok 4 ms" war falsch gemessen.** Seit Build 322 stand
+  dort `_rt_prev - _rt2` - und `_rt_prev` wird gesetzt, BEVOR die Aktion
+  verarbeitet wird. Gemessen wurde also das Loggen.
+
+### Was Build 325 aendert
+
+1. **`meta_bereit(syskey)`** (`fe/art.py`) prueft den wirklichen Stand
+   der Zwischenspeicher (kein eigener Merker - die Verdraengung kann
+   jederzeit einen Eintrag entfernen). **`metadaten_ganz_vorwaermen()`**
+   = `metadaten_vorwaermen()` plus gamelist.xml (die laedt das alte
+   Vorwaermen nicht: `gamelist_meta()` steigt bei leerem Namen aus).
+2. **`stream_state()` laedt nie selbst:** bei kalten Metadaten bleiben
+   Genre und Jahr leer, und `_meta_im_hintergrund()` startet einen Faden
+   (je System hoechstens einer; wartet zuerst ueber
+   `_vorarbeit_innehalten()`; Log-Zeile „Metadaten X im Hintergrund
+   geladen" mit vier Zeiten). Genre und Jahr stehen jetzt in der
+   Signatur von `_publish_stream()` und werden nachgemeldet.
+3. **`_publish_stream()` laesst Eingaben vor:** steht eine an
+   (`eingabe_anstehend()`), wird nichts gemeldet; der Leerlauf von
+   `next_action()` holt es nach (Leerlauf-Posten „Overlay").
+4. **`_wartezeit_zaehlen`** (`fe/input.py`) um `read_action()` und
+   `read_raw_key()` - aussen um die Lesesperre - bucht deren Zeit auf
+   `wartezeit_summe`. Die Hauptschleife nimmt den Stand an `_rt_prev`
+   und an `_rt0`; die Differenz (`_gewartet`) wird aus busy, Rest,
+   `zeichenzeit_melden()` und `_latenz_buchen(..., gewartet=)`
+   herausgerechnet und in der RUCKLER-Zeile als
+   „im Dialog gewartet=" genannt.
+5. **EINGABE-STAU „vorige Aktion"** = `_rt0 - _rt_prev - _gewartet`, mit
+   „(dazu X ms im Dialog gewartet)", wenn ein Dialog dabei war. Der alte
+   Merker `_verarbeitung_vorher` ist entfernt.
+
+### Was offen ist
+
+Unveraendert aus Build 324: Kachelwand und Raster (Vollbild beim
+Mitwandern bzw. Seitenwechsel), Karussell, Liste beim Mitwandern. Der
+naechste Log zeigt ausserdem, wie viel von „rest=676" wirklich Arbeit
+war.
+
+### Pruefungen
+
+* **neu** `tools/test_dialog_wartezeit.py` - an der ECHTEN Hauptschleife
+  `run()` mit kuenstlicher Uhr und Drehbuch: 200 ms Arbeit plus 600 ms
+  Dialog ergeben „200 ms busy ... im Dialog gewartet=600", die
+  Wiederholrate und die Latenz bekommen 200 ms; Gegenprobe ohne Dialog;
+  EINGABE-STAU nennt 120 ms Zeichnen als 120 ms. Mutationsprobe: ohne
+  den Abzug acht rote Pruefungen.
+* **neu** `tools/test_overlay_metadaten.py` - `meta_bereit()` vor/nach
+  dem Laden und nach dem Verdraengen (Gegenprobe: altes Vorwaermen
+  reicht nicht), `stream_state()` ruft kalt kein `get_meta()`
+  (Gegenprobe warm), Hintergrundfaden je System einmal, Vorrang der
+  Eingabe, Nachmelden von Genre/Jahr, Nachholen im Leerlauf. Drei
+  Mutationsproben (Signatur, Vorrang, Leerlauf) werden je rot.
+* **geaendert** `tools/test_warmlauf_unterbrechbar.py` - die RUCKLER-
+  Zeile endet nicht mehr mit der Ansicht.

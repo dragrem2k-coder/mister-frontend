@@ -1280,6 +1280,8 @@ from fe.input import (
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, metadaten_vorwaermen, ART, ART_BASE,
+    # Build 325: siehe stream_state() und _meta_im_hintergrund().
+    meta_bereit, metadaten_ganz_vorwaermen,
     docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
     # BUILD 294: die drei Bildarten. Direkt als Funktionen und NICHT
     # ueber ART - ART ist die ArtCache-INSTANZ (siehe "ART = ArtCache()"
@@ -6365,6 +6367,16 @@ class Frontend:
                     and getattr(_inp, "held", None) is None):
                 return
             time.sleep(0.05)
+
+    def _wartezeit_stand(self):
+        """Wie lange read_action()/read_raw_key() bisher insgesamt auf
+        einen Druck gewartet haben (Build 325, siehe _wartezeit_zaehlen()
+        in fe/input.py). 0.0, wenn die Eingabe das nicht fuehrt - die
+        Attrappen der Tests tun es meist nicht."""
+        try:
+            return float(getattr(self.inp, "wartezeit_summe", 0.0) or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            return 0.0
 
     def _ansicht_fuer_log(self):
         """Die Ansicht der Seite, auf der man steht - fuer Logzeilen."""
@@ -13299,6 +13311,17 @@ class Frontend:
                 self._leerlauf_vorher = getattr(self, "_leerlauf_max", None)
                 self._leerlauf_max = None
                 return act
+
+            # BUILD 325: DAS OVERLAY AUCH IM LEERLAUF. Die Hauptschleife
+            # meldet den Zustand vor dem Blockieren - aber nicht mehr,
+            # wenn dort schon eine Eingabe wartet (siehe
+            # _publish_stream()). Was dann aussteht, holt dieser Takt
+            # nach (etwa alle 0,08 s), ebenso Genre und Jahr, sobald die
+            # Metadaten im Hintergrund geladen sind.
+            if getattr(self, "stream", None):
+                _lt0 = time.monotonic()
+                self._publish_stream()
+                self._leerlauf_buchen("Overlay", _lt0)
 
             # SICHERHEITSNETZ CRT-Wechsel (Nutzerwunsch: "wie soll er da
             # wieder rauskommen, wenn jemand ohne CRT im CRT-Modus landet?"
@@ -23096,7 +23119,8 @@ class Frontend:
         for name in self.PERF_POSTEN:
             setattr(self, name, 0)
 
-    def _latenz_buchen(self, act, eingabe_zeit, fertig, begonnen=None):
+    def _latenz_buchen(self, act, eingabe_zeit, fertig, begonnen=None,
+                       gewartet=0.0):
         """Wie lange von der Eingabe bis zum fertigen Bild.
 
         WOZU (Build 192). Bisher gab es zwei Zahlen: wie lange ein
@@ -23121,6 +23145,11 @@ class Frontend:
         gekostet."""
         if not act or not eingabe_zeit:
             return
+        # Build 325: das Warten in einem Dialog ist keine Latenz - siehe
+        # _gewartet in run(). Abgezogen wird es vom Ende, so bleibt der
+        # Beginn der Verarbeitung (begonnen) eine echte Uhrzeit.
+        if gewartet and gewartet > 0:
+            fertig = fertig - gewartet
         d = fertig - eingabe_zeit
         if d <= 0 or d > 10.0:
             return            # Uhrensprung, oder ein Spiel lief dazwischen
@@ -24295,6 +24324,16 @@ class Frontend:
             lookup_name = sel_item[2] if item_kind == "folder" else sel
             if item_syskey == "ARCADE":
                 meta = mra_meta(sel_item[2]) if item_kind == "core" else {}
+            elif item_syskey and not meta_bereit(item_syskey):
+                # BUILD 325: NIE DER ERSTE. Im Log vom 15.11. stand beim
+                # Betreten einer Kategorie "stream=224": der erste
+                # get_meta()-Aufruf fuer ein System laedt einmalig seine
+                # Tabellen, und diese Meldung fuers Overlay war der erste.
+                # 224 ms, in denen kein Druck gelesen wurde. Jetzt laedt
+                # ein Hintergrundfaden, und Genre und Jahr kommen nach
+                # (die Signatur in _publish_stream() enthaelt sie).
+                meta = {}
+                self._meta_im_hintergrund(item_syskey)
             else:
                 meta = get_meta(item_syskey, lookup_name) if item_syskey else {}
             genre = meta.get("genre")
@@ -24462,6 +24501,19 @@ class Frontend:
     def _publish_stream(self):
         if not self.stream:
             return
+        # BUILD 325: steht schon eine Eingabe an, hat sie Vorrang. Das
+        # Overlay ist Begleitung, keine Bedienung - es bekommt den
+        # Zustand im naechsten Ruhemoment (siehe next_action()), die
+        # Taste dagegen soll keinen Augenblick laenger warten als
+        # noetig. Ein gehaltener Richtungsknopf zaehlt dabei NICHT als
+        # anstehend (seine Wiederholungen entstehen aus der Uhr, nicht
+        # aus dem Geraet) - das Overlay laeuft beim Scrollen also mit.
+        _inp = getattr(self, "inp", None)
+        try:
+            if _inp is not None and _inp.eingabe_anstehend():
+                return
+        except Exception:                                # noqa: BLE001
+            pass
         # PERFORMANCE-FIX (Analyse eines Nutzer-Reviews, gegen den echten
         # Code geprueft und bestaetigt): _publish_stream() lief bisher bei
         # JEDEM Schleifendurchlauf in run() - auf CRT bis zu ~100x/Sekunde -
@@ -24499,12 +24551,55 @@ class Frontend:
             st = self.stream_state()
         except Exception:
             return
+        # Build 325: Genre und Jahr gehoeren mit hinein - sie kommen
+        # jetzt unter Umstaenden einen Augenblick SPAETER als der Rest
+        # (siehe stream_state()), und ohne sie in der Signatur wuerde
+        # das Nachreichen nie gemeldet.
         sig = (st["category"], st["name"], st["nowplaying"],
                st["index"], st["total"], st.get("playtime"),
-               st.get("ra_progress"), st.get("favorite"))
+               st.get("ra_progress"), st.get("favorite"),
+               st.get("genre"), st.get("year"))
         if sig != self._stream_sig:
             self._stream_sig = sig
             self.stream.publish(st)
+
+    def _meta_im_hintergrund(self, syskey):
+        """Die Metadaten eines Systems auf einem eigenen Faden laden
+        (Build 325) - fuer stream_state(), das nie selbst der erste
+        get_meta()-Aufruf sein soll. True, wenn ein Faden gestartet
+        wurde; je System laeuft hoechstens einer.
+
+        Der Faden wartet zuerst, bis niemand bedient (dieselbe Regel wie
+        bei der Vorarbeit, _vorarbeit_innehalten()): Laden heisst Parsen,
+        und Parsen haelt die GIL - mitten in ein Scrollen gehoert das
+        nicht. Ins Log kommen die vier Zeiten einzeln, wie beim
+        Vorwaermen aus Build 165."""
+        if not syskey:
+            return False
+        laeuft = getattr(self, "_meta_laeuft", None)
+        if laeuft is None:
+            laeuft = self._meta_laeuft = set()
+        if syskey in laeuft:
+            return False
+        laeuft.add(syskey)
+
+        def _laden():
+            try:
+                self._vorarbeit_innehalten()
+                zeiten = metadaten_ganz_vorwaermen(syskey)
+                LOG("Metadaten %s im Hintergrund geladen: eigene Tabelle "
+                    "%.0f ms | fremde Tabelle %.0f ms | Ausweich-Index "
+                    "%.0f ms | gamelist %.0f ms"
+                    % ((syskey,) + tuple(zeiten)))
+            except Exception:                            # noqa: BLE001
+                LOG("Metadaten %s im Hintergrund: fehlgeschlagen:\n"
+                    % syskey + traceback.format_exc())
+            finally:
+                laeuft.discard(syskey)
+
+        threading.Thread(target=_laden, name="metadaten",
+                         daemon=True).start()
+        return True
 
     def _show_max_level_boot_effect(self):
         """Kurzer Extra-Effekt beim Booten, NUR wenn das Frontend-Level
@@ -25106,6 +25201,7 @@ class Frontend:
             page_last_time = 0.0
             _rt_prev = None     # Ruckler-Detektor, siehe unten
             _act_prev = None
+            _wz_prev = 0.0      # Build 325, siehe _wartezeit_stand()
             _eingabe_prev = 0.0  # Build 192, siehe _latenz_buchen()
             # BUILD 322: der Eingabe-Waechter - siehe wache_starten() in
             # fe/input.py. Erst HIER und nicht im Konstruktor: der Bench
@@ -25140,6 +25236,19 @@ class Frontend:
                 # einzuschaltender Schalter wuerde ihn typischerweise
                 # verpassen.
                 _rt0 = time.monotonic()
+                # BUILD 325: WIE VIEL DAVON WAR WARTEN AUF DEN NUTZER?
+                # Ein Dialog waehrend der vorigen Aktion (die Core-Auswahl
+                # beim Betreten einer Kategorie, eine Ja/Nein-Frage) lag
+                # bisher mit in busy, im Rest, in der Zeichenzeit fuer die
+                # Wiederholrate und in der Latenz. Im Log vom 15.11. stand
+                # "rest=676" beim Betreten einer Kategorie - wie viel
+                # davon der Daumen war, konnte niemand sagen. Jetzt wird
+                # es herausgerechnet und in der Zeile getrennt genannt.
+                _gewartet = 0.0
+                if _rt_prev is not None:
+                    _gewartet = min(max(0.0, self._wartezeit_stand()
+                                        - _wz_prev),
+                                    max(0.0, _rt0 - _rt_prev))
                 self._publish_stream()
                 _rt1 = time.monotonic()
                 act = self.next_action()
@@ -25179,7 +25288,17 @@ class Frontend:
                     # standen nirgends. Sie liegen entweder in der
                     # Verarbeitung der Aktion davor (Zeichnen, Kategorie
                     # betreten) oder ausserhalb von beidem.
-                    _vv = getattr(self, "_verarbeitung_vorher", None)
+                    #
+                    # Build 325: und zwar RICHTIG gemessen. Bis Build 324
+                    # stand hier die Zeit fuer das Loggen der vorigen
+                    # Aktion statt fuer ihre Verarbeitung ("vorige Aktion:
+                    # ok 11 ms" direkt neben einer RUCKLER-Zeile mit
+                    # 956 ms). Die Verarbeitung liegt zwischen _rt_prev
+                    # und _rt0 - ohne das Warten in einem Dialog.
+                    _vv = None
+                    if _rt_prev is not None:
+                        _vv = (_act_prev,
+                               max(0.0, (_rt0 - _rt_prev) - _gewartet))
                     LOG("EINGABE-STAU: %s lag %.0f ms ungelesen beim Kernel "
                         "(%.1f s nach dem Start; laengste Leerlauf-Arbeit "
                         "davor: %s; vorige Aktion: %s)"
@@ -25187,7 +25306,11 @@ class Frontend:
                            time.monotonic() - self._t_start,
                            ("%s %.0f ms" % (_lv[0], _lv[1] * 1000.0))
                            if _lv else "keine",
-                           ("%s %.0f ms" % (_vv[0], _vv[1] * 1000.0))
+                           ("%s %.0f ms%s" % (
+                               _vv[0], _vv[1] * 1000.0,
+                               (" (dazu %.0f ms im Dialog gewartet)"
+                                % (_gewartet * 1000.0))
+                               if _gewartet >= 0.001 else ""))
                            if _vv else "keine"))
                 if _rt_prev is not None:
                     # Zeit vom Ende der VORIGEN Runde bis jetzt, also
@@ -25195,7 +25318,8 @@ class Frontend:
                     # Aktion. next_action() blockiert bis zur naechsten
                     # Eingabe und wird deshalb getrennt ausgewiesen -
                     # dessen Wartezeit ist normal und kein Ruckler.
-                    _busy = (_rt1 - _rt_prev) + (time.monotonic() - _rt2)
+                    _busy = ((_rt1 - _rt_prev) + (time.monotonic() - _rt2)
+                             - _gewartet)
                     if _busy >= RUCKLER_SCHWELLE:
                         # BUILD 193: rest= ist der wichtigste Posten.
                         #
@@ -25265,7 +25389,8 @@ class Frontend:
                             "zeichnen=%.0f rest=%.0f | davon bg=%.0f "
                             "restore=%.0f rows=%.0f art=%.0f flip=%.0f "
                             "(davon vsync=%.0f) "
-                            "| vorige Aktion=%s Seite=%d Ansicht=%s)"
+                            "| vorige Aktion=%s Seite=%d Ansicht=%s "
+                            "| im Dialog gewartet=%.0f)"
                             % tuple([_busy * 1000]
                                     + [x * 1000 for x in _oben]
                                     + [max(0.0, _busy - sum(_oben)) * 1000,
@@ -25288,7 +25413,10 @@ class Frontend:
                                        # gibt es sechs Ansichten, und
                                        # "Seite=0" allein sagte nicht,
                                        # welche gemessen wurde.
-                                       self._ansicht_fuer_log()]))
+                                       self._ansicht_fuer_log(),
+                                       # Build 325: herausgerechnet,
+                                       # siehe _gewartet oben.
+                                       _gewartet * 1000]))
                     # NEU (Build 93): dieselbe Messung, die oben nur im
                     # Ausnahmefall ins Log geht, treibt jetzt auch die
                     # Wiederholrate der gehaltenen Richtungstaste an -
@@ -25306,8 +25434,9 @@ class Frontend:
                     # einzurechnen wuerde jede Einzeltaste als
                     # "sekundenlanges Zeichnen" melden).
                     try:
-                        self.inp.zeichenzeit_melden(_act_prev,
-                                                    _rt0 - _rt_prev)
+                        self.inp.zeichenzeit_melden(
+                            _act_prev,
+                            max(0.0, (_rt0 - _rt_prev) - _gewartet))
                     except Exception:
                         pass   # eine Messung darf die Bedienung nie
                                # stoppen - im Zweifel bleibt es bei den
@@ -25321,11 +25450,12 @@ class Frontend:
                     # also genau die Grenze zwischen "zu spaet dran"
                     # und "Arbeit". Er liegt ohnehin vor, siehe oben.
                     self._latenz_buchen(_act_prev, _eingabe_prev, _rt0,
-                                        begonnen=_rt_prev)
+                                        begonnen=_rt_prev,
+                                        gewartet=_gewartet)
                 _rt_prev = time.monotonic()
-                # Build 322: fuer die EINGABE-STAU-Zeile der NAECHSTEN
-                # Aktion - wie lange diese hier gebraucht hat.
-                self._verarbeitung_vorher = (act, _rt_prev - _rt2)
+                # Build 325: der Stand der Wartezeit zu Beginn der
+                # Verarbeitung - siehe _gewartet oben.
+                _wz_prev = self._wartezeit_stand()
                 _act_prev = act
                 _eingabe_prev = getattr(self.inp, "eingabe_zeit", 0.0)
                 # BUILD 193: die Posten der Aufschluesselung fuer die

@@ -6544,3 +6544,58 @@ def metadaten_vorwaermen(syskey):
     t3 = time.perf_counter()
     return ((t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0)
 
+
+def meta_bereit(syskey):
+    """Kostet get_meta() fuer dieses System nichts Einmaliges mehr?
+    (Build 325)
+
+    DER ANLASS steht im Log vom 15.11., beim Betreten einer Kategorie:
+
+        RUCKLER: 956 ms busy (stream=224 haus=3 zeichnen=53 rest=676
+        | ... vorige Aktion=ok Seite=1 Ansicht=liste)
+
+    stream= ist die Zustandsmeldung fuers Web-Overlay. Sie fragt nach
+    dem ersten Spiel der neuen Liste Genre und Jahr - und dieser ERSTE
+    get_meta()-Aufruf fuer ein System laedt einmalig alles, was er
+    braucht (siehe metadaten_vorwaermen()). 224 ms, in denen die
+    Hauptschleife keine Eingabe gelesen hat.
+
+    Geprueft wird der WIRKLICHE Stand der Zwischenspeicher, kein
+    eigener Merker: die Verdraengung (hoechstens 20 Systeme) kann
+    einen Eintrag jederzeit wieder entfernen, und ein Merker, der das
+    nicht mitbekommt, wuerde genau den teuren Weg wieder freigeben."""
+    if not syskey:
+        return True
+    if syskey not in _meta_cache:
+        return False
+    if syskey not in _gamelist_cache and gamelist_enabled():
+        return False
+    if fremdquellen_enabled():
+        if syskey not in _docs_info_cache:
+            return False
+        # Der Ausweich-Index entsteht nur, wenn die Tabelle Eintraege
+        # hat (siehe metadaten_vorwaermen()).
+        if _docs_info_cache.get(syskey) and syskey not in _docs_info_knapp:
+            return False
+    return True
+
+
+def metadaten_ganz_vorwaermen(syskey):
+    """metadaten_vorwaermen() und dazu die gamelist.xml (Build 325).
+
+    metadaten_vorwaermen() fragt mit leerem Namen und laedt deshalb die
+    gamelist.xml NICHT (gamelist_meta() steigt bei leerem Namen sofort
+    aus) - die ist aber ebenfalls ein einmaliger Ladevorgang des ersten
+    get_meta()-Aufrufs. Danach gilt meta_bereit(syskey).
+
+    Liefert vier Zeiten in Millisekunden: eigene Tabelle, fremde
+    Tabelle, Ausweich-Index, gamelist."""
+    eigen, fremd, index = metadaten_vorwaermen(syskey)
+    t0 = time.perf_counter()
+    try:
+        if syskey:
+            _gamelist_laden(syskey)
+    except Exception:                                    # noqa: BLE001
+        pass
+    return (eigen, fremd, index, (time.perf_counter() - t0) * 1000.0)
+
