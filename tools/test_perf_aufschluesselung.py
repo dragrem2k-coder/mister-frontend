@@ -108,7 +108,10 @@ check("die Zeile weist einen Rest aus", "rest=%.0f" in quelle,
 # steht aber DAVOR, und der Test meldete einen Fehler, den es nicht
 # gab. Schon wieder nach dem Wort geschnitten statt nach der Struktur.
 _z = quelle[quelle.index("_oben = [(_rt1 - _rt0)"):]
-_z = _z[:_z.index("self.page]))") + 20]
+# Build 323: die Zeile endet nicht mehr mit "self.page]))" - dahinter
+# steht jetzt die Ansicht. Geschnitten wird deshalb am Ende der Liste,
+# die mit "_act_prev, self.page" beginnt, nicht an einem Wort.
+_z = _z[:_z.index("]))", _z.index("_act_prev, self.page")) + 3]
 check("der Rest wird aus busy minus den Oberposten gerechnet",
       "_busy - sum(_oben)" in _z, _z[-200:])
 check("und nie negativ", "max(0.0, _busy - sum(_oben))" in _z,
@@ -233,7 +236,7 @@ check("und es steht INNERHALB von flip, nicht daneben",
       "'davon' sagt genau das - kein eigener Posten, kein doppeltes Zaehlen")
 
 _z8 = quelle[quelle.index("_oben = [(_rt1 - _rt0)"):]
-_z8 = _z8[:_z8.index("self.page]))") + 20]
+_z8 = _z8[:_z8.index("]))", _z8.index("_act_prev, self.page")) + 3]
 check("der Wert kommt vom Framebuffer, nicht aus einer eigenen Uhr",
       "vsync_ms_und_zuruecksetzen()" in _z8,
       "nur dort steht das Warten - hier waere es geschaetzt")

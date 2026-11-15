@@ -10499,3 +10499,96 @@ Stellen laenger als eine halbe Sekunde ohne Blick auf das Pad.
   nur wenn benutzt (Gegenprobe).
 * **geaendert** `tools/test_ansichten.py` - prueft die Gegenliste fuer
   den Lader ohne das alte `schon_da=True` im Frontend festzuschreiben.
+
+## Nachtrag Build 323 - die Vorarbeit auf einem eigenen Faden
+
+**Stand:** 14.11.2026, `Dragend_Build_323.zip` (build_id
+`2026-11-14-323`). Bench-Fassung 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat nach Build 322 das Log eines Kaltstarts geschickt
+(`grep -E "SYN_DROPPED|EINGABE-STAU|Waechter|RUCKLER"`).
+
+### Was das Log sagt
+
+* **Kein einziges SYN_DROPPED mehr.** „Eingabe-Waechter gestartet (alle
+  100 ms)" steht einmal da. Der Waechter aus Build 322 haelt die
+  Eingaben fest.
+* **Aber:**
+  ```
+  EINGABE-STAU: down lag 2622 ms ungelesen beim Kernel (9.8 s nach dem
+  Start; laengste Leerlauf-Arbeit davor: Warmlauf 2601 ms; vorige Aktion: keine)
+  ```
+  Der Warmlauf-Tick lief 2,6 s am Stueck, obwohl er seit Build 321 alle
+  128 Namen innehaelt und bei einer Eingabe abbricht. Das passt nur zu
+  einem einzelnen Aufruf, der sich nicht zerteilen laesst: ein
+  `os.listdir()` auf einem KALTEN Ordner direkt nach dem Einschalten.
+  Bench 22, Abschnitt P, nannte schon bei warmem Speicher 452 ms an
+  einem Stueck (Genesis). Der Waechter hat dabei nichts verlieren
+  lassen - aber 2,6 s lang hat nichts reagiert.
+* **32 RUCKLER-Zeilen auf der Hauptseite** beim Halten von „up", je 80
+  bis 110 ms (`zeichnen=` ~ `rows=`), davor mehrmals „ansicht". Welche
+  der sechs Ansichten es war, stand nicht in der Zeile. Abschnitt J
+  nennt fuer die Hauptseite 20 bis 42 ms je Schritt - aber J pendelt mit
+  Absicht innerhalb des Fensters. Wer die Taste haelt, laeuft ueber den
+  Rand. Wahrscheinlichste Erklaerung: das Mitwandern des Fensters (in
+  der Liste ein voller Aufbau, Bench B: 50 bis 80 ms). Gemessen ist das
+  noch nicht - dafuer gibt es jetzt Abschnitt Q.
+
+### Was Build 323 aendert
+
+1. **`VorarbeitFaden` (frontend.py).** `_warmlauf_tick()` baut nicht
+   mehr selbst, sondern stoesst einen Faden an und kehrt sofort zurueck.
+   Der Faden ruft `index_warmlaufen(systeme, hoechstens=1,
+   zwischendurch=self._vorarbeit_innehalten)`: `os.listdir()` gibt die
+   GIL frei, das Warten auf die Karte kostet die Hauptschleife also
+   nichts; der Python-Teil haelt alle 128 Namen an, solange bedient
+   wird (hoechstens `PREWARM_MAX_WARTEN` je Happen). Es bleibt bei EINEM
+   Stueck je Ruhemoment; ist der Faden noch beschaeftigt, wird nichts
+   nachgelegt. `warten()` zaehlt Runden statt die Uhr zu fragen (der
+   Pruefstand friert `time.monotonic()` ein).
+   Das Innehalten steht jetzt an EINER Stelle (`_vorarbeit_innehalten`)
+   fuer beide Faeden; `_prewarm_art_dirs` ruft es nur.
+   Thread-Sicherheit: die Verzeichnisse werden lokal gebaut und mit
+   EINER Zuweisung in den Zwischenspeicher gelegt; `_index_ordner`
+   (von `_ordner_merken` gefuellt) liest `artwork_geaendert()` ueber
+   `list(_index_ordner.items())` - eine Kopie unter der GIL, ein Faden,
+   der gleichzeitig einen Ordner hinzufuegt, stoert dabei nicht.
+2. **RUCKLER-Zeile mit „Ansicht=...".** `_ansicht_fuer_log()` - auf der
+   Hauptseite deren Ansicht, sonst die der Spieleliste.
+3. **Bench 24, Abschnitt Q:** je Hauptseiten-Ansicht zweimal durch alle
+   Kategorien in Einerschritten, mit Mittel, Median, langsamstem
+   Schritt und der Zahl der Vollbilder (`fb.full_redraw_gen`). Gezaehlt
+   werden NICHT die draw()-Aufrufe: ausser der Liste nehmen alle
+   Ansichten der Hauptseite immer draw() und haben darin ihren eigenen
+   schnellen Weg. Im Container auffaellig: das **Dashboard** zeichnet in
+   22 von 56 Schritten ein Vollbild.
+
+### Worauf beim naechsten Log und Bench zu achten ist
+
+* `grep -E "SYN_DROPPED|EINGABE-STAU|Warmlauf|RUCKLER" /tmp/frontend.log`
+  nach einem Kaltstart: kein EINGABE-STAU mit „Warmlauf" mehr; die
+  Warmlauf-Zeilen kommen weiter (jetzt aus dem Faden).
+* RUCKLER-Zeilen: welche „Ansicht=" beim Halten 80 bis 110 ms braucht.
+* Abschnitt Q: Mittel gegen J. Liegt Q deutlich darueber, ist das
+  Mitwandern des Fensters der naechste Hebel.
+
+### Pruefungen
+
+* **geaendert** `tools/test_warmlauf_unterbrechbar.py` - Test 4 prueft
+  von der anderen Seite, WER baut (Faden „vorarbeit"), dass der Tick
+  sofort zurueckkehrt, dass nichts nachgelegt wird, solange der Faden
+  arbeitet, und das Innehalten mit stehender Uhr; Test 7 das Innehalten
+  an einer Stelle; Test 9 die Ansicht in der RUCKLER-Zeile.
+* **geaendert** `tools/test_kategorie_warmlauf.py` - wartet nach jedem
+  Ruhemoment auf den Faden (`_tick()`); die Zusage „ein Stueck je
+  Ruhemoment" ist unveraendert und weiter gruen (36 Ticks fuer 12
+  Systeme x 3 Bildarten).
+* **geaendert** `tools/test_perf_aufschluesselung.py` - schneidet die
+  RUCKLER-Zeile am Ende der Liste, nicht am Wort „self.page]))".
+* **geaendert** `tools/diag_kategorie_betreten.py` - wartet auf den
+  Faden.
+* **geaendert** `tools/test_zeigerspeicher.py` - „mindestens vier"
+  Schleifen ueber `ansichten_der_seite()` statt „genau vier" (Abschnitt
+  Q ist die fuenfte; dass keine daran vorbeigeht, sichern die Pruefungen
+  darueber).

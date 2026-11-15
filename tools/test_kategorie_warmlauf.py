@@ -128,8 +128,26 @@ def _systeme_im_cache():
                 for k in ART._docs_index_cache})
 
 
+def _tick():
+    """Ein Ruhemoment - und warten, bis der Faden das Stueck erledigt
+    hat (Build 323).
+
+    Seit Build 323 baut _warmlauf_tick() nicht mehr selbst, sondern
+    stoesst den VorarbeitFaden an und kehrt sofort zurueck (die
+    Begruendung steht dort: ein kaltes os.listdir() hat die
+    Hauptschleife 2,6 Sekunden lang blockiert). Die Zusage dieses Tests
+    bleibt dieselbe - EIN Stueck Vorarbeit je Ruhemoment -, nur muss
+    der Test jetzt auf das Stueck warten, bevor er zaehlt."""
+    r = fe._warmlauf_tick()
+    if r:
+        check_warten = fe.vorarbeit_faden().warten()
+        if not check_warten:
+            print("       (Faden wurde nicht fertig)")
+    return r
+
+
 vorher = _systeme_im_cache()
-check("ein Tick arbeitet", fe._warmlauf_tick() is True)
+check("ein Tick arbeitet", _tick() is True)
 check("und baut genau ein System",
       _systeme_im_cache() - vorher == 1,
       "%d dazugekommen - mehr waere die GIL-Falle aus Build 107"
@@ -168,7 +186,7 @@ check("die Extras kommen NICHT im selben Tick",
 # Extras. Das ist die eigentliche Behebung - gepruefter Ablauf, nicht
 # nur eine kleinere Portion.
 for _ in range(len(SYSTEME) - 1):
-    fe._warmlauf_tick()
+    _tick()
 check("nach einem Tick je System sind ALLE Cover da",
       all(ART._docs_index_fertig(s, "boxart") for s in SYSTEME),
       "genau so frueh wie vor Build 294")
@@ -192,7 +210,7 @@ _setzen(fe, SYSTEME)
 fe.page = 0
 fe.cat_i = 0
 ticks = 0
-while fe._warmlauf_tick():
+while _tick():
     ticks += 1
     if ticks > 100:
         break
@@ -247,7 +265,7 @@ for ansicht in ("raster", "galerie"):
     fe.cat_i = 0
     # Abgeleitet, nicht fest verdrahtet - siehe Test 4 (Build 295).
     for _ in range(len(SYSTEME) * len(ART.DOCS_BILDARTEN) + 5):
-        if not fe._warmlauf_tick():
+        if not _tick():
             break
     warm = _betreten_zaehlen(ansicht)
 
@@ -275,7 +293,7 @@ fe.cat_i = 0
 # falsch war. Eine Obergrenze, die sich aus der Arbeit ergibt, kann
 # bei der naechsten Bildart nicht wieder danebenliegen.
 for _ in range(len(SYSTEME) * len(ART.DOCS_BILDARTEN) + 5):
-    if not fe._warmlauf_tick():
+    if not _tick():
         break
 check("erst ist alles warm", fe._warmlauf_systeme() == [])
 # Jetzt leeren, wie es das Menue tut:
@@ -325,7 +343,7 @@ for was, bauen in (
     fe._warmlauf_fertig_fuer = None
     try:
         fe._warmlauf_systeme()
-        fe._warmlauf_tick()
+        _tick()
         ok = True
     except Exception as e:                               # noqa: BLE001
         ok = False
@@ -338,7 +356,7 @@ try:
     fe.cats = []
     fe._warmlauf_fertig_fuer = None
     fe._warmlauf_systeme()
-    fe._warmlauf_tick()
+    _tick()
     check("ohne Kategorien wirft es nicht", True)
 except Exception as e:                                   # noqa: BLE001
     check("ohne Kategorien wirft es nicht", False, type(e).__name__)

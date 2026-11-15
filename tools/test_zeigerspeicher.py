@@ -487,8 +487,12 @@ check("in fe/bench.py laeuft keine Schleife mehr ueber S.ANSICHTEN",
       "Namen gemessen")
 check("und in fe/show.py auch nicht",
       "in S.ANSICHTEN" not in nur_code(_QS))
-check("alle fuenf Schleifen fragen dieselbe Funktion",
-      _bcode.count("in ansichten_der_seite(") == 4
+# Build 323: "mindestens vier" statt "genau vier" - Abschnitt Q ist eine
+# fuenfte Schleife ueber die Ansichten der Hauptseite, und sie fragt
+# genau diese Funktion. Dass KEINE Schleife an ihr vorbeigeht, sichern
+# die beiden Pruefungen darueber ("in S.ANSICHTEN" kommt nicht vor).
+check("alle Schleifen fragen dieselbe Funktion",
+      _bcode.count("in ansichten_der_seite(") >= 4
       and nur_code(_QS).count("in BENCH.ansichten_der_seite(") == 1,
       "bench %d, show %d"
       % (_bcode.count("in ansichten_der_seite("),

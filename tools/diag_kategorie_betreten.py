@@ -110,6 +110,8 @@ def _zaehlen(fe, items, ansicht="liste", warmlauf=0):
         for _ in range(warmlauf):
             if not fe._warmlauf_tick():
                 break
+            # Build 323: der Tick stoesst nur noch den Faden an.
+            fe.vorarbeit_faden().warten()
 
     konto = {"listdir": 0, "pfade": [], "stat": 0}
     echt_listdir = os.listdir

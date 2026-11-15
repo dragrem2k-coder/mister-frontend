@@ -31,7 +31,14 @@ GEPRUEFT WIRD:
   7. Der Faden _prewarm_art_dirs haelt mittendrin an.
   8. Der Schreib-Arbeiter zaehlt eine Pause ab ihrem BEGINN, und die
      laufende Pause ist abfragbar (der Fehler im Bench L.4).
-  9. Die Hauptschleife meldet EINGABE-STAU.
+  9. Die Hauptschleife meldet EINGABE-STAU, und RUCKLER nennt die
+     Ansicht (Build 323).
+
+SEIT BUILD 323 baut _warmlauf_tick() nicht mehr selbst, sondern stoesst
+den VorarbeitFaden an - ein kaltes os.listdir() hatte die Hauptschleife
+2,6 Sekunden lang blockiert, und das laesst sich nicht in Happen
+zerlegen. Test 4 prueft deshalb, WER baut und dass die Hauptschleife
+nicht darauf wartet.
 
 Ausfuehren:
     python3 tools/test_warmlauf_unterbrechbar.py
@@ -180,24 +187,56 @@ try:
     # -----------------------------------------------------------------------
     H.set_screen(1280, 720)
     f = H.make_frontend(page=0)
+    # BUILD 323: der Tick baut nicht mehr selbst, er stoesst den
+    # VorarbeitFaden an (ein kaltes os.listdir() hatte die Hauptschleife
+    # 2,6 Sekunden blockiert - im Log: "laengste Leerlauf-Arbeit davor:
+    # Warmlauf 2601 ms"). Geprueft wird von der anderen Seite: WER baut,
+    # und wartet die Hauptschleife darauf?
     gesehen = {}
     _echt_iw = fm.index_warmlaufen
+    halten = threading.Event()
 
     def _fang(systeme, hoechstens=1, zwischendurch=None):
         gesehen["zw"] = zwischendurch
-        return 0
+        gesehen["faden"] = threading.current_thread().name
+        halten.wait(2.0)              # "ein kaltes os.listdir()"
+        return 1
 
     fm.index_warmlaufen = _fang
     try:
         f._warmlauf_fertig_fuer = None
         f._warmlauf_systeme = lambda: ["SNES"]
-        f._warmlauf_tick()
+        r1 = f._warmlauf_tick()
+        r2 = f._warmlauf_tick()       # der Faden sitzt noch daran
+        beschaeftigt = f.vorarbeit_faden().beschaeftigt()
+        halten.set()
+        fertig = f.vorarbeit_faden().warten()
     finally:
+        halten.set()
         fm.index_warmlaufen = _echt_iw
     zw = gesehen.get("zw")
-    check("_warmlauf_tick uebergibt eine Unterbrechung",
+    check("der Tick stoesst an und kehrt sofort zurueck",
+          r1 is True and beschaeftigt,
+          "%r, beschaeftigt %r" % (r1, beschaeftigt))
+    check("gebaut wird im Faden 'vorarbeit', nicht in der Hauptschleife",
+          gesehen.get("faden") == "vorarbeit", gesehen.get("faden"))
+    check("solange er arbeitet, wird nichts nachgelegt", r2 is False, r2)
+    check("und er wird fertig", fertig)
+    check("der Faden haelt mittendrin an (_vorarbeit_innehalten)",
           zw is not None and getattr(zw, "__name__", "")
-          == "_leerlauf_zwischendurch", zw)
+          == "_vorarbeit_innehalten", zw)
+    # Das Innehalten selbst, mit stehender Uhr des Pruefstands: solange
+    # die letzte Eingabe "gerade eben" war, wartet es; danach nicht mehr.
+    f.inp = None
+    f._last_input_time = H.NOW[0]
+    t = threading.Thread(target=f._vorarbeit_innehalten)
+    t.start()
+    time.sleep(0.2)
+    wartet = t.is_alive()
+    f._last_input_time = H.NOW[0] - 10.0
+    t.join(1.0)
+    check("Innehalten: wartet, solange gerade bedient wird", wartet)
+    check("und geht weiter, sobald Ruhe ist", not t.is_alive())
 
     class InpAttrappe(object):
         def __init__(self, ja):
@@ -224,18 +263,16 @@ try:
         abgebrochen = True
     check("mit Eingabe: Abbruch", abgebrochen)
     check("und gezaehlt", getattr(f, "_warmlauf_unterbrochen", 0) >= 1)
-    # Und durch den ganzen Weg: echter Tick, echte Verzeichnisse.
+    # Und durch den ganzen Weg: echter Tick, echte Verzeichnisse, echter
+    # Faden - EIN System je Ruhemoment, wie seit Build 239.
     kalt()
-    f.inp = InpAttrappe(True)
-    f._warmlauf_fertig_fuer = None
-    f._warmlauf_systeme = lambda: list(SYSTEME)
-    gebaut = f._warmlauf_tick()
-    check("durch den ganzen Weg: Taste steht an -> nichts gebaut",
-          gebaut is False and not any(cover_fertig(sk) for sk in SYSTEME),
-          gebaut)
     f.inp = InpAttrappe(False)
+    f._warmlauf_fertig_fuer = None
+    f._warmlauf_systeme = lambda: [sk for sk in SYSTEME
+                                   if not cover_fertig(sk)]
     gebaut = f._warmlauf_tick()
-    check("keine Taste -> ein System gebaut",
+    f.vorarbeit_faden().warten()
+    check("durch den ganzen Weg: ein Ruhemoment -> ein System gebaut",
           gebaut is True
           and [cover_fertig(sk) for sk in SYSTEME] == [True, False],
           "%r, %r" % (gebaut, [cover_fertig(sk) for sk in SYSTEME]))
@@ -298,7 +335,13 @@ try:
     check("er uebergibt sein Innehalten an _art_index",
           "_art_index(ART_BASE, _syskey, _faden_innehalten)" in _init
           and "_art_index(ART_HD, _syskey, _faden_innehalten)" in _init)
-    _inne = _init.split("def _faden_innehalten")[1].split("threading.")[0]
+    # Build 323: das Innehalten steht an EINER Stelle fuer beide Faeden
+    # (_vorarbeit_innehalten), der Faden hier ruft es nur.
+    _fi = _init.split("def _faden_innehalten")[1].split("threading.")[0]
+    check("sein Innehalten ist dasselbe wie das des Vorarbeit-Fadens",
+          "self._vorarbeit_innehalten()" in _fi)
+    _inne = nur_code(koerper(open(H.FRONTEND_PY, encoding="utf-8").read(),
+                             "_vorarbeit_innehalten", "Frontend"))
     check("und fasst dabei die Eingabe nicht an (nur held lesen)",
           "abholen" not in _inne and "read_action" not in _inne
           and "eingabe_anstehend" not in _inne)
@@ -358,6 +401,17 @@ try:
     f._leerlauf_buchen("A", H.fm.time.monotonic() - 0.0)
     check("_leerlauf_buchen merkt sich etwas", f._leerlauf_max is not None
           and f._leerlauf_max[0] == "A")
+    # Build 323: die RUCKLER-Zeile nennt die Ansicht. Im Log vom 14.11.
+    # standen 32 Zeilen "Seite=0" mit 80 bis 110 ms - auf der Hauptseite
+    # gibt es sechs Ansichten, und welche es war, stand nirgends.
+    check("RUCKLER nennt die Ansicht", "Ansicht=%s)" in open(
+        H.FRONTEND_PY, encoding="utf-8").read()
+        and "self._ansicht_fuer_log()" in _run)
+    f.page = 0
+    f.ansicht_haupt_setzen("kachelwand")
+    check("auf der Hauptseite die Ansicht der Hauptseite",
+          f._ansicht_fuer_log() == f.aktuelle_ansicht_haupt(),
+          f._ansicht_fuer_log())
 finally:
     A.INDEX_WARM_WURZELN = _ALT_WURZELN
     A.INDEX_ABHOLER[0] = _ALT_ABHOLER

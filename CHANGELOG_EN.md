@@ -13,6 +13,25 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: 2.6 seconds of standstill shortly after startup.** Your log
+  after build 322: not a single "SYN_DROPPED" any more — the watcher
+  holds on to the input. But: "down lag 2622 ms ungelesen … Warmlauf
+  2601 ms", 9.8 seconds after startup. Preparing the cover directories
+  ran in the idle loop on the main thread, and a single directory read
+  from the SD card cannot be split up — right after power-on it is cold
+  and slow. Now that work runs in its own thread: waiting for the card
+  no longer costs the controls anything, and the computing part pauses
+  while you press (build 323).
+- **New in the log: the view in the RUCKLER line.** Your 32 RUCKLER
+  lines while holding "up" on the main page (80–110 ms) said "Seite=0"
+  — which of the six views it was did not appear. Now "Ansicht=…" is
+  at the end (build 323).
+- **Bench 24: section Q.** Section J deliberately measures the main page
+  only within the visible window. Holding a key runs past the edge, and
+  then the window moves along — section Q now measures that step, per
+  view, with mean, median, slowest step and number of full screens
+  (build 323).
+
 - **Fixed: the pad no longer loses input — not even while the frontend
   is busy.** Your log of 14 Nov confirmed it: within 67 seconds the
   kernel threw away the Pro Controller's input six times

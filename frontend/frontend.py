@@ -1613,6 +1613,99 @@ def speicherbereinigung_stand():
         return (0, 0, 0)
 
 
+class VorarbeitFaden(object):
+    """Die Namensverzeichnisse im Leerlauf - auf einem eigenen Faden
+    (Build 323).
+
+    DER ANLASS steht in seinem Log vom 14.11., nach einem Kaltstart:
+
+        EINGABE-STAU: down lag 2622 ms ungelesen beim Kernel (9.8 s nach
+        dem Start; laengste Leerlauf-Arbeit davor: Warmlauf 2601 ms)
+
+    Build 321 hat den Warmlauf alle 128 Namen innehalten lassen - aber
+    ein einzelnes os.listdir() auf einem KALTEN Ordner (direkt nach dem
+    Einschalten hat das Betriebssystem noch nichts davon im Speicher)
+    laesst sich nicht zerteilen. Bench 22, Abschnitt P, nennt dafuer
+    schon bei warmem Speicher 452 ms an einem Stueck (Genesis); kalt
+    waren es 2,6 Sekunden. Der Waechter hat dabei nichts verlieren
+    lassen (kein SYN_DROPPED mehr im Log) - aber 2,6 Sekunden lang hat
+    nichts reagiert. Das sind seine "ersten 10 Sekunden".
+
+    JETZT laeuft die Arbeit hier. os.listdir() gibt die GIL frei, das
+    Warten auf die Karte kostet die Hauptschleife also nichts. Der
+    Python-Teil (Namen zerlegen) haelt die GIL - deshalb haelt er alle
+    INDEX_HAPPEN Namen an, solange bedient wird (innehalten, dieselbe
+    Regel wie im Faden _prewarm_art_dirs).
+
+    Die Hauptschleife fragt weiter in jedem Ruhemoment an
+    (_warmlauf_tick), und es bleibt bei EINEM Stueck Vorarbeit je
+    Anfrage - nur wartet sie nicht mehr darauf. Ist der Faden noch
+    beschaeftigt, wird nichts nachgelegt."""
+
+    def __init__(self, arbeit):
+        self._arbeit = arbeit
+        self._cv = threading.Condition()
+        self._wunsch = None
+        self._laeuft = False
+        self._faden = None
+        self.erledigt = 0
+        self.anfragen = 0
+
+    def beschaeftigt(self):
+        with self._cv:
+            return self._laeuft or self._wunsch is not None
+
+    def anfordern(self, systeme):
+        """Ein Stueck Vorarbeit fuer diese Systeme anstossen. False, wenn
+        der Faden noch an der vorigen Anfrage sitzt."""
+        with self._cv:
+            if self._laeuft or self._wunsch is not None:
+                return False
+            self._wunsch = list(systeme)
+            self.anfragen += 1
+            if self._faden is None:
+                t = threading.Thread(target=self._schleife,
+                                     name="vorarbeit", daemon=True)
+                self._faden = t
+                t.start()
+            self._cv.notify_all()
+            return True
+
+    def warten(self, hoechstens=10.0):
+        """Bis die laufende Anfrage erledigt ist (fuer Tests und den
+        Bench). True, wenn er fertig ist.
+
+        Gezaehlt in Runden zu 0,05 s und NICHT ueber time.monotonic():
+        der Pruefstand friert diese Uhr ein (tools/_harness.py), und
+        eine Frist, die an einer stehenden Uhr haengt, laeuft nie ab."""
+        runden = max(1, int(hoechstens / 0.05))
+        with self._cv:
+            while self._laeuft or self._wunsch is not None:
+                if runden <= 0:
+                    return False
+                runden -= 1
+                self._cv.wait(0.05)
+        return True
+
+    def _schleife(self):
+        while True:
+            with self._cv:
+                while self._wunsch is None:
+                    self._cv.wait()
+                wunsch, self._wunsch = self._wunsch, None
+                self._laeuft = True
+            n = 0
+            try:
+                n = self._arbeit(wunsch) or 0
+            except Exception:                            # noqa: BLE001
+                LOG("Vorarbeit fehlgeschlagen:\n" + traceback.format_exc())
+            finally:
+                with self._cv:
+                    self._laeuft = False
+                    self.erledigt += n
+                    self._cv.notify_all()
+
+
 class Frontend:
     """
     Seit v1.8 zweiseitig:
@@ -2306,17 +2399,9 @@ class Frontend:
 
         def _faden_innehalten():
             """Zwischen zwei Happen eines Namensverzeichnisses: warten,
-            solange jemand bedient - hoechstens PREWARM_MAX_WARTEN, damit
-            es auch bei Dauerscrollen vorangeht (siehe oben, "ABER NICHT
-            ENDLOS")."""
-            _seit = time.monotonic()
-            while time.monotonic() - _seit < PREWARM_MAX_WARTEN:
-                _inp = getattr(self, "inp", None)
-                if (time.monotonic() - self._last_input_time
-                        >= PREWARM_SETTLE
-                        and getattr(_inp, "held", None) is None):
-                    return
-                time.sleep(0.05)
+            solange jemand bedient. Seit Build 323 an EINER Stelle fuer
+            beide Faeden - siehe _vorarbeit_innehalten()."""
+            self._vorarbeit_innehalten()
         # MUSS vor dem Thread stehen: der liest _last_input_time gleich
         # in seiner ersten Zeile. Weiter unten wird der Wert ohnehin noch
         # einmal gesetzt - hier geht es nur darum, dass es ihn zu diesem
@@ -6244,14 +6329,51 @@ class Frontend:
         stelle = (self.page, self.cat_i)
         if getattr(self, "_warmlauf_fertig_fuer", None) == stelle:
             return False
+        faden = self.vorarbeit_faden()
+        if faden.beschaeftigt():
+            return False
         systeme = self._warmlauf_systeme()
         if not systeme:
             self._warmlauf_fertig_fuer = stelle
             return False
-        # Build 321: unterbrechbar - siehe _leerlauf_zwischendurch().
-        return index_warmlaufen(systeme, hoechstens=1,
-                                zwischendurch=self._leerlauf_zwischendurch
-                                ) > 0
+        # Build 323: nicht mehr hier, sondern im Faden - siehe
+        # VorarbeitFaden. Rueckgabe: ob ein Stueck angestossen wurde.
+        return faden.anfordern(systeme)
+
+    def vorarbeit_faden(self):
+        """Der Faden fuer die Namensverzeichnisse (Build 323), beim ersten
+        Bedarf angelegt."""
+        f = getattr(self, "_vorarbeit", None)
+        if f is None:
+            f = self._vorarbeit = VorarbeitFaden(
+                lambda systeme: index_warmlaufen(
+                    systeme, hoechstens=1,
+                    zwischendurch=self._vorarbeit_innehalten))
+        return f
+
+    def _vorarbeit_innehalten(self):
+        """Zwischen zwei Happen eines Namensverzeichnisses AUF EINEM
+        FADEN: warten, solange jemand bedient - hoechstens
+        PREWARM_MAX_WARTEN, damit es auch bei Dauerscrollen vorangeht
+        (siehe _prewarm_art_dirs, "ABER NICHT ENDLOS"). Fasst die
+        Eingabe nicht an - das darf nur der Hauptfaden; gelesen wird nur
+        held, und das ist eine einzige Zuweisung."""
+        _seit = time.monotonic()
+        while time.monotonic() - _seit < PREWARM_MAX_WARTEN:
+            _inp = getattr(self, "inp", None)
+            if (time.monotonic() - self._last_input_time >= PREWARM_SETTLE
+                    and getattr(_inp, "held", None) is None):
+                return
+            time.sleep(0.05)
+
+    def _ansicht_fuer_log(self):
+        """Die Ansicht der Seite, auf der man steht - fuer Logzeilen."""
+        try:
+            if self.page == 0:
+                return self.aktuelle_ansicht_haupt()
+            return self.aktuelle_ansicht()
+        except Exception:                                # noqa: BLE001
+            return "?"
 
     def _leerlauf_buchen(self, was, t0):
         """Die laengste Arbeit im Leerlauf seit der letzten Aktion merken
@@ -25019,7 +25141,7 @@ class Frontend:
                             "zeichnen=%.0f rest=%.0f | davon bg=%.0f "
                             "restore=%.0f rows=%.0f art=%.0f flip=%.0f "
                             "(davon vsync=%.0f) "
-                            "| vorige Aktion=%s Seite=%d)"
+                            "| vorige Aktion=%s Seite=%d Ansicht=%s)"
                             % tuple([_busy * 1000]
                                     + [x * 1000 for x in _oben]
                                     + [max(0.0, _busy - sum(_oben)) * 1000,
@@ -25037,7 +25159,12 @@ class Frontend:
                                        # Ursache. Siehe _wait_vsync() in
                                        # fe/framebuffer.py.
                                        _vsync_ms,
-                                       _act_prev, self.page]))
+                                       _act_prev, self.page,
+                                       # Build 323: auf der Hauptseite
+                                       # gibt es sechs Ansichten, und
+                                       # "Seite=0" allein sagte nicht,
+                                       # welche gemessen wurde.
+                                       self._ansicht_fuer_log()]))
                     # NEU (Build 93): dieselbe Messung, die oben nur im
                     # Ausnahmefall ins Log geht, treibt jetzt auch die
                     # Wiederholrate der gehaltenen Richtungstaste an -

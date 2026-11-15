@@ -13,6 +13,26 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Behoben: 2,6 Sekunden Stillstand kurz nach dem Start.** Dein Log
+  nach Build 322: kein einziges „SYN_DROPPED" mehr — der Wächter hält
+  die Eingaben fest. Aber: „down lag 2622 ms ungelesen … Warmlauf
+  2601 ms", 9,8 Sekunden nach dem Start. Das Vorbereiten der
+  Cover-Verzeichnisse lief im Leerlauf auf der Hauptschleife, und ein
+  einzelnes Verzeichnis-Lesen von der SD-Karte lässt sich nicht
+  zerteilen — direkt nach dem Einschalten ist es kalt und langsam.
+  Jetzt läuft diese Arbeit in einem eigenen Faden: das Warten auf die
+  Karte kostet die Bedienung nichts mehr, und der Rechenteil hält an,
+  solange du drückst (Build 323).
+- **Neu im Log: die Ansicht in der RUCKLER-Zeile.** Deine 32
+  RUCKLER-Zeilen beim Halten von „hoch" auf der Hauptseite (80–110 ms)
+  sagten „Seite=0" — welche der sechs Ansichten es war, stand nicht
+  dabei. Jetzt steht „Ansicht=…" am Ende (Build 323).
+- **Bench 24: Abschnitt Q.** Abschnitt J misst die Hauptseite mit
+  Absicht nur innerhalb des sichtbaren Fensters. Wer die Taste hält,
+  läuft über den Rand, und dann wandert das Fenster mit — diesen
+  Schritt misst jetzt Q, je Ansicht, mit Mittel, Median, langsamstem
+  Schritt und Zahl der Vollbilder (Build 323).
+
 - **Behoben: das Pad verliert keine Eingaben mehr — auch nicht, wenn
   das Frontend gerade beschäftigt ist.** Dein Log vom 14.11. hat es
   bestätigt: der Kernel hat in 67 Sekunden sechsmal Eingaben des Pro

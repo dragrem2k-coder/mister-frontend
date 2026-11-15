@@ -89,7 +89,10 @@ import zlib
 # Controller fallen RX und RY weg. L.1b zeigt deshalb rund 40 % weniger
 # Ereignisse, ohne dass sich am Pad etwas geaendert hat; L nennt die
 # Maske in einer eigenen Zeile.
-BENCH_VERSION = 23
+# 24 ab Build 323: Abschnitt Q (Hauptseite durchblaettern, das Fenster
+# wandert mit) ist neu - Abschnitt J pendelt mit Absicht innerhalb des
+# Fensters und hat diesen Schritt nie gemessen.
+BENCH_VERSION = 24
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -5566,6 +5569,79 @@ def _abschnitt_p(b, fe, S, A, fm):
     b("   (EINGABE: ... SYN_DROPPED, EINGABE-STAU).")
 
 
+def _abschnitt_q(b, fe, S, A, fm):
+    """Die Hauptseite DURCHBLAETTERN - das Fenster wandert mit (Build 323).
+
+    DER ANLASS steht in seinem Log vom 14.11.: auf der Hauptseite
+    ("Seite=0"), bei gehaltener Taste "up", zweiunddreissig
+    RUCKLER-Zeilen hintereinander mit je 80 bis 110 ms. Abschnitt J
+    nennt fuer dieselbe Seite 20 bis 42 ms je Schritt - aber J pendelt
+    mit Absicht INNERHALB des sichtbaren Fensters (fenster_spanne()).
+    Wer die Taste haelt, laeuft ueber den Rand, und dann muss das
+    Fenster mitwandern. Diesen Schritt hat bisher kein Abschnitt
+    gemessen.
+
+    Gemessen wird je Ansicht: zweimal durch alle Kategorien, in
+    Einerschritten, so wie die Taste es tut - mit Mittel, Median, dem
+    langsamsten Schritt und wie viele Schritte ein VOLLBILD gezeichnet
+    haben (fb.full_redraw_gen - dieselbe Zaehlung wie "Vollbild-Flips" in
+    Abschnitt J). Nicht gezaehlt wird, wie oft draw() lief: ausser der
+    Liste nehmen alle Ansichten der Hauptseite IMMER draw() und haben
+    darin ihren eigenen schnellen Weg - die Zahl hiesse also nichts."""
+    b("")
+    b("-" * 62)
+    b(" Q  Hauptseite durchblaettern - das Fenster wandert (Build 323)")
+    b("-" * 62)
+    n = len(getattr(fe, "cats", ()) or ())
+    if n < 3:
+        b("   -- zu wenige Kategorien")
+        return
+    _s_page, _s_cat = fe.page, fe.cat_i
+    _s_ansicht = fe.aktuelle_ansicht_haupt() if hasattr(
+        fe, "aktuelle_ansicht_haupt") else None
+    _echt_draw = fe.draw
+    b("   %d Kategorien, je Ansicht %d Schritte (zweimal ganz durch)"
+      % (n, 2 * n))
+    b("   %-12s %9s %9s %9s %12s"
+      % ("Ansicht", "Mittel", "Median", "langsam", "Vollbild"))
+    try:
+        fe.page = 0
+        for ansicht in ansichten_der_seite(S, 0):
+            if ansicht_einstellen(fe, 0, ansicht) != ansicht:
+                continue
+            schritt = schritt_funktion(fe, 0)
+            fe.cat_i = 0
+            fe.cat_scroll = 0
+            fe._force_full_redraw = True
+            _echt_draw()
+            fe._last_input_time = 0
+            zeiten = []
+            voll = 0
+            for k in range(1, 2 * n + 1):
+                gen = getattr(fe.fb, "full_redraw_gen", 0)
+                t0 = time.perf_counter()
+                schritt(k)
+                zeiten.append((time.perf_counter() - t0) * 1000.0)
+                if getattr(fe.fb, "full_redraw_gen", 0) != gen:
+                    voll += 1
+            b("   %-12s %7.2f ms %7.2f ms %7.2f ms %7d von %d"
+              % (ansicht, sum(zeiten) / len(zeiten), _median(zeiten),
+                 max(zeiten), voll, len(zeiten)))
+    finally:
+        fe.page, fe.cat_i = _s_page, _s_cat
+        if _s_ansicht:
+            try:
+                fe.ansicht_haupt_setzen(_s_ansicht)
+            except Exception:                            # noqa: BLE001
+                pass
+    b("")
+    b("   ZU LESEN ALS: liegt 'Mittel' hier deutlich ueber Abschnitt J")
+    b("   und ist 'Vollbild' gross, dann kostet das MITWANDERN des")
+    b("   Fensters - das sind die 80 bis 110 ms aus den RUCKLER-Zeilen")
+    b("   beim Halten der Taste. Die RUCKLER-Zeile nennt seit Build 323")
+    b("   die Ansicht ('Ansicht=...').")
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -5648,6 +5724,12 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
         _abschnitt_p(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT P ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd8 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd8):
+            _abschnitt_q(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT Q ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")
