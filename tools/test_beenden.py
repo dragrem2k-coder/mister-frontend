@@ -503,8 +503,10 @@ check("und die Warteschleife loest die Uebergabe selbst aus",
 # Und es muss VOR dem Zeichnen stehen, nicht danach.
 pa = quelle.index("    def play_boot_animation(self")
 pb = quelle[pa:pa + 6000]
+# Build 326: die Logo-Entscheidung heisst jetzt boot_logo_datei() (das
+# Bootlogo ist waehlbar) - gemessen wird an ihr statt am alten "_logo_an".
 check("gewartet wird, bevor gezeichnet wird",
-      pb.index("_auf_eigenes_bild_warten()") < pb.index("_logo_an"))
+      pb.index("_auf_eigenes_bild_warten()") < pb.index("boot_logo_datei("))
 check("aber nur mit eingeschalteter Mechanik - Build 145 wartete nicht",
       pb.index("self.konsole_mechanik()")
       < pb.index("_auf_eigenes_bild_warten()"))

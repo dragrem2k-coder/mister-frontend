@@ -10765,3 +10765,64 @@ war.
   Mutationsproben (Signatur, Vorrang, Leerlauf) werden je rot.
 * **geaendert** `tools/test_warmlauf_unterbrechbar.py` - die RUCKLER-
   Zeile endet nicht mehr mit der Ansicht.
+
+## Nachtrag Build 326 - Pad-Ausstieg, Bootlogos, ehrliche Zeile
+
+**Stand:** 15.11.2026, `Dragend_Build_326.zip` (build_id
+`2026-11-15-326`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat nach Build 325 Log und Bench 24 geschickt, dazu drei Wuensche:
+die Logos von Dennsen86 und Cirdan als Bootlogos, Ideen fuer
+RetroAchievements, und der Ausstieg aus dem Spiel per Pad
+(Start+Select+L+R).
+
+### Was Log und Bench zeigen
+
+* **Build 325 wirkt:** Kategorie betreten 137 ms busy statt 956
+  (`stream=3` statt 224), die Core-Auswahl steht getrennt als
+  `im Dialog gewartet=868`. Dashboard in Q: 0 von 58 Vollbildern.
+* **Neuer Messfehler:** `flip=20 (davon vsync=138)`,
+  `flip=0 (davon vsync=423)`, `zeichnen=230` bei 206 ms busy. Ursache:
+  `next_action()` zeichnet im Leerlauf selbst (Nachzeichnen, Puls), und
+  das lief in die Posten, die die RUCKLER-Zeile der VORIGEN Aktion
+  zuschreibt; das Vsync-Warten wurde nur im RUCKLER-Zweig abgeholt und
+  wuchs ueber alle leisen Schritte an.
+* **Was bleibt:** Spieleliste mit Cover beim Halten 85-110 ms je
+  Schritt, verteilt (Zeilen ~25, Flip ~25, Cover ~17, Hintergrund
+  5-12). Kein grosser Block mehr ohne Zugestaendnis.
+
+### Was Build 326 aendert
+
+1. **Pad-Ausstieg** (`fe/hidraw.py`, `wait_game_exit()`): Nintendo-Pads
+   (Hersteller 057E oder Name "Pro Controller"/"Joy-Con") werden beim
+   Oeffnen erkannt; aus jedem Bericht 0x21/0x30-0x33 werden die Tasten
+   gelesen (Byte 3/4/5), ueber alle Geraete vereinigt. Alle vier aus
+   `PAD_AUSSTIEG` `PAD_COMBO_HOLD` (0,25 s) gehalten -> `"pad_combo"`,
+   `run_core()` wie F1. Fremde Formate bewusst nicht ausgewertet.
+2. **Bootlogo zum Aussuchen** (`fe/settings.py`): `BOOT_LOGOS`,
+   `boot_logo_wahl()`, `boot_logo_datei()`, `boot_logo_weiter()`;
+   Datei `boot_logo_wahl`; der alte Schalter gilt als "neutral", bis
+   umgeschaltet wird. Zwei neue `.art` (640x640) in `frontend/boot_logo/`
+   - die Installer kopieren alle `*.art` des Ordners.
+3. **`_perf_merken()` / `_perf_zurueckholen()`** um `next_action()` in
+   jeder Runde: Posten festhalten, Vsync abholen und zuruecksetzen;
+   danach den Leerlauf verwerfen.
+
+### Pruefungen
+
+* **neu** `tools/test_pad_ausstieg.py` - Bericht lesen (echte
+  Bytefolgen), Geraet erkennen, `wait_game_exit()` Ende-zu-Ende mit
+  Paket-Sockets: alle vier, drei von vier (Gegenprobe), fremdes Geraet
+  (Gegenprobe), zwei Joy-Con, nur gestreift.
+* **neu** `tools/test_bootlogo_wahl.py` - Dateien (ART1, Farbreihenfolge
+  BGRA mit Gegenprobe), Wahl, Datei je Wahl, der Start laedt die
+  gewaehlte Datei, Menuepunkt.
+* **geaendert** `tools/test_dialog_wartezeit.py` (Test 3b: Leerlauf-
+  Zeichnen an der echten `run()`-Schleife; Mutationsprobe zeigt genau
+  die Logzeilen des Nutzers), `tools/test_perf_aufschluesselung.py`
+  (Test 8), `tools/test_beenden.py` und `tools/test_reset_sofort.py`
+  (Quelltext-Pruefungen an `boot_logo_datei(` bzw. das Tupel mit
+  `"pad_combo"` angepasst).
+* Volle Suite: 192 gruen, 0 rot.
+* Handbuch/Manual (md und PDF-Quelle), Funktionsliste neu erzeugt.

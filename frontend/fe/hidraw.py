@@ -262,3 +262,105 @@ def _hid_report_has_reset_key(data):
     if len(data) > 9 and data[0] == 0x06 and (data[9] & 0x40):
         return True
     return False
+
+
+# ----------------------------------------------------------------------------
+# AUSSTIEG PER PAD: Start + Select + L + R (Build 326)
+#
+# Nutzerwunsch: "warum wir mit f1 aus einem spiel wieder ins frontend
+# wechseln koennen aber per tastencombination am joypad nicht ... wenn man
+# zum beispiel start, select, l, r gleichzeitig drueckt das auch geschieht".
+#
+# DER GRUND, WARUM ES BISHER NICHT GING: waehrend ein Core laeuft, sperrt
+# MiSTer die evdev-Ebene (/dev/input/eventX) exklusiv - die
+# Start+Select-Pruefung in wait_game_exit() liest genau dort und bekommt
+# nie ein Ereignis. F1 geht ueber die ROHE HID-Ebene (/dev/hidrawX), und
+# die bleibt lesbar. Beim 8BitDo-Empfaenger von damals (Build 88/90) kam
+# auch dort nichts an - der laeuft ueber einen anderen Treiber.
+#
+# DER PRO CONTROLLER IST ANDERS: er laeuft ueber den Treiber hid-nintendo,
+# und der liest seine Daten selbst ueber HID. Jeder Bericht liegt deshalb
+# AUCH auf /dev/hidrawX - unabhaengig von der Sperre. Das Format der
+# Berichte ist bekannt (dieselben Bytes, die hid-nintendo auswertet):
+#
+#   Bericht 0x30/0x31/0x32/0x33 (Vollbericht) und 0x21 (Antwort):
+#     Byte 3 (rechts):  Y 01  X 02  B 04  A 08  SR 10  SL 20  R 40  ZR 80
+#     Byte 4 (Mitte):   - 01  + 02  RS 04  LS 08  Home 10  Capture 20
+#     Byte 5 (links):   runter 01  hoch 02  rechts 04  links 08
+#                       SR 10  SL 20  L 40  ZL 80
+#
+# "Start" ist am Nintendo-Pad Plus, "Select" ist Minus. Ein 8BitDo im
+# Switch-Modus meldet sich als Pro Controller und funktioniert damit
+# genauso; zwei Joy-Con (L links, R rechts) auch, weil die Tasten ueber
+# alle Geraete zusammengezaehlt werden.
+#
+# BEWUSST NUR DIESES FORMAT. Ein anderes Pad liefert andere Bytes, und
+# eine falsch gelesene Bitstelle koennte mitten im Spiel aussteigen. Was
+# kein Nintendo-Pad ist, wird weiter nur protokolliert (DIAGNOSE-Zeilen),
+# damit sich ein weiteres Format spaeter belegt nachruesten laesst.
+NINTENDO_VID = 0x057E
+
+_NINTENDO_VOLL = (0x21, 0x30, 0x31, 0x32, 0x33)
+
+# Name -> (Byte, Bit) im Vollbericht.
+_NINTENDO_TASTEN = {
+    "y": (3, 0x01), "x": (3, 0x02), "b": (3, 0x04), "a": (3, 0x08),
+    "r": (3, 0x40), "zr": (3, 0x80),
+    "select": (4, 0x01), "start": (4, 0x02),
+    "home": (4, 0x10), "capture": (4, 0x20),
+    "runter": (5, 0x01), "hoch": (5, 0x02), "rechts": (5, 0x04),
+    "links": (5, 0x08), "l": (5, 0x40), "zl": (5, 0x80),
+}
+
+# Die Kombination, die aus dem Spiel ins Frontend zurueckfuehrt.
+PAD_AUSSTIEG = frozenset(("start", "select", "l", "r"))
+
+
+def hidraw_kennung(path):
+    """(Hersteller, Produkt, Name) eines hidraw-Geraets aus sysfs, z.B.
+    (0x057E, 0x2009, "Nintendo Co., Ltd. Pro Controller"). Was sich
+    nicht lesen laesst, ist 0 bzw. ""."""
+    vid = pid = 0
+    name = ""
+    uevent = "/sys/class/hidraw/%s/device/uevent" % os.path.basename(path)
+    try:
+        with open(uevent) as f:
+            for zeile in f:
+                zeile = zeile.strip()
+                if zeile.startswith("HID_ID="):
+                    # HID_ID=0005:0000057E:00002009  (Bus:Hersteller:Produkt)
+                    teile = zeile[len("HID_ID="):].split(":")
+                    if len(teile) == 3:
+                        try:
+                            vid = int(teile[1], 16)
+                            pid = int(teile[2], 16)
+                        except ValueError:
+                            pass
+                elif zeile.startswith("HID_NAME="):
+                    name = zeile[len("HID_NAME="):]
+    except OSError:
+        pass
+    return vid, pid, name
+
+
+def ist_nintendo_pad(kennung):
+    """Liefert das Geraet Berichte im Nintendo-Format? Am Hersteller
+    erkannt, ersatzweise am Namen (manche Nachbauten melden eine eigene
+    Herstellernummer, aber denselben Namen)."""
+    vid, _pid, name = kennung
+    if vid == NINTENDO_VID:
+        return True
+    n = (name or "").lower()
+    return "pro controller" in n or "joy-con" in n
+
+
+def nintendo_pad_tasten(data):
+    """Die gedrueckten Tasten aus EINEM Nintendo-Bericht - als
+    frozenset der Namen aus _NINTENDO_TASTEN, oder None, wenn der
+    Bericht keine Tasten traegt (anderes Format, zu kurz). None heisst
+    "weiss nicht" und laesst den bisherigen Stand stehen; ein leeres
+    Set heisst "nichts gedrueckt"."""
+    if not data or len(data) < 6 or data[0] not in _NINTENDO_VOLL:
+        return None
+    return frozenset(name for name, (byte, bit) in _NINTENDO_TASTEN.items()
+                     if data[byte] & bit)

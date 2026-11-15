@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **New: leave a game with the pad.** Holding **Start + Select + L + R**
+  together briefly takes you back to the frontend, just like F1. Why
+  this didn't work before: as soon as a game runs, MiSTer locks the
+  normal pad layer, and our old check never received anything there.
+  F1 goes through the raw HID layer, and your Pro Controller delivers
+  its buttons there as well. Works with the Pro Controller, Joy-Con and
+  pads in Switch mode (e.g. 8BitDo); Start is "+" there, Select is "−"
+  (build 326).
+- **New: choose your boot logo.** Under System → Display & sound you
+  cycle through Dragend, **Dennsen86**, **Cirdan**, random (a different
+  one at every start) or plain (build 326).
+- **More honest RUCKLER line.** What the frontend draws between two
+  key presses used to be counted with the previous action — hence
+  lines like "flip=20 (davon vsync=138)" or "zeichnen=230" at 206 ms.
+  Now the numbers belong to the action itself (build 326).
+
 - **Fixed: the pad stalls when you enter a category.** Your log:
   "RUCKLER: 956 ms … stream=224 … vorige Aktion=ok". `stream=` is the
   update for the web overlay: it asked the first game of the new list

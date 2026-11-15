@@ -272,8 +272,11 @@ input_py = open(os.path.join(_FRONTEND_DIR, "fe", "input.py"),
 check("und die evdev-Abfrage ist weg",
       "if etype == EV_KEY and code == KEY_F10" not in input_py)
 fe_py = open(os.path.join(_FRONTEND_DIR, "frontend.py"), encoding="utf-8").read()
+# Build 326: dazu kam "pad_combo" (Start+Select+L+R am Pad) - "f10"
+# darf trotzdem nirgends mehr stehen.
 check('das Ergebnis "f10" wird nicht mehr behandelt',
-      'res in ("combo", "hid_combo")' in fe_py)
+      'res in ("combo", "hid_combo", "pad_combo")' in fe_py
+      and '"f10")' not in fe_py and '"f10",' not in fe_py)
 
 print()
 print("Test 6: der F4-Schnellstart ist restlos entfernt")

@@ -47,6 +47,7 @@ _REPO = os.path.dirname(_HIER)
 sys.path.insert(0, _HIER)
 
 import _harness as H                                     # noqa: E402
+from _quelle import koerper, nur_code                    # noqa: E402
 
 fm = H.fm
 F = fm.Frontend
@@ -237,18 +238,33 @@ check("und es steht INNERHALB von flip, nicht daneben",
 
 _z8 = quelle[quelle.index("_oben = [(_rt1 - _rt0)"):]
 _z8 = _z8[:_z8.index("]))", _z8.index("_act_prev, self.page")) + 3]
+# BUILD 326: abgeholt wird nicht mehr in der RUCKLER-Zeile, sondern in
+# JEDER Runde vor next_action() (_perf_merken()). Bis Build 325 geschah
+# es nur beim Loggen - und der Zaehler wuchs ueber alle leisen Schritte
+# an: im Log vom 15.11. "flip=0 (davon vsync=423)". Genau das, wovor die
+# alte Pruefung hier warnte ("der Zaehler wuechse ... unbemerkt an") -
+# sie hat nur auf die Reihenfolge innerhalb des Blocks geachtet, nicht
+# darauf, dass der ganze Block nur beim Loggen laeuft.
+_pm = nur_code(koerper(quelle, "_perf_merken"))
+_pz = nur_code(koerper(quelle, "_perf_zurueckholen"))
+_run = nur_code(koerper(quelle, "run"))
 check("der Wert kommt vom Framebuffer, nicht aus einer eigenen Uhr",
-      "vsync_ms_und_zuruecksetzen()" in _z8,
+      "self.fb.vsync_ms_und_zuruecksetzen()" in _pm,
       "nur dort steht das Warten - hier waere es geschaetzt")
-check("er wird beim Abholen zurueckgesetzt",
-      "_vsync_ms = self.fb.vsync_ms_und_zuruecksetzen()" in _z8,
-      "sonst zaehlte die naechste Zeile das Warten dieser mit")
-check("und das Abholen steht VOR dem Logaufruf, nicht darin",
-      _z8.index("_vsync_ms = self.fb") < _z8.index("_vsync_ms,"),
-      "in der Format-Zeile wuerde es nur beim Loggen zurueckgesetzt - der "
-      "Zaehler wuechse zwischen zwei Rucklern unbemerkt an")
-check("ein fehlendes Attribut bringt die Zeile nicht um",
-      "except AttributeError:" in _z8,
+check("die Zeile nimmt den gemerkten Wert",
+      "_vsync_ms = _perf_merk[1]" in _z8)
+check("gemerkt wird in JEDER Runde vor next_action()",
+      _run.index("_perf_merk = self._perf_merken()")
+      < _run.index("act = self.next_action()")
+      < _run.index("self._perf_zurueckholen(_perf_merk)"),
+      "sonst wuechse der Zaehler zwischen zwei Rucklern an")
+check("und nicht erst im RUCKLER-Zweig",
+      _run.index("_perf_merk = self._perf_merken()")
+      < _run.index("if _busy >= RUCKLER_SCHWELLE"))
+check("was der Leerlauf gewartet hat, wird verworfen",
+      "self.fb.vsync_ms_und_zuruecksetzen()" in _pz)
+check("ein fehlendes Attribut bringt nichts um",
+      "except AttributeError:" in _pm and "except AttributeError:" in _pz,
       "die Attrappen der Tests ersetzen den Framebuffer komplett")
 
 # Und die andere Haelfte: der Framebuffer muss das ueberhaupt zaehlen.

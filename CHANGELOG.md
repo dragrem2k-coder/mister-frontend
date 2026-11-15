@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Neu: per Pad aus dem Spiel zurück.** **Start + Select + L + R**
+  zusammen kurz halten bringt dich zurück ins Frontend, genau wie F1.
+  Warum das bisher nicht ging: Sobald ein Spiel läuft, sperrt MiSTer
+  die normale Pad-Ebene, unsere alte Abfrage hat dort nie etwas
+  bekommen. F1 läuft über die rohe HID-Ebene, und dort liefert dein
+  Pro Controller seine Tasten ebenfalls. Geht mit Pro Controller,
+  Joy-Con und Pads im Switch-Modus (z.B. 8BitDo); Start ist dort „+",
+  Select „−" (Build 326).
+- **Neu: Bootlogo zum Aussuchen.** Unter System → Anzeige & Sound
+  schaltest du durch: Dragend, **Dennsen86**, **Cirdan**, Zufall
+  (bei jedem Start ein anderes) oder neutral (Build 326).
+- **Ehrlichere RUCKLER-Zeile.** Was das Frontend zwischen zwei
+  Tastendrücken zeichnet, stand bisher bei der vorigen Aktion mit drin
+  — daher Zeilen wie „flip=20 (davon vsync=138)" oder „zeichnen=230"
+  bei 206 ms. Jetzt gehören die Zahlen nur noch zur Aktion selbst
+  (Build 326).
+
 - **Behoben: beim Betreten einer Kategorie hängt das Pad.** Dein Log:
   „RUCKLER: 956 ms … stream=224 … vorige Aktion=ok". `stream=` ist die
   Meldung ans Web-Overlay: sie hat beim ersten Spiel der neuen Liste

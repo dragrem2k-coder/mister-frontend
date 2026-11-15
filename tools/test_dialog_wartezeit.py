@@ -123,7 +123,8 @@ class _Ende(BaseException):
 
 
 def hauptschleife(drehbuch, arbeit_beim_betreten, dialog_beim_betreten,
-                  zeichnen_bei_down=0.0):
+                  zeichnen_bei_down=0.0, leerlauf_zeichnen=0.0,
+                  leerlauf_vsync=0.0):
     """run() mit einem Drehbuch laufen lassen. Jeder Eintrag ist
     (aktion, Leerlauf davor in s, eingabe_wartezeit in s). Liefert die
     Logzeilen, die Meldungen an die Wiederholrate und das Frontend."""
@@ -168,6 +169,15 @@ def hauptschleife(drehbuch, arbeit_beim_betreten, dialog_beim_betreten,
             raise _Ende()
         act, leerlauf, liegezeit = rest.pop(0)
         H.NOW[0] += leerlauf
+        # Build 326: der Leerlauf zeichnet selbst (Nachzeichnen, Puls) -
+        # das darf NICHT in der Zeile der vorigen Aktion landen.
+        if leerlauf_zeichnen:
+            f._perf_zeichnen = (getattr(f, "_perf_zeichnen", 0)
+                                + leerlauf_zeichnen)
+            f._perf_flip = getattr(f, "_perf_flip", 0) + leerlauf_zeichnen
+        if leerlauf_vsync:
+            f.fb._vsync_summe = (getattr(f.fb, "_vsync_summe", 0.0)
+                                 + leerlauf_vsync)
         f.inp.eingabe_zeit = H.NOW[0]
         f.inp.eingabe_wartezeit = liegezeit
         return act
@@ -246,6 +256,30 @@ try:
     f2._latenz_buchen("ok", 100.0, 100.8, begonnen=100.0, gewartet=0.6)
     check("mit Abzug 200 ms", abs(f2._latenz_max - 0.2) < 1e-6,
           f2._latenz_max)
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 3b: Zeichnen im Leerlauf gehoert nicht zur vorigen Aktion "
+          "(Build 326)")
+    # -----------------------------------------------------------------------
+    # Im Log vom 15.11.: "flip=20 (davon vsync=138)", "flip=0 (davon
+    # vsync=423)", "zeichnen=230" bei 206 ms busy.
+    zeilen, gemeldet, f = hauptschleife(
+        [("ok", 1.0, 0.0), ("down", 0.5, 0.0)],
+        arbeit_beim_betreten=0.2, dialog_beim_betreten=0.0,
+        leerlauf_zeichnen=0.3, leerlauf_vsync=0.4)
+    ruckler = [z for z in zeilen if z.startswith("RUCKLER: ")]
+    z = ruckler[0] if ruckler else ""
+    check("zeichnen enthaelt nicht die 300 ms aus dem Leerlauf",
+          (zahl(r"zeichnen=(\d+)", z) or 0) < 300, z[:90])
+    check("flip ebenso", (zahl(r"flip=(\d+)", z) or 0) < 300, z)
+    check("vsync enthaelt nicht die 400 ms aus dem Leerlauf",
+          (zahl(r"vsync=(\d+)", z) or 0) < 400, z)
+    check("busy bleibt bei der Arbeit",
+          zahl(r"RUCKLER: (\d+) ms busy", z) == 200, z[:60])
+    check("und der Rest geht auf (busy - zeichnen)",
+          zahl(r"rest=(\d+)", z) == 200 - (zahl(r"zeichnen=(\d+)", z) or 0)
+          - (zahl(r"haus=(\d+)", z) or 0), z[:90])
 
     # -----------------------------------------------------------------------
     print()

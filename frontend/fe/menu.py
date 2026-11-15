@@ -28,6 +28,7 @@ from fe.audio import get_volume, sfx_enabled_flag
 from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
+    boot_logo_wahl, boot_logo_anzeigename,
     load_ziehung_spannung,
     load_scroll_tempo, ordner_zuerst, favoriten_zuerst,
     ordner_zahlen_an,
@@ -229,8 +230,16 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     swap_ok_back_label = t("sys_swap_ok_back_on" if swap_ok_back_enabled()
                            else "sys_swap_ok_back_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
-    dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
-        else t("sys_dragend_logo_off")
+    # Build 326: das Bootlogo zum Aussuchen - Dragend, Dennsen86, Cirdan,
+    # Zufall, neutral (siehe BOOT_LOGO_WAHLEN in fe/settings.py).
+    _bl = boot_logo_wahl()
+    if _bl == "zufall":
+        _bl_name = t("sys_boot_logo_zufall")
+    elif _bl == "neutral":
+        _bl_name = t("sys_boot_logo_neutral")
+    else:
+        _bl_name = boot_logo_anzeigename(_bl)
+    dragend_logo_label = t("sys_boot_logo", _bl_name)
     fast_scroll_label = t("sys_fast_scroll_on") if fast_scroll_enabled() \
         else t("sys_fast_scroll_off")
     # Build 138: steht direkt unter "Schnelles Scrollen" - beide

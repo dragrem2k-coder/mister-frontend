@@ -401,6 +401,7 @@ real network traffic.
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
 | In a running game: **F1** on the keyboard | Straight back to the frontend, no hold time and no detour through the MiSTer OSD |
 | In a running game: Esc on the keyboard, hold ~0.6 s | Same as F1, but with a hold time - needed because many games use Esc for their own pause menu |
+| In a running game: **Start + Select + L + R** on the pad, hold together briefly (since build 326) | Same as F1. Works with the Nintendo Pro Controller, Joy-Con and pads in Switch mode (e.g. 8BitDo) - Start is "+" there, Select is "−" |
 | In a running game: **F5** on the keyboard | Reset the running core, no hold time (all cores, including RA - does NOT reload the core, RA progress is kept) |
 | / or F2 (keyboard) | Start full-text search - matches anywhere in the name, not just the start (both keys trigger the exact same function) |
 | In a running game: F12 -> "Exit to Menu Core" | Alternative via MiSTer's own menu |
@@ -411,7 +412,12 @@ completely locks the normal keyboard/pad layer (verified: `cat
 press) - Start+Select therefore never arrives during the game
 itself; that is a platform limitation, not a frontend bug. But there is a
 way around it: the *raw* HID layer of a connected keyboard remains
-readable even during a running game. **F1 takes you straight back to
+readable even during a running game. **Since build 326 this also applies
+to pads running on the Nintendo driver** (Pro Controller, Joy-Con, pads in
+Switch mode): holding **Start + Select + L + R** together briefly (a
+quarter of a second) takes you back to the frontend. Other pads (e.g. a
+receiver in XInput mode) deliver nothing there or a different format -
+for them it stays F1/Esc or MiSTer's menu. **F1 takes you straight back to
 the frontend, immediately** - no hold time, because cores practically
 never use that key. Esc does the same but needs to be held for about
 0.6 s: many games use Esc for their own pause menu, so a short press
@@ -2612,7 +2618,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Save current colours as your own scheme | `theme_eigen_speichern` |
 | Edit your own colour scheme | `theme_eigen_bearbeiten` |
 | Navigation sound effects: ON/OFF | `sfx` |
-| Boot logo: Dragend / neutral | `dragend_logo` |
+| Boot logo: Dragend / Dennsen86 / Cirdan / random / plain (cycles since build 326) | `dragend_logo` |
 | Fast scrolling: ON/OFF | `fast_scroll` |
 | Covers while scrolling: ON/OFF | `cover_sofort` |
 | Cover downscaling: sharp / smooth | `scharf_verkleinern` |

@@ -843,6 +843,13 @@ TRANSLATIONS = {
                             "de": "Boot-Logo: Dragend -> auf neutral wechseln"},
     "sys_dragend_logo_off": {"en": "Boot logo: plain -> switch to Dragend",
                              "de": "Boot-Logo: neutral -> auf Dragend wechseln"},
+    # Build 326: das Bootlogo zum Aussuchen (siehe BOOT_LOGO_WAHLEN in
+    # fe/settings.py). Die beiden Zeilen darueber bleiben fuer aeltere
+    # Uebersetzungsdateien stehen, das Menue benutzt sie nicht mehr.
+    "sys_boot_logo": {"en": "Boot logo: %s -> next",
+                      "de": "Boot-Logo: %s -> weiter"},
+    "sys_boot_logo_zufall": {"en": "random", "de": "Zufall"},
+    "sys_boot_logo_neutral": {"en": "plain", "de": "neutral"},
     # Build 119: waehrend auf eine noch anlaufende USB-Platte gewartet
     # wird. Der Hinweis nennt den Grund, damit niemand den Stecker
     # zieht, weil er einen Absturz vermutet.

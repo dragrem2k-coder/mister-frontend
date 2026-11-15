@@ -446,6 +446,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | **F6** (Tastatur) | RA-Erfolgs-Vitrine für das markierte Spiel (Abschnitt 8k) |
 | Im laufenden Spiel: **F1** auf der Tastatur | Sofort zurück ins Frontend, ohne Haltezeit und ohne Umweg über MiSTers OSD |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Dasselbe wie F1, nur mit Haltezeit - die ist nötig, weil viele Spiele Esc selbst für ihr Pausemenü benutzen |
+| Im laufenden Spiel: **Start + Select + L + R** am Pad, kurz zusammen halten (seit Build 326) | Dasselbe wie F1. Geht mit dem Nintendo Pro Controller, Joy-Con und Pads im Switch-Modus (z.B. 8BitDo) - Start ist dort „+", Select „−" |
 | Im laufenden Spiel: **F5** auf der Tastatur | Reset im laufenden Core, ohne Haltezeit (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
 | / oder F2 (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang (beide Tasten lösen exakt dieselbe Funktion aus) |
 | **Select gedrückt halten + A** (Pad, seit Build 88) | Dieselbe Volltextsuche, aber mit einem Buchstabenraster auf dem Bildschirm - mit dem D-Pad bedienbar, A wählt, B geht zurück, das Feld OK beendet |
@@ -460,7 +461,12 @@ Bytes, egal was man drückt) - Start+Select kommt dadurch
 während des Spiels selbst nie an, das ist eine Plattformgrenze, kein
 Bug im Frontend. Es gibt aber einen Weg drumherum: die *rohe*
 HID-Ebene einer angeschlossenen Tastatur bleibt auch während eines
-laufenden Spiels lesbar. Esc etwas länger gedrückt halten (die
+laufenden Spiels lesbar. **Seit Build 326 gilt das auch für Pads, die
+über den Nintendo-Treiber laufen** (Pro Controller, Joy-Con, Pads im
+Switch-Modus): **Start + Select + L + R** zusammen kurz halten (eine
+Viertelsekunde) bringt dich zurück ins Frontend. Andere Pads (z.B. ein
+Empfänger im XInput-Modus) liefern dort nichts oder ein anderes Format -
+bei ihnen bleibt es bei F1/Esc oder MiSTers Menü. Esc etwas länger gedrückt halten (die
 Haltezeit ist bewusst so gewählt, dass ein normaler kurzer
 Esc-Druck in einem spieleigenen Pausemenü nicht aus Versehen den
 Ausstieg auslöst) bringt dich deshalb direkt zurück ins Frontend.
@@ -3012,7 +3018,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Aktuelle Farben als eigenes Schema speichern | `theme_eigen_speichern` |
 | Eigenes Farbschema bearbeiten | `theme_eigen_bearbeiten` |
 | Navigations-Soundeffekte: AN/AUS | `sfx` |
-| Boot-Logo: Dragend / neutral | `dragend_logo` |
+| Boot-Logo: Dragend / Dennsen86 / Cirdan / Zufall / neutral (seit Build 326 zum Durchschalten) | `dragend_logo` |
 | Schnelles Scrollen: AN/AUS | `fast_scroll` |
 | Cover beim Scrollen: AN/AUS | `cover_sofort` |
 | Cover verkleinern: scharf / weich | `scharf_verkleinern` |

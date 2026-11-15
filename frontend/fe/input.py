@@ -19,7 +19,9 @@ from collections import defaultdict, deque
 from fe.log import LOG
 from fe.launch import current_core
 from fe.hidraw import (_find_keyboard_hidraws, _hid_report_has_exit_key,
-                        _hid_report_has_reset_key, _hid_report_has_f1_key)
+                        _hid_report_has_reset_key, _hid_report_has_f1_key,
+                        hidraw_kennung, ist_nintendo_pad,
+                        nintendo_pad_tasten, PAD_AUSSTIEG)
 from fe.reset_trigger import send_reset_combo
 
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
@@ -2593,6 +2595,13 @@ class InputManager:
 
     COMBO_HOLD = 0.8          # Sekunden Start+Select halten
 
+    PAD_COMBO_HOLD = 0.25     # Build 326: Sekunden Start+Select+L+R am Pad
+                              # halten (rohe HID-Ebene, siehe PAD_AUSSTIEG
+                              # in fe/hidraw.py). Kurz, aber nicht null:
+                              # vier Tasten landen selten im selben Bericht,
+                              # und ein Griff, der sie nur streift, soll
+                              # nicht aus dem Spiel werfen.
+
     KBD_COMBO_HOLD = 0.6      # Sekunden Esc halten (hidraw-Notausstieg) -
                               # bewusst laenger als bei Strg+Alt+Esc, da
                               # ein einzelnes Esc leichter mal kurz in
@@ -2749,6 +2758,23 @@ class InputManager:
             "Geraet(e) zusaetzlich geoeffnet: %s"
             % (len(extra_hidraw_fds), list(extra_hidraw_fds.values())))
         extra_hidraw_budget = {fd: 15 for fd in extra_hidraw_fds}
+        # BUILD 326: Start+Select+L+R am Pad - siehe PAD_AUSSTIEG in
+        # fe/hidraw.py. Welche der Geraete Nintendo-Berichte liefern,
+        # wird einmal beim Oeffnen bestimmt; je Geraet der zuletzt
+        # gelesene Tastenstand, zusammengezaehlt ueber alle Geraete
+        # (zwei Joy-Con sind zwei Geraete).
+        pad_nintendo = {}
+        for hfd, hp in extra_hidraw_fds.items():
+            try:
+                _kennung = hidraw_kennung(hp)
+            except Exception:                            # noqa: BLE001
+                _kennung = (0, 0, "")
+            if ist_nintendo_pad(_kennung):
+                pad_nintendo[hfd] = frozenset()
+                LOG("wait_game_exit: %s ist ein Nintendo-Pad (%04x:%04x %s)"
+                    " - Start+Select+L+R fuehrt zurueck ins Frontend"
+                    % (hp, _kennung[0], _kennung[1], _kennung[2]))
+        pad_combo_since = None
         # NEU (Nutzerwunsch: Reset per F5 laenger halten, fuer ALLE
         # Cores inkl. RA, ohne Core-Wechsel): eigene Verfolgung analog
         # zu kbd_fds/kbd_combo_since oben, aber komplett unabhaengig -
@@ -2798,6 +2824,11 @@ class InputManager:
                 if (kbd_combo_since is not None
                         and now - kbd_combo_since >= self.KBD_COMBO_HOLD):
                     return "hid_combo"
+                if (pad_combo_since is not None
+                        and now - pad_combo_since >= self.PAD_COMBO_HOLD):
+                    LOG("wait_game_exit: Start+Select+L+R am Pad - zurueck "
+                        "ins Frontend")
+                    return "pad_combo"
                 fds = {d.fd: d for d in self.devices.values()}
                 for kfd in kbd_fds:
                     fds[kfd] = None
@@ -2822,7 +2853,27 @@ class InputManager:
                                 pass
                             extra_hidraw_fds.pop(fd, None)
                             extra_hidraw_budget.pop(fd, None)
+                            pad_nintendo.pop(fd, None)
+                            if not PAD_AUSSTIEG <= frozenset().union(
+                                    *pad_nintendo.values()):
+                                pad_combo_since = None
                             continue
+                        if fd in pad_nintendo:
+                            _tasten = nintendo_pad_tasten(data)
+                            if _tasten is not None:
+                                pad_nintendo[fd] = _tasten
+                                _alle = frozenset().union(
+                                    *pad_nintendo.values())
+                                if PAD_AUSSTIEG <= _alle:
+                                    if pad_combo_since is None:
+                                        pad_combo_since = time.monotonic()
+                                        if self.PAD_COMBO_HOLD <= 0:
+                                            LOG("wait_game_exit: Start+"
+                                                "Select+L+R am Pad - zurueck"
+                                                " ins Frontend")
+                                            return "pad_combo"
+                                else:
+                                    pad_combo_since = None
                         if extra_hidraw_budget.get(fd, 0) > 0:
                             extra_hidraw_budget[fd] -= 1
                             LOG("wait_game_exit DIAGNOSE Controller-hidraw "

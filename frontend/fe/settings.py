@@ -42,22 +42,111 @@ from fe.art import get_meta, mra_meta
 DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
 DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
 
-def dragend_logo_enabled():
-    return not os.path.exists(DRAGEND_LOGO_DISABLED_FLAG)
+# BUILD 326: DAS BOOTLOGO ZUM AUSSUCHEN. Nutzerwunsch: "die beiden logos
+# bitte als bootlogos zum aussuchen mit einbinden" (Dennsen86 und
+# Cirdan). Die Logos liegen wie das Dragend-Logo als .art in
+# frontend/boot_logo/ und werden von den Installern mitkopiert (alle
+# *.art des Ordners). Die Wahl steht als ein Wort in BOOT_LOGO_WAHL_FILE.
+#
+# "zufall" nimmt bei jedem Start eines der vorhandenen Logos, "neutral"
+# ist das alte D-Pad-Symbol ohne Logo.
+#
+# DER ALTE SCHALTER BLEIBT GUELTIG: wer vor Build 326 auf "neutral"
+# geschaltet hatte, hat DRAGEND_LOGO_DISABLED_FLAG - solange noch keine
+# Wahl gespeichert ist, gilt das weiter als "neutral". Beim ersten
+# Umschalten wird die Datei geschrieben und der alte Schalter entfernt.
+BOOT_LOGO_DIR = os.path.dirname(DRAGEND_LOGO_FILE)
+BOOT_LOGO_WAHL_FILE = "/media/fat/frontend/boot_logo_wahl"
+# (Name, Datei, angezeigter Name) - die Reihenfolge ist die im Menue.
+BOOT_LOGOS = (
+    ("dragend", DRAGEND_LOGO_FILE, "Dragend"),
+    ("dennsen86", os.path.join(BOOT_LOGO_DIR, "dennsen86_logo.art"),
+     "Dennsen86"),
+    ("cirdan", os.path.join(BOOT_LOGO_DIR, "cirdan_logo.art"), "Cirdan"),
+)
+BOOT_LOGO_WAHLEN = tuple(n for n, _d, _a in BOOT_LOGOS) + ("zufall",
+                                                          "neutral")
+
+
+def boot_logo_wahl():
+    """Die gespeicherte Wahl - eines aus BOOT_LOGO_WAHLEN."""
+    try:
+        with open(BOOT_LOGO_WAHL_FILE) as f:
+            wahl = f.read().strip().lower()
+        if wahl in BOOT_LOGO_WAHLEN:
+            return wahl
+    except OSError:
+        pass
+    return "neutral" if os.path.exists(DRAGEND_LOGO_DISABLED_FLAG) \
+        else "dragend"
+
+
+def boot_logo_anzeigename(wahl=None):
+    """Der Name fuers Menue ("Dragend", "Dennsen86", ...) - fuer
+    "zufall" und "neutral" der Schluessel selbst; den Text dafuer holt
+    das Menue aus den Uebersetzungen."""
+    wahl = wahl or boot_logo_wahl()
+    for name, _datei, anzeige in BOOT_LOGOS:
+        if name == wahl:
+            return anzeige
+    return wahl
+
+
+def boot_logo_datei(wahl=None, zufall=None):
+    """Die .art-Datei, die beim Start gezeigt wird - oder None (dann
+    das D-Pad-Symbol). Fehlt die Datei des gewaehlten Logos (z.B. ein
+    Update ohne den Ordner), gilt dasselbe wie bisher beim Dragend-Logo:
+    None, und es kommt das D-Pad-Symbol. zufall: eine Funktion, die aus
+    einer Liste waehlt (fuer den Test); Vorgabe random.choice."""
+    wahl = wahl or boot_logo_wahl()
+    if wahl == "neutral":
+        return None
+    if wahl == "zufall":
+        da = [d for _n, d, _a in BOOT_LOGOS if os.path.exists(d)]
+        if not da:
+            return None
+        if zufall is None:
+            import random
+            zufall = random.choice
+        return zufall(da)
+    for name, datei, _anzeige in BOOT_LOGOS:
+        if name == wahl:
+            return datei if os.path.exists(datei) else None
+    return None
+
 
 @_nach_aenderung
+def boot_logo_weiter():
+    """Zur naechsten Wahl schalten (Menuepunkt System -> Anzeige &
+    Sound). Liefert die neue Wahl."""
+    alt = boot_logo_wahl()
+    i = BOOT_LOGO_WAHLEN.index(alt) if alt in BOOT_LOGO_WAHLEN else -1
+    neu = BOOT_LOGO_WAHLEN[(i + 1) % len(BOOT_LOGO_WAHLEN)]
+    try:
+        os.makedirs(os.path.dirname(BOOT_LOGO_WAHL_FILE), exist_ok=True)
+        tmp = BOOT_LOGO_WAHL_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(neu + "\n")
+        os.replace(tmp, BOOT_LOGO_WAHL_FILE)
+    except OSError:
+        return alt
+    try:
+        os.remove(DRAGEND_LOGO_DISABLED_FLAG)
+    except OSError:
+        pass
+    return neu
+
+
+def dragend_logo_enabled():
+    """Wird ueberhaupt ein Logo gezeigt? (Name aus der Zeit vor Build
+    326, als es nur das Dragend-Logo gab.)"""
+    return boot_logo_wahl() != "neutral"
+
+
 def toggle_dragend_logo():
-    if dragend_logo_enabled():
-        try:
-            os.makedirs(os.path.dirname(DRAGEND_LOGO_DISABLED_FLAG), exist_ok=True)
-            open(DRAGEND_LOGO_DISABLED_FLAG, "w").close()
-        except OSError:
-            pass
-    else:
-        try:
-            os.remove(DRAGEND_LOGO_DISABLED_FLAG)
-        except OSError:
-            pass
+    """Seit Build 326: zur naechsten Wahl schalten - siehe
+    boot_logo_weiter()."""
+    return boot_logo_weiter()
 
 # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
 # Systembildhintergrund komplett rausnehmen, war eh bloede"). Hier stand

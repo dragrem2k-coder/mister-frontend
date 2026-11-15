@@ -310,6 +310,8 @@ from fe.settings import (
     crt_menu_active, curated_only_active, cycle_attract_delay,
     cycle_ziehung_spannung, load_ziehung_spannung,
     dragend_logo_enabled, filter_curated, format_attract_delay,
+    # Build 326: das Bootlogo zum Aussuchen.
+    boot_logo_wahl, boot_logo_datei,
     load_attract_delay, mark_setup_wizard_done, save_attract_delay,
     setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
@@ -6367,6 +6369,35 @@ class Frontend:
                     and getattr(_inp, "held", None) is None):
                 return
             time.sleep(0.05)
+
+    def _perf_merken(self):
+        """Die Posten der Aufschluesselung und das Vsync-Warten der
+        VORIGEN Aktion festhalten - vor next_action() (Build 326).
+
+        Das Vsync-Warten wird dabei abgeholt UND zurueckgesetzt (es lebt
+        im Framebuffer, siehe vsync_ms_und_zuruecksetzen()): so gehoert
+        jede Runde genau das Warten zwischen zwei Aufrufen, ob geloggt
+        wird oder nicht. Rueckgabe: ({Posten: Wert}, Vsync in ms)."""
+        posten = dict((name, getattr(self, name, 0))
+                      for name in self.PERF_POSTEN)
+        try:
+            vsync = self.fb.vsync_ms_und_zuruecksetzen()
+        except AttributeError:
+            vsync = 0.0
+        return posten, vsync
+
+    def _perf_zurueckholen(self, merk):
+        """Nach next_action(): was der Leerlauf in die Posten und ins
+        Vsync-Warten gezaehlt hat, verwerfen (Build 326). Die Arbeit
+        selbst ist nicht verloren - wer im Leerlauf lange zeichnet,
+        steht als "laengste Leerlauf-Arbeit" in der EINGABE-STAU-Zeile.
+        Nur gehoert sie nicht zur vorigen Aktion."""
+        for name, wert in merk[0].items():
+            setattr(self, name, wert)
+        try:
+            self.fb.vsync_ms_und_zuruecksetzen()
+        except AttributeError:
+            pass
 
     def _wartezeit_stand(self):
         """Wie lange read_action()/read_raw_key() bisher insgesamt auf
@@ -16951,9 +16982,14 @@ class Frontend:
             # "f10" gibt es seit Build 77 nicht mehr (siehe KEYMAP in
             # fe/input.py) - der Ausstieg laeuft ueber F1 (sofort) oder
             # Esc (laenger halten), beide melden "hid_combo".
-            if res in ("combo", "hid_combo"):
+            # Build 326: dazu "pad_combo" - Start+Select+L+R am Pad,
+            # ueber dieselbe rohe HID-Ebene (siehe PAD_AUSSTIEG in
+            # fe/hidraw.py).
+            if res in ("combo", "hid_combo", "pad_combo"):
                 LOG({"combo": "Start+Select erkannt - zurueck ins Menue",
                      "hid_combo": "F1/Esc (HID-Notausstieg) erkannt - "
+                                  "zurueck ins Menue",
+                     "pad_combo": "Start+Select+L+R am Pad erkannt - "
                                   "zurueck ins Menue"}[res])
                 launch_core(MENU_RBF)
                 t1 = time.monotonic()
@@ -24655,7 +24691,7 @@ class Frontend:
         self.inp.read_action(timeout=1.2)   # ueberspringbar
         fb.mark_full_redraw()
 
-    def _draw_dragend_logo_boot(self):
+    def _draw_dragend_logo_boot(self, datei=None):
         """Eigenes Logo beim Start (Nutzerwunsch: 'mein eigenes Logo
         beim Startup anzeigen lassen und gegen das alte ersetzen'),
         mit demselben Flacker-Effekt wie zuvor beim generischen D-Pad-
@@ -24666,12 +24702,15 @@ class Frontend:
         existiert - beide Bedingungen bereits vom Aufrufer geprueft
         (_draw_default_boot_icon() bleibt als Rueckfall bestehen, falls
         eine der beiden nicht zutrifft)."""
+        # Build 326: welches Logo, sagt der Aufrufer (boot_logo_datei() in
+        # fe/settings.py) - ohne Angabe wie bisher das Dragend-Logo.
+        datei = datei or DRAGEND_LOGO_FILE
         fb = self.fb
         W, H = fb.width, fb.height
-        art = ART.get(DRAGEND_LOGO_FILE)
+        art = ART.get(datei)
         if not art:
-            LOG("Dragend-Logo: %s liegt da, laesst sich aber nicht "
-                "laden - zeige das D-Pad-Symbol" % DRAGEND_LOGO_FILE)
+            LOG("Bootlogo: %s liegt da, laesst sich aber nicht "
+                "laden - zeige das D-Pad-Symbol" % datei)
             self._draw_default_boot_icon()
             return
         lw, lh, pix = art
@@ -24682,7 +24721,7 @@ class Frontend:
         scale = min(1.0, max_dim / max(lw, lh))
         dw, dh = max(1, int(lw * scale)), max(1, int(lh * scale))
         if scale < 1.0:
-            scaled = ART.get_scaled(DRAGEND_LOGO_FILE, dw, dh)
+            scaled = ART.get_scaled(datei, dw, dh)
             if scaled:
                 dw, dh, pix = scaled
         ax = (W - dw) // 2
@@ -24906,14 +24945,17 @@ class Frontend:
             # siehe _draw_dragend_logo_boot()) - abschaltbar ueber
             # System -> Anzeige & Sound, faellt dann auf das alte,
             # neutrale D-Pad-Symbol zurueck.
-            _logo_an = dragend_logo_enabled()
-            _logo_da = os.path.exists(DRAGEND_LOGO_FILE)
+            # Build 326: welches Logo, steht in boot_logo_datei()
+            # (fe/settings.py) - Dragend, Dennsen86, Cirdan, Zufall oder
+            # neutral. None heisst D-Pad-Symbol.
+            _wahl = boot_logo_wahl()
+            _logo = boot_logo_datei(_wahl)
             LOG("Boot-Animation: keine eigenen Frames in %s - "
-                "Logo eingeschaltet: %s, Logodatei vorhanden: %s"
-                % (bootanim_dir, _logo_an, _logo_da))
+                "Bootlogo-Wahl: %s, gezeigt wird: %s"
+                % (bootanim_dir, _wahl, _logo or "D-Pad-Symbol"))
             try:
-                if _logo_an and _logo_da:
-                    self._draw_dragend_logo_boot()
+                if _logo:
+                    self._draw_dragend_logo_boot(_logo)
                 else:
                     self._draw_default_boot_icon()
             except Exception:
@@ -25251,7 +25293,17 @@ class Frontend:
                                     max(0.0, _rt0 - _rt_prev))
                 self._publish_stream()
                 _rt1 = time.monotonic()
+                # BUILD 326: DIE POSTEN DER VORIGEN AKTION FESTHALTEN.
+                # next_action() zeichnet im Leerlauf selbst (Nachzeichnen,
+                # Laufschrift, Puls) - und das lief bisher in dieselben
+                # Zaehler, die die RUCKLER-Zeile gleich der VORIGEN Aktion
+                # zuschreibt. Im Log vom 15.11. stand deshalb
+                # "flip=20 (davon vsync=138)" und "zeichnen=230" bei
+                # 206 ms busy: mehr Warten als Flip, mehr Zeichnen als
+                # Arbeit. Hier gemerkt, nach next_action() zurueckgeholt.
+                _perf_merk = self._perf_merken()
                 act = self.next_action()
+                self._perf_zurueckholen(_perf_merk)
                 # NEU (Build 73): sobald wieder bedient wird, laesst der
                 # Vorauslader seine Liste augenblicklich fallen. Auf der
                 # schwachen MiSTer-CPU rechnet wegen Pythons GIL immer
@@ -25361,16 +25413,13 @@ class Frontend:
                         _oben = [(_rt1 - _rt0),
                                  getattr(self, "_perf_house", 0),
                                  getattr(self, "_perf_zeichnen", 0)]
-                        # Abholen UND zuruecksetzen in einem Schritt -
-                        # sonst zaehlte die naechste Zeile die Wartezeit
-                        # dieser mit. Auch dann abholen, wenn gar nicht
-                        # geloggt wird, damit der Zaehler nicht ueber
-                        # viele Schritte anwaechst; deshalb steht es
-                        # HIER und nicht in der Format-Zeile.
-                        try:
-                            _vsync_ms = self.fb.vsync_ms_und_zuruecksetzen()
-                        except AttributeError:
-                            _vsync_ms = 0.0
+                        # Build 326: abgeholt und zurueckgesetzt wird
+                        # JETZT in _perf_merken(), in JEDER Runde vor
+                        # next_action() - bis Build 325 geschah es nur
+                        # hier, also nur, wenn geloggt wurde, und der
+                        # Zaehler wuchs ueber alle leisen Schritte an
+                        # ("vsync=423" bei flip=0).
+                        _vsync_ms = _perf_merk[1]
                         # Build 320: wie viele Sammlungen der
                         # Speicherbereinigung seit der vorigen
                         # RUCKLER-Zeile gelaufen sind, je Stufe. Steht

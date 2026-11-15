@@ -73,7 +73,7 @@ gerade geht.
 - `Aktuelle Farben als eigenes Schema speichern`
 - `Eigenes Farbschema bearbeiten`
 - `Navigations-Soundeffekte: AN -> ausschalten`
-- `Boot-Logo: Dragend -> auf neutral wechseln`
+- `Boot-Logo: Dragend -> weiter`
 - `Schnelles Scrollen: AUS -> einschalten (etwas Bildriss-Risiko gegen kürzere Scroll-Verzögerung)`
 - `Cover beim Scrollen: AUS -> einschalten (Liste zeigt das Cover sofort, wie die Galerie)`
 - `Cover verkleinern: weich (gemittelt) -> scharf (Pixel-Look, auf der Roehre oft besser)`
@@ -314,6 +314,7 @@ setzt die Einstellung dagegen gefahrlos auf die Vorgabe zurueck.
 - `ansicht`
 - `ansicht_haupt`
 - `attract_delay`
+- `boot_logo_wahl`
 - `bootanim`
 - `flip_haeppchen`
 - `flip_rueckleser`
