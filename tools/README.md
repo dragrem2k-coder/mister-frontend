@@ -10927,3 +10927,42 @@ dort fuer beide Ansichten 0 sein.
   Gegenprobe mit einem ungeraeumten leeren Platz; erzwungener Aufbau und
   fremdes Vollbild nehmen den vollen Weg; Schirm gleich Puffer
   (Mutationsprobe: ohne gesammelte Rechtecke rot).
+
+## Nachtrag Build 329 - das Gimmick
+
+**Stand:** 17.11.2026, `Dragend_Build_329.zip` (build_id
+`2026-11-17-329`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat `Invade-a-Load_USA.T64` geschickt: "kann man dieses spiel im
+frontend starten? sollte als gimmick unter system wartung sein".
+
+### Die Datei
+
+T64, ein Platz, ein Programm: Ladeadresse `$0801`, Ende `$1D35`, 5428
+Bytes, BASIC-Zeile `SYS 2059` - also ein gewoehnliches Programm, kein
+Bandformat mit eigenem Lader. Herausgezogen ergibt das eine PRG von 5430
+Bytes.
+
+### Was Build 329 aendert
+
+* **neu `fe/gimmick.py`**: `finden()`, `c64_core_da()`,
+  `t64_erstes_programm()`, `prg_bereitstellen()`, `verfuegbar()`.
+* **Menuepunkt** unter Wartung nur, wenn Datei UND Core da sind.
+* **Start** ueber `write_mgl("_Computer/C64", prg, 1, "f", 1)`.
+
+### Ehrlich dazu
+
+* Das Spiel liegt **nicht** im Paket und nicht im Repository - fremdes
+  Programm, oeffentliche Verteilung. Er legt es selbst auf die Karte.
+* `type="f" index="1"` fuer PRG auf dem C64-Core stammt aus einem
+  belegten MGL-Beispiel der MiSTer-Community (misterfpga.org), nicht aus
+  einem Test am Geraet. Ob die PRG sofort laeuft, haengt an "Reset &
+  Run PRG" im Core.
+
+### Pruefungen
+
+* **neu** `tools/test_gimmick.py` - T64 -> PRG (falsche Endadresse,
+  zwei Programme, Unsinn), Finden mit Gegenproben, Bereitstellen nur im
+  eigenen Ordner, Menuepunkt nur mit Datei und Core, MGL-Inhalt,
+  kein Start ohne Core oder bei unlesbarer Datei.

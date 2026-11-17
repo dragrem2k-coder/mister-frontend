@@ -699,6 +699,13 @@ TRANSLATIONS = {
     "sys_group_input": {"en": "Input & language", "de": "Eingabe & Sprache"},
     "sys_group_info": {"en": "Info", "de": "Info"},
     "sys_group_maintenance": {"en": "Maintenance", "de": "Wartung"},
+    # Build 329: das Gimmick unter Wartung (siehe fe/gimmick.py).
+    "sys_invade_a_load": {"en": "Gimmick: Invade-a-Load (C64)",
+                          "de": "Gimmick: Invade-a-Load (C64)"},
+    "gimmick_fehlt": {"en": "Invade-a-Load or the C64 core is missing",
+                      "de": "Invade-a-Load oder der C64-Core fehlt"},
+    "gimmick_kaputt": {"en": "Invade-a-Load: file cannot be read",
+                       "de": "Invade-a-Load: Datei nicht lesbar"},
     "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
                         "de": "MiSTer-OSD öffnen (Settings/Buttons)"},
     "sys_video_crt":   {"en": "Menu video: CRT -> switch to HDMI",

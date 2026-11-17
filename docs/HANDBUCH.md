@@ -390,7 +390,7 @@ weiter unten erklärt werden, aber nirgends beisammenstehen:
 | Optionen | Autostart, **ROM-Filter**, **Attract-Verzögerung**, Miniaturen vorbereiten |
 | Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen |
 | Info | Hilfe/Übersicht, Einrichtung erneut starten, Auf Updates prüfen, Mitwirkende, Geheimnisse |
-| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten |
+| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, und als Gimmick **Invade-a-Load** auf dem C64-Core (siehe unten) |
 
 **"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
 gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
@@ -1674,6 +1674,33 @@ wann du dabei bist, dein Motto, wie viele Spiele deiner Sammlung
 gemeistert/abgeschlossen/beendet/angefangen sind, und die zuletzt
 freigeschalteten Erfolge (Hardcore hell, Softcore gedimmt). Ohne
 Internet zeigt es wenigstens die Zahlen deiner Sammlung.
+
+### Gimmick: Invade-a-Load (seit Build 329)
+
+Unter System → Wartung kann das Frontend **Invade-a-Load** starten — den
+C64-Kassettenlader von 1987, in dem man Space Invaders spielt, während
+das eigentliche Spiel lädt (Programm Richard Aplin, Musik Rob Hubbard).
+
+Das Spiel wird **nicht mitgeliefert** — es ist ein fremdes Programm,
+und das Frontend wird öffentlich verteilt. Leg deine Datei
+(`.T64` oder `.PRG`, der Name beginnt mit „Invade-a-Load") in einen
+dieser Ordner:
+
+```
+/media/fat/frontend/gimmick/
+/media/fat/games/C64/
+```
+
+Dazu muss der C64-Core in `/media/fat/_Computer/` liegen. Fehlt eines
+von beiden, steht der Menüpunkt gar nicht da. Aus einer `.T64` holt das
+Frontend beim ersten Start das Programm heraus und legt es als `.PRG`
+in `/media/fat/frontend/gimmick/` ab — deine Datei bleibt unangetastet.
+
+Ob das Programm sofort losläuft, hängt an einer Einstellung des
+C64-Cores: **„Reset & Run PRG"** im Menü des Cores (F12) einschalten.
+Sonst steht der C64 nach dem Laden bei READY. — dann `RUN` tippen.
+Zurück ins Frontend wie bei jedem Spiel: F1, Esc halten oder
+Start+Select+L+R am Nintendo-Pad.
 
 ## 8l. Standard- oder RA-Core wählen
 
@@ -3136,6 +3163,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Boxarts nachladen (braucht Netz) | `boxart_download` |
 | Spieledaten nachladen (braucht Netz) | `gameinfo_download` |
 | Anzeige neu aufbauen | `redraw` |
+| Gimmick: Invade-a-Load (C64) - nur wenn Datei und C64-Core da sind (seit Build 329) | `invade_a_load` |
 | MiSTer neu starten | `reboot` |
 | Frontend beenden | `quit` |
 

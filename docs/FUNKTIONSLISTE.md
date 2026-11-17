@@ -390,6 +390,7 @@ Quelltext selbst beschrieben ist.
 - **corestand** - Was hat update_all geaendert? (Build 250) Idee aus dem Vergleich mit Degauss: dort sieht man nach einem Update, was neu ist
 - **filter** - Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler (Build 142)
 - **game_state** - Persistenter Spielstatus pro Nutzer: Durchgespielt-Markierung, "Zuletzt gespielt", Favoriten, zuletzt tatsaechlich verwendete Core- Wahl pro Spiel
+- **gimmick** - Das Gimmick unter System -> Wartung: Invade-a-Load auf dem C64-Core (Build 329)
 - **hauptseite** - Die Hauptseite selbst bestimmen - Reihenfolge und Sichtbarkeit der Kategorien (Build 250)
 - **hintergrund** - Ein eigenes Hintergrundbild statt der einfarbigen Flaeche (Build 235)
 - **masken** - MiSTers eigene Shadow Masks - gelesen, nicht mitgeliefert (Build 226)

@@ -1421,6 +1421,32 @@ mastered/completed/beaten/started, and your most recent achievements
 (hardcore bright, softcore dimmed). Without internet it at least shows
 the numbers of your collection.
 
+### Gimmick: Invade-a-Load (since build 329)
+
+Under System → Maintenance the frontend can start **Invade-a-Load** —
+the C64 tape loader from 1987 in which you play Space Invaders while the
+actual game loads (program Richard Aplin, music Rob Hubbard).
+
+The game is **not included** — it is someone else's program, and the
+frontend is distributed publicly. Put your file (`.T64` or `.PRG`, the
+name starts with "Invade-a-Load") into one of these folders:
+
+```
+/media/fat/frontend/gimmick/
+/media/fat/games/C64/
+```
+
+The C64 core must be in `/media/fat/_Computer/` as well. If either is
+missing, the menu entry doesn't appear. From a `.T64` the frontend
+extracts the program on first start and stores it as `.PRG` in
+`/media/fat/frontend/gimmick/` — your file is left untouched.
+
+Whether the program starts right away depends on a setting of the C64
+core: turn on **"Reset & Run PRG"** in the core's menu (F12). Otherwise
+the C64 stops at READY. after loading — then type `RUN`. Back to the
+frontend as with any game: F1, hold Esc or Start+Select+L+R on a
+Nintendo pad.
+
 ## 8l. Choosing a standard or RA core
 
 If you use **sage2050's "MiSTer_RetroAchievements" tool** (separate
@@ -2732,6 +2758,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Download box art (needs network) | `boxart_download` |
 | Download game data (needs network) | `gameinfo_download` |
 | Redraw the display | `redraw` |
+| Gimmick: Invade-a-Load (C64) - only when the file and the C64 core are present (since build 329) | `invade_a_load` |
 | Reboot the MiSTer | `reboot` |
 | Quit the frontend | `quit` |
 

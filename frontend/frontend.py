@@ -388,6 +388,8 @@ from fe.naming import (
 
 from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
 import fe.cores as CORES
+# Build 329: das Gimmick unter System -> Wartung (Invade-a-Load).
+import fe.gimmick as GIMMICK
 import fe.mister_favs as MFAV
 import fe.mister_system as MSYS
 # ACHTUNG: NICHT mit fe/retroachievements.py verwechseln - das sind zwei
@@ -11092,6 +11094,22 @@ class Frontend:
         if foto and art_key in self._sysart_foto_namen():
             basis = SYSART_FOTO_BASE
         return os.path.join(basis, "%s.art" % art_key)
+
+    def _gimmick_starten(self):
+        """Invade-a-Load auf dem C64-Core (Build 329, siehe fe/gimmick.py).
+        False, wenn es nicht ging - dann steht der Grund unten im Bild."""
+        quelle = GIMMICK.finden()
+        if not quelle or not GIMMICK.c64_core_da():
+            self.draw(message=t("gimmick_fehlt"))
+            return False
+        prg = GIMMICK.prg_bereitstellen(quelle)
+        if not prg:
+            self.draw(message=t("gimmick_kaputt"))
+            return False
+        LOG("Gimmick: starte %s auf %s" % (prg, GIMMICK.C64_RBF))
+        mgl = write_mgl(GIMMICK.C64_RBF, prg, 1, "f", 1)
+        self.run_core(mgl, label="Invade-a-Load")
+        return True
 
     def _seite_gewechselt(self, alt_key, neu_key, alt_gen):
         """Hat sich gegenueber dem vorigen Bild NUR die Seite geaendert
@@ -27114,6 +27132,10 @@ class Frontend:
                             continue
                         elif kind == "redraw":
                             self.fb.refresh_geometry()
+                        elif kind == "invade_a_load":
+                            # Build 329: das Gimmick, siehe
+                            # _gimmick_starten() und fe/gimmick.py.
+                            self._gimmick_starten()
                         elif kind == "rom_filter":
                             # NEUES FEATURE (Nutzerwunsch: "dass jeder
                             # wirklich das angezeigt bekommt, was er auch

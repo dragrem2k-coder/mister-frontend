@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Neu: Gimmick unter System → Wartung — Invade-a-Load.** Der
+  C64-Kassettenlader von 1987, in dem man Space Invaders spielt, startet
+  auf dem C64-Core. Die Datei bringst du selbst mit (`.T64` oder `.PRG`
+  in `/media/fat/games/C64/` oder `/media/fat/frontend/gimmick/`); aus
+  einer T64 holt das Frontend das Programm heraus. Der Menüpunkt steht
+  nur da, wenn Datei und C64-Core vorhanden sind (Build 329).
+
 - **Schneller: Seitenwechsel in Raster und Kachelwand.** Dein Bench 24
   zeigt: beim Blättern hat das Raster in 6 und die Kachelwand in 4 von
   58 Schritten den ganzen Bildschirm neu gezeichnet — das sind die

@@ -53,6 +53,8 @@ from fe.settings import (
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 import fe.mister_system as MSYS
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
+# Build 329: das Gimmick unter Wartung.
+import fe.gimmick as GIMMICK
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
 # sprechende Aliasname statt eines blanken "vorhanden".
@@ -647,6 +649,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_boxart_download"), "boxart_download", None),
             (t("sys_gameinfo_download"), "gameinfo_download", None),
             (t("sys_redraw"), "redraw", None),
+            # Build 329: das Gimmick - nur, wenn die Datei und der
+            # C64-Core auf der Karte liegen (siehe fe/gimmick.py).
+            *([(t("sys_invade_a_load"), "invade_a_load", None)]
+              if GIMMICK.verfuegbar() else []),
             (t("sys_reboot"), "reboot", None),
             (t("sys_quit"), "quit", None),
         ),

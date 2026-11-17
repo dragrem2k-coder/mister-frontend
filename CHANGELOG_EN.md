@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **New: gimmick under System → Maintenance — Invade-a-Load.** The C64
+  tape loader from 1987 in which you play Space Invaders starts on the
+  C64 core. You bring the file yourself (`.T64` or `.PRG` in
+  `/media/fat/games/C64/` or `/media/fat/frontend/gimmick/`); from a T64
+  the frontend extracts the program. The menu entry only appears when
+  the file and the C64 core are present (build 329).
+
 - **Faster: page changes in grid and tile wall.** Your bench 24 shows
   that while scrolling, the grid redrew the whole screen in 6 and the
   tile wall in 4 of 58 steps — those are the page changes, the slowest
