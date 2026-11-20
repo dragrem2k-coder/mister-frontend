@@ -14,6 +14,14 @@ importierbares Modul). Fester Pfad, kein Synchronisierungsrisiko.
 """
 import os, glob
 
+def _log(text):
+    try:
+        from fe.log import LOG
+        LOG(text)
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
 SCRIPTS_DIR = "/media/fat/Scripts"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
 CORENAME    = "/tmp/CORENAME"
@@ -33,11 +41,23 @@ def write_mgl(rbf, rom_path, delay, ftype, index, setname=None):
     try:
         from fe.computer import mgl_inhalt
         sonder = mgl_inhalt(rbf, rom_path, delay, ftype, index, setname)
-    except Exception:                                    # noqa: BLE001
+    except Exception as e:                               # noqa: BLE001
+        # Build 331: nicht mehr still. Ein Fehler hier fiel bisher auf
+        # die gewoehnliche MGL zurueck - fuer einen AmigaVision-Eintrag
+        # mit type="ags", also einen Minimig ohne Einstellung, der beim
+        # Kickstart-Bild stehen bleibt.
+        _log("write_mgl: Sonderfall fehlgeschlagen (%s): %s" % (rom_path, e))
         sonder = None
+        if ftype == "ags":
+            sonder = ('<mistergamedescription>\n\t<rbf>%s</rbf>\n'
+                      '\t<setname>Amiga</setname>\n'
+                      '</mistergamedescription>\n' % rbf)
     if sonder:
         with open(MGL_TMP, "w") as f:
             f.write(sonder)
+        # Was genau gestartet wird, steht im Protokoll - die Computer
+        # sind die Faelle, bei denen man das nachsehen will.
+        _log("write_mgl: " + " ".join(sonder.split()))
         return MGL_TMP
     setname_xml = ('\t<setname same_dir="1">%s</setname>\n' % setname) \
         if setname else ""

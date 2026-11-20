@@ -1726,15 +1726,41 @@ in sein eigenes Menü.
 nicht von selbst losgehen. OK startet, ESC nicht. Zum Eintippen braucht
 es eine Tastatur am MiSTer.
 
+**Mit welchen Einstellungen der Amiga startet (seit Build 331).** Der
+Minimig-Core liest seine Einstellungen aus `config/<Setname>.cfg` —
+dort stehen Kickstart und Festplatte. Fehlt die Datei oder der
+Kickstart darin, bleibt er beim Kickstart-Bild stehen. Das Frontend
+schreibt den Setnamen deshalb nicht mehr fest hinein, sondern sieht nach:
+
+- **AmigaVision-Einträge** starten genau so wie AmigaVisions eigene MGL
+  in `_Computer` (normalerweise `Amiga.mgl` mit den Einstellungen
+  `config/Amiga.cfg`) — gesucht wird die MGL, deren Einstellung
+  `AmigaVision.hdf` einhängt.
+- **ADF-Disketten** starten mit deiner eigenen `config/Minimig.cfg`,
+  wenn deren Kickstart da ist. Sonst mit der Einstellung „Amiga500"
+  aus dem AmigaVision-Paket (Kickstart `games/Amiga500/1.3.rom`), und
+  wenn es die nicht gibt, mit der AmigaVision-Einstellung — ein Amiga
+  bootet von der Diskette, bevor er auf die Festplatte schaut.
+
+**0MHz-Spiele müssen entpackt sein.** Die Sammlung kommt als ein ZIP je
+Spiel; darin liegen `_DOS Games/<Spiel>.mgl` und
+`games/ao486/media/<spiel>/`. Eine Festplatte kann MiSTer nicht aus
+einem ZIP heraus einhängen. Fehlen die Abbilder einer MGL, zeigt das
+Frontend vor dem Start „Spieldateien fehlen" mit dem fehlenden Pfad
+(OK startet trotzdem, ESC nicht).
+
 **Computer-Check** unter System → Wartung zeigt je Computer, was da ist
 und was fehlt: der Core, der Spieleordner, die AmigaVision-Installation
-mit Liste und `shared/`, die ao486-Boot-ROMs (`boot0.rom`, `boot1.rom`
-in `games/AO486/`) und wie viele 0MHz-Spiele gefunden wurden.
+mit Liste und `shared/`, **seit Build 331** auch die Einstellungsdatei,
+den Kickstart und die Festplatten, die der Minimig beim Start wirklich
+liest, und mit welcher Einstellung eine ADF startet; dazu die
+ao486-Boot-ROMs (`boot0.rom`, `boot1.rom` in `games/AO486/`), wie viele
+0MHz-Spiele gefunden wurden und wie viele davon ohne Spieldateien sind.
 
 Die Cover kommen aus den libretro-Datenbanken „Commodore - 64",
-„Commodore - Amiga", „Amstrad - CPC" und „DOS". Ein eigenes
-Kategorie-Abzeichen haben die vier noch nicht — dort steht vorerst der
-Platzhalter.
+„Commodore - Amiga", „Amstrad - CPC" und „DOS". **Seit Build 331** haben
+die vier ein eigenes Kategorie-Abzeichen (Pixel-Art) und für Kachelwand,
+Dashboard und Karussell ein Gerätefoto.
 
 ## 8l. Standard- oder RA-Core wählen
 

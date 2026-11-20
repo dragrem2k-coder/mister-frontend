@@ -108,8 +108,8 @@ Die drei neuen Hauptseiten — **Kachelwand**, **Dashboard** und
 /media/fat/frontend/sysart_foto/<Systemkey>.art
 ```
 
-und erst dann aus `sysart/`. Mitgeliefert werden 20 freigestellte
-Konsolenfotos; alles andere fällt automatisch auf das Abzeichen
+und erst dann aus `sysart/`. Mitgeliefert werden 24 freigestellte
+Gerätefotos (seit Build 331 auch C64, Amiga, Amstrad CPC und 486er-PC); alles andere fällt automatisch auf das Abzeichen
 zurück, und die drei klassischen Ansichten (Liste, Raster, Galerie)
 bleiben ganz bei den Abzeichen.
 
@@ -143,3 +143,53 @@ Drei Dinge, die man wissen sollte:
   gibt es die Lochsuche. Bleibt bei einem eigenen Foto trotzdem etwas
   stehen oder wird zu viel entfernt, hilft `--loecher-anteil`
   (Vorgabe 0.0045) oder `--toleranz` (Vorgabe 52).
+
+### Nachbearbeitung (seit Build 331)
+
+Drei Schalter für Fotos, bei denen die Freistellung allein nicht reicht:
+
+| Schalter | Wofür | Gebraucht bei |
+|---|---|---|
+| `--saum N` (mit `--saum-hell`) | N Punktreihen hellen, farblosen Saum am Geräterand abtragen | Amstrad: grauer Schattenkranz um das schwarze Gehäuse (`--saum 60 --saum-hell 140`) |
+| `--inseln A` | abgetrennte Reste kleiner als A × die größte Fläche entfernen | 486er: Schattenstriche neben dem Turm |
+| `--weg X,Y` | einen eingeschlossenen Hintergrundrest an dieser Stelle des Originals entfernen (mehrfach) | Amstrad: Tischfläche zwischen Monitorfuß, Kabeln und Tastatur |
+
+Die vier Computerfotos sind so entstanden:
+
+```
+python3 PC-Tools/sysart_foto_convert.py AMIGA=Amiga500.jpg C64=Commodore64.jpg \
+    --inseln 0.01 --loecher-anteil 0.02
+python3 PC-Tools/sysart_foto_convert.py AMSTRAD=Amstrad_CPC_6128.jpg \
+    --saum 60 --saum-hell 140 --inseln 0.01 --weg 550,515 --weg 290,510 \
+    --weg 291,536 --weg 329,549 --weg 414,529 --weg 458,542
+python3 PC-Tools/sysart_foto_convert.py AO486=486_pc.jpg --neutral --toleranz 20 \
+    --inseln 0.02
+```
+
+`--loecher-anteil 0.02` bei Amiga und C64: sonst gilt das weiße
+Zifferblatt auf dem Workbench-Bildschirm bzw. das Diskettenetikett als
+eingeschlossener Hintergrund und verschwindet.
+
+## Abzeichen aus einem Kartenblatt (Build 331)
+
+`PC-Tools/sysart_karten.py` macht aus einem Blatt mit Pixel-Karten
+(Gerät auf weißer Karte, farbiger Rand, Schriftband) Abzeichen in der
+Form aller anderen: beiges Oval mit Treppenkante, Gerät oben, Name in
+dunkler schmaler Schrift darunter, 320×420 auf C_PANEL. Der Name wird
+neu gesetzt (Tabelle `KARTEN` im Werkzeug) — aus „HOME COMPUTER" auf
+dem Blatt wurde so „AMSTRAD CPC".
+
+```
+python3 PC-Tools/sysart_karten.py blatt.png --ziel frontend/sysart \
+    --vorschau /tmp/karten.png
+```
+
+## Bildquellen der Computerfotos
+
+Die Herkunft der vom Nutzer geschickten Fotos ist von hier aus nicht
+nachprüfbar. Amiga 500 und Commodore 64 entsprechen den bekannten
+Wikimedia-Commons-Fotos von Bill Bertram (CC BY-SA 2.5) — wer das
+Repository weitergibt, nennt ihn dabei. Der 486er ist ein 3D-Rendering
+unbekannter Herkunft, das Amstrad-Foto ebenfalls; vor einer
+Veröffentlichung klären.
+

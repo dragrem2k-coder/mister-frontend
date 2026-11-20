@@ -17224,17 +17224,27 @@ class Frontend:
         ts = self._fit_scale(titel, W - 2 * ox, s + 1)
         fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
         y = oy + 10 * ts + 10 * s
-        gross = 2 * s if W >= 640 else s
+        tastatur = titel_key in COMPUTER.TASTATUR_TITEL
+        gross = 2 * s if (W >= 640 and tastatur) else s
         for key, args in zeilen:
             text = t(key, *args)
-            zs = self._fit_scale(text, W - 2 * ox, gross)
-            fb.text(ox, y, text, zs, C_TEXT, C_BG)
-            y += 10 * zs + 6 * s
+            if tastatur:
+                # Ein Befehl zum Abtippen: gross und in einer Zeile.
+                zs = self._fit_scale(text, W - 2 * ox, gross)
+                fb.text(ox, y, text, zs, C_TEXT, C_BG)
+                y += 10 * zs + 6 * s
+            else:
+                # Build 331: eine Erklaerung (DOS ohne Dateien) - umbrechen.
+                for z in self._wrap_text(text, maxc):
+                    fb.text(ox, y, z, s, C_TEXT, C_BG)
+                    y += 12 * s
+                y += 4 * s
         y += 6 * s
-        for z in self._wrap_text(t("hinweis_tastatur"), maxc):
-            fb.text(ox, y, z, s, C_DIM, C_BG)
-            y += 12 * s
-        hint = t("hinweis_tasten")
+        if tastatur:
+            for z in self._wrap_text(t("hinweis_tastatur"), maxc):
+                fb.text(ox, y, z, s, C_DIM, C_BG)
+                y += 12 * s
+        hint = t("hinweis_tasten" if tastatur else "hinweis_tasten_trotzdem")
         sc = s - 1 if s > 1 else 1
         self._hinweis_unten(hint, sc)
         fb.flip()

@@ -307,6 +307,138 @@ def neutral_entfernen(img, saettigung_max=2, mindest_anteil=0.0045):
     return _grosse_flaechen_entfernen(img, passt, mindest)
 
 
+def saum_entfernen(img, durchgaenge=2, hell=200, saettigung_max=40):
+    """Den hellen Saum am Rand des freigestellten Geraets abtragen
+    (Build 331).
+
+    DAS PROBLEM, gesehen am Amstrad-Foto: JPEG mischt an jeder Kante
+    das Weiss des Studiohintergrunds ein paar Bildpunkte weit ins
+    Geraet. Die Flutfuellung bleibt an diesen Mischpunkten stehen
+    (zu weit vom Weiss weg), und auf der dunklen Karte steht dann ein
+    heller Kranz um das schwarze Gehaeuse.
+
+    Abgetragen wird nur, was BEIDES ist: hell (alle drei Kanaele ueber
+    'hell') und fast farblos - und nur, wenn der Punkt direkt an einem
+    schon durchsichtigen liegt. Je Durchgang eine Punktreihe; ein
+    beiges Gehaeuse (Amiga, C64) bleibt stehen, weil es Farbe hat."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    px = img.load()
+    for _ in range(max(0, durchgaenge)):
+        weg = []
+        for y in range(h):
+            for x in range(w):
+                c = px[x, y]
+                if c[3] == 0 or min(c[0], c[1], c[2]) < hell:
+                    continue
+                if max(c[0], c[1], c[2]) - min(c[0], c[1], c[2]) \
+                        > saettigung_max:
+                    continue
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1),
+                               (x, y - 1)):
+                    if not (0 <= nx < w and 0 <= ny < h) \
+                            or px[nx, ny][3] == 0:
+                        weg.append((x, y))
+                        break
+        if not weg:
+            break
+        for x, y in weg:
+            px[x, y] = (0, 0, 0, 0)
+    return img
+
+
+def inseln_entfernen(img, anteil=0.02):
+    """Kleine abgetrennte Reste wegnehmen (Build 331): alles, was
+    nicht mit dem Geraet zusammenhaengt und kleiner ist als 'anteil'
+    der groessten zusammenhaengenden Flaeche.
+
+    DAS PROBLEM, gesehen am gerenderten 486er: vom weichen Schatten
+    bleiben nach neutral_entfernen() duenne Striche neben dem Turm
+    stehen. Sie stoeren nicht nur - sie bestimmen auch den Zuschnitt,
+    und das Geraet erscheint dadurch kleiner in der Kachel.
+
+    Mehrere grosse Teile (Rechner, Tastatur, Maus mit Kabel) bleiben
+    alle stehen; weg kommt nur, was im Vergleich winzig ist."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    px = img.load()
+    gesehen = bytearray(w * h)
+    flaechen = []
+    for sy in range(h):
+        for sx in range(w):
+            if gesehen[sy * w + sx] or px[sx, sy][3] == 0:
+                continue
+            f = []
+            q = deque([(sx, sy)])
+            gesehen[sy * w + sx] = 1
+            while q:
+                x, y = q.popleft()
+                f.append((x, y))
+                for nx in (x - 1, x, x + 1):
+                    for ny in (y - 1, y, y + 1):
+                        if not (0 <= nx < w and 0 <= ny < h):
+                            continue
+                        if gesehen[ny * w + nx] or px[nx, ny][3] == 0:
+                            continue
+                        gesehen[ny * w + nx] = 1
+                        q.append((nx, ny))
+            flaechen.append(f)
+    if not flaechen:
+        return img
+    groesste = max(len(f) for f in flaechen)
+    for f in flaechen:
+        if len(f) < groesste * anteil:
+            for x, y in f:
+                px[x, y] = (0, 0, 0, 0)
+    return img
+
+
+def stellen_entfernen(img, punkte, toleranz=10, hell_min=110):
+    """Eingeschlossene Hintergrundreste an ausdruecklich genannten
+    Stellen wegnehmen (Build 331) - geflutet von jedem Punkt aus,
+    verglichen wird jeder Bildpunkt mit dem NACHBARN, von dem aus er
+    erreicht wurde (wie in sysart_abzeichen.py).
+
+    DAS PROBLEM, gesehen am Amstrad-Foto: unter dem Monitor, zwischen
+    Fuss, Kabeln und Tastatur, liegt ein grauer Schattenfleck. Er ist
+    vom Bildrand aus nicht erreichbar und so grau wie der Bildschirm -
+    keine Regel kann die beiden unterscheiden, ohne den Bildschirm
+    mitzunehmen. Deshalb nennt man die Stelle selbst.
+
+    punkte: [(x, y)] in Koordinaten des ORIGINALBILDES; umgerechnet
+    wird beim Aufrufer, weil die Maskenarbeit auf der verkleinerten
+    Fassung laeuft.
+
+    hell_min: nur Punkte, deren dunkelster Kanal mindestens so hell
+    ist. Im ersten Versuch fehlte die Grenze - die Flutung kroch ueber
+    den weichen Uebergang am unteren Monitorrand ins Gehaeuse und nahm
+    den ganzen Monitor mit. Ein Schatten auf einem hellen Tisch ist
+    nie so dunkel wie ein schwarzes Gehaeuse."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    px = img.load()
+    for x0, y0 in punkte:
+        if not (0 <= x0 < w and 0 <= y0 < h):
+            continue
+        q = deque([(x0, y0, px[x0, y0])])
+        gesehen = set()
+        while q:
+            x, y, vor = q.popleft()
+            if (x, y) in gesehen or not (0 <= x < w and 0 <= y < h):
+                continue
+            c = px[x, y]
+            if c[3] == 0 or min(c[0], c[1], c[2]) < hell_min:
+                continue
+            if (abs(c[0] - vor[0]) > toleranz or abs(c[1] - vor[1])
+                    > toleranz or abs(c[2] - vor[2]) > toleranz):
+                continue
+            gesehen.add((x, y))
+            px[x, y] = (0, 0, 0, 0)
+            q.extend(((x + 1, y, c), (x - 1, y, c), (x, y + 1, c),
+                      (x, y - 1, c)))
+    return img
+
+
 def zuschneiden(img):
     """Den leeren Rand abschneiden - sonst bestimmt der Zufall des
     Studiofotos, wie gross das Geraet in der Kachel erscheint."""
@@ -373,8 +505,11 @@ def verkleinern(img, kante=ARBEITS_KANTE):
 
 
 def ein_foto(quelle, toleranz=52, rand=RAND, mindest_anteil=0.0045,
-             neutral=False):
-    bild = verkleinern(Image.open(quelle).convert("RGB")).convert("RGBA")
+             neutral=False, saum=0, inseln=0.0, saum_hell=200,
+             stellen=()):
+    roh = Image.open(quelle).convert("RGB")
+    bild = verkleinern(roh).convert("RGBA")
+    faktor = bild.width / float(roh.width)
     # Die Grundfarbe VOR dem Fluten bestimmen - danach sind die Ecken
     # durchsichtig und geben sie nicht mehr her. Siehe grundfarbe().
     bg = grundfarbe(bild)
@@ -382,6 +517,13 @@ def ein_foto(quelle, toleranz=52, rand=RAND, mindest_anteil=0.0045,
     bild = loecher_schliessen(bild, toleranz, mindest_anteil, bg)
     if neutral:
         bild = neutral_entfernen(bild, mindest_anteil=mindest_anteil)
+    if stellen:
+        bild = stellen_entfernen(bild, [(int(x * faktor), int(y * faktor))
+                                        for x, y in stellen])
+    if saum:
+        bild = saum_entfernen(bild, saum, hell=saum_hell)
+    if inseln:
+        bild = inseln_entfernen(bild, inseln)
     bild = zuschneiden(bild)
     return einpassen(bild, rand=rand)
 
@@ -408,6 +550,24 @@ def main(argv=None):
                    help="ab welchem Flaechenanteil ein eingeschlossener "
                         "heller Fleck als Hintergrund gilt (Vorgabe "
                         "0.0045 = 0,45 %%)")
+    p.add_argument("--saum", type=int, default=0,
+                   help="so viele Punktreihen hellen, farblosen Saum am "
+                        "Geraeterand abtragen (Build 331, siehe "
+                        "saum_entfernen())")
+    p.add_argument("--saum-hell", type=int, default=200, dest="saum_hell",
+                   help="ab welcher Helligkeit (jeder Kanal) ein Saumpunkt "
+                        "abgetragen wird (Vorgabe 200; ein grauer "
+                        "Schattenkranz um ein SCHWARZES Geraet braucht "
+                        "weniger, z.B. 140)")
+    p.add_argument("--weg", action="append", default=[],
+                   metavar="X,Y",
+                   help="einen eingeschlossenen Hintergrundrest an dieser "
+                        "Stelle des Originalbildes entfernen (mehrfach "
+                        "moeglich; Build 331, siehe stellen_entfernen())")
+    p.add_argument("--inseln", type=float, default=0.0,
+                   help="abgetrennte Reste kleiner als dieser Anteil der "
+                        "groessten Flaeche entfernen, z.B. 0.02 (Build "
+                        "331, siehe inseln_entfernen())")
     p.add_argument("--vorschau", default=None,
                    help="Kontaktbogen aller Ergebnisse als PNG ablegen")
     a = p.parse_args(argv)
@@ -425,7 +585,8 @@ def main(argv=None):
             name = os.path.splitext(os.path.basename(eing))[0]
             pfad = eing
         bild = ein_foto(pfad, a.toleranz, a.rand, a.loecher_anteil,
-                        a.neutral)
+                        a.neutral, a.saum, a.inseln, a.saum_hell,
+                        [tuple(int(v) for v in w.split(",")) for w in a.weg])
         ziel = os.path.join(a.ziel, "%s.art" % name)
         b, h, n = schreiben(bild, ziel)
         print("%-22s %dx%d  %6.1f KB" % (name + ".art", b, h, n / 1024.0))

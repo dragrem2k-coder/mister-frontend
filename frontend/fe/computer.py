@@ -66,6 +66,17 @@ AMIGAVISION_LISTEN = (("games.txt", "AmigaVision"),
 TYP_AGS = "ags"          # AmigaVision-Eintrag
 TYP_MGL = "mgl"          # fertige MGL einer Sammlung (0MHz)
 
+# Build 331: wo MiSTer die Einstellungen der Cores ablegt, und die Wurzel,
+# gegen die er relative Pfade darin aufloest (file_io.cpp,
+# make_fullpath(): getRootDir() + "/" + Pfad).
+CONFIG_ORDNER = "/media/fat/config"
+SD_WURZEL = "/media/fat"
+COMPUTER_ORDNER = "/media/fat/_Computer"
+AGS_ABBILDER = ("amigavision.hdf", "megaags.hdf")
+# Die Hinweise, zu denen der Satz "Dafuer braucht es eine Tastatur"
+# gehoert - beim fehlenden DOS-Spiel waere er falsch.
+TASTATUR_TITEL = ("hinweis_c64_titel", "hinweis_cpc_titel")
+
 
 def _basen():
     try:
@@ -144,6 +155,182 @@ def ags_boot_schreiben(installation, name):
 
 
 # ---------------------------------------------------------------------------
+# Minimig: Einstellungen und Start-MGLs (Build 331)
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG nach Build 330: "amiga spiele starten nicht da lande ich
+# einfach bei der kickrom anzeige obwohl ich ein kickrom drauf habe".
+#
+# WAS DAHINTER STECKT (Main_MiSTer, support/minimig/minimig_config.cpp):
+# der Minimig-Core liest seine Einstellungen aus config/<Name>.cfg, und
+# <Name> ist der Setname aus der MGL - ohne Setname "Minimig". Fehlt die
+# Datei, nimmt er Vorgaben ("No config found. Using defaults") und sucht
+# einen Kickstart, den es unter dem Vorgabenamen nicht gibt. Genau das
+# Bild hat er gesehen. AmigaVision legt seine Einstellungen als
+# config/Amiga.cfg ab (Kickstart games/Amiga/AmigaVision.rom, Festplatte
+# games/Amiga/AmigaVision.hdf) und dazu _Computer/Amiga.mgl mit genau
+# diesem Setnamen - so steht es im AmigaVision-Paket.
+#
+# Build 330 hat den Setnamen "Amiga" fest hineingeschrieben und eine
+# ADF ganz ohne Setnamen gestartet. Jetzt wird nachgesehen statt
+# angenommen: welche MGL in _Computer startet den Minimig, mit welchem
+# Setnamen, und was steht in der zugehoerigen Einstellungsdatei.
+
+def _text_aus(daten, start, laenge):
+    stueck = daten[start:start + laenge]
+    return stueck.split(b"\0", 1)[0].decode("latin-1", "replace").strip()
+
+
+def minimig_cfg_lesen(pfad):
+    """Kickstart und Festplatten aus einer Minimig-Einstellungsdatei -
+    {"kickstart": str, "hdf": [str, ...]} oder None.
+
+    Aufbau (mm_configTYPE in minimig_config.h, ohne Fuellbytes): 8 Byte
+    Kennung "MNMGCFG0", 2+2 Byte Version, 992 Byte Kickstart-Pfad, 32
+    Label, 2 ext_cfg, je 1 Byte memory/chipset, 2 floppy, je 1 Byte
+    disable_ar3/ide_cfg/scanlines/audio - ab Byte 1046 dann vier
+    Festplatten zu je 1026 Byte (cfg, reserved, 1024 Byte Pfad)."""
+    try:
+        with open(pfad, "rb") as f:
+            daten = f.read(8192)
+    except OSError:
+        return None
+    if not daten.startswith(b"MNMGCFG") or len(daten) < 1046 + 1026:
+        return None
+    hdf = []
+    for i in range(4):
+        o = 1046 + i * 1026
+        if o + 1026 > len(daten):
+            break
+        name = _text_aus(daten, o + 2, 1024)
+        if daten[o] and name:
+            hdf.append(name)
+    return {"kickstart": _text_aus(daten, 12, 992), "hdf": hdf}
+
+
+def mister_pfad(pfad, wurzel=None):
+    """Ein Pfad aus einer Einstellungsdatei, so aufgeloest wie MiSTer es
+    tut: absolut bleibt absolut, sonst relativ zur Wurzel der Karte."""
+    if not pfad:
+        return ""
+    if pfad.startswith("/"):
+        return pfad
+    return os.path.join(wurzel or SD_WURZEL, pfad)
+
+
+def minimig_mgls(ordner=None):
+    """[(MGL-Pfad, rbf, Setname-Element, Setname)] aller MGLs in
+    _Computer, die den Minimig starten, nach Name sortiert. Das
+    Setname-Element wird WOERTLICH uebernommen (samt Attributen wie
+    same_dir) - das Frontend startet genau so, wie die MGL es tut."""
+    import re
+    raus = []
+    try:
+        namen = sorted(os.listdir(ordner or COMPUTER_ORDNER))
+    except OSError:
+        return raus
+    for n in namen:
+        if not n.lower().endswith(".mgl"):
+            continue
+        pfad = os.path.join(ordner or COMPUTER_ORDNER, n)
+        try:
+            with open(pfad, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read(16384)
+        except OSError:
+            continue
+        rbf = re.search(r"<rbf>\s*([^<]*?)\s*</rbf>", text, re.I)
+        if not rbf or "minimig" not in rbf.group(1).lower():
+            continue
+        if re.search(r"<file\b", text, re.I):
+            continue            # startet ein Spiel, keine Grundeinstellung
+        el = re.search(r"<setname\b[^>]*>\s*([^<]*?)\s*</setname>", text,
+                       re.I)
+        raus.append((pfad, rbf.group(1), el.group(0) if el else "",
+                     el.group(1) if el else ""))
+    return raus
+
+
+def _ist_ags(cfg):
+    return bool(cfg) and any(os.path.basename(h).lower() in AGS_ABBILDER
+                             for h in cfg["hdf"])
+
+
+def amigavision_start(ordner=None, config=None):
+    """Womit AmigaVision gestartet wird: (rbf, Setname-Element, Setname,
+    Herkunft). Herkunft ist der Pfad der MGL bzw. der Einstellungsdatei,
+    aus der es stammt - oder "" fuer die Vorgabe.
+
+    Reihenfolge: eine Minimig-MGL in _Computer, deren Einstellungsdatei
+    AmigaVision.hdf (oder MegaAGS.hdf) einhaengt - "Amiga" zuerst; dann
+    irgendeine Einstellungsdatei mit AmigaVision.hdf; dann die Vorgabe
+    des AmigaVision-Pakets (Setname "Amiga")."""
+    config = config or CONFIG_ORDNER
+    treffer = []
+    for mgl, rbf, el, name in minimig_mgls(ordner):
+        if name and _ist_ags(minimig_cfg_lesen(
+                os.path.join(config, name + ".cfg"))):
+            treffer.append((name.lower() != "amiga", mgl, rbf, el, name))
+    if treffer:
+        treffer.sort()
+        _r, mgl, rbf, el, name = treffer[0]
+        return rbf, el, name, mgl
+    try:
+        namen = sorted(os.listdir(config))
+    except OSError:
+        namen = []
+    for n in namen:
+        stamm = n[:-4]
+        # "Amiga1.cfg" ist Platz 1 der Einstellung "Amiga" (Minimig
+        # nummeriert gespeicherte Fassungen so) - kein eigener Setname.
+        if (stamm[-1:].isdigit()
+                and os.path.isfile(os.path.join(config, stamm[:-1] + ".cfg"))):
+            continue
+        if n.lower().endswith(".cfg") and _ist_ags(
+                minimig_cfg_lesen(os.path.join(config, n))):
+            name = stamm
+            return ("_Computer/Minimig", "<setname>%s</setname>" % name,
+                    name, os.path.join(config, n))
+    return "_Computer/Minimig", "<setname>Amiga</setname>", "Amiga", ""
+
+
+def amiga_diskette_start(ordner=None, config=None, wurzel=None):
+    """Mit welchen Einstellungen eine ADF startet: (Setname-Element,
+    Setname) oder None (= der Minimig mit seinen eigenen).
+
+    Hat config/Minimig.cfg einen vorhandenen Kickstart, bleibt es bei
+    None. Sonst wird eine Minimig-MGL mit Setname gesucht, deren
+    Einstellungsdatei
+    da ist, deren Kickstart da ist und die KEINE AmigaVision-Festplatte
+    einhaengt - "Amiga500" (vom AmigaVision-Paket) zuerst. Gibt es die
+    nicht, tut es die AmigaVision-Einstellung auch: ein Amiga bootet von
+    der Diskette in df0, bevor er auf die Festplatte schaut."""
+    config = config or CONFIG_ORDNER
+    # Hat der Minimig selbst eine Einstellung mit vorhandenem Kickstart,
+    # bleibt es dabei - die hat der Nutzer sich eingerichtet.
+    eigene = minimig_cfg_lesen(os.path.join(config, "Minimig.cfg"))
+    if eigene and os.path.isfile(mister_pfad(eigene["kickstart"], wurzel)):
+        return None
+    gut, ags = [], []
+    for _mgl, _rbf, el, name in minimig_mgls(ordner):
+        if not name:
+            continue
+        cfg = minimig_cfg_lesen(os.path.join(config, name + ".cfg"))
+        if not cfg or not os.path.isfile(mister_pfad(cfg["kickstart"],
+                                                      wurzel)):
+            continue
+        if _ist_ags(cfg):
+            ags.append((name.lower() != "amiga", el, name))
+        else:
+            gut.append((name.lower() != "amiga500", name.lower(), el, name))
+    if gut:
+        gut.sort()
+        return gut[0][2], gut[0][3]
+    if ags:
+        ags.sort()
+        return ags[0][1], ags[0][2]
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 0MHz-DOS
 # ---------------------------------------------------------------------------
 def _mgl_dateipfade(mgl_pfad):
@@ -187,6 +374,33 @@ def dos_mgl_abbilder(mgl_pfad, ao486_ordner):
         raus.add(os.path.normcase(os.path.normpath(
             os.path.join(ao486_ordner, p))).lower())
     return raus
+
+
+def dos_mgl_fehlend(mgl_pfad, basen=None):
+    """Die Abbilder einer 0MHz-MGL, die auf KEINER Wurzel liegen - als
+    Pfade, wie sie in der MGL stehen. Leer, wenn alles da ist (Build 331).
+
+    NUTZERFRAGE: "bei der 0mhz collection muss ich die spiele entpacken
+    damit die starten?" - Ja: die Sammlung kommt als ein ZIP je Spiel,
+    darin _DOS Games/<Spiel>.mgl und games/ao486/media/<spiel>/. Eine
+    Festplatte kann MiSTer nicht aus einem ZIP heraus einhaengen. Liegt
+    nur die MGL da, startet der Core mit leerer Festplatte.
+
+    Gesucht wird wie MiSTer selbst (Heimatordner AO486 auf jeder Wurzel)
+    - und zusaetzlich in "ao486" klein geschrieben, denn so legt das
+    0MHz-ZIP den Ordner an; auf USB oder NAS mit ext4 ist das ein
+    anderer Ordner."""
+    fehlt = []
+    for p in _mgl_dateipfade(mgl_pfad):
+        if p.startswith("../"):
+            voll = [os.path.normpath(os.path.join(SD_WURZEL, "games",
+                                                  "AO486", p))]
+        else:
+            voll = [os.path.join(b, o, p) for b in (basen or _basen())
+                    for o in ("AO486", "ao486")]
+        if not any(os.path.exists(v) for v in voll):
+            fehlt.append(p)
+    return fehlt
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +504,26 @@ def mgl_inhalt(rbf, rom_path, delay, ftype, index, setname=None,
         name = os.path.basename(rom_path)
         if not ags_boot_schreiben(inst, name):
             LOG("AmigaVision: starte ohne ags_boot ins Menue")
+        # Build 331: genau so starten wie AmigaVisions eigene MGL - mit
+        # deren rbf und deren Setname (siehe amigavision_start()).
+        ags_rbf, el, setname_ags, herkunft = amigavision_start()
+        LOG("AmigaVision: %s mit Setname %s (aus %s)"
+            % (name, setname_ags, herkunft or "Vorgabe"))
         return ('<mistergamedescription>\n'
                 '\t<rbf>%s</rbf>\n'
-                '\t<setname>Amiga</setname>\n'
-                '</mistergamedescription>\n' % rbf)
+                '\t%s\n'
+                '</mistergamedescription>\n' % (ags_rbf, el))
+    if _ist_core(rbf, "Minimig") and endung == ".adf" and not setname:
+        start = amiga_diskette_start()
+        if start:
+            el, name = start
+            LOG("Amiga: %s mit Setname %s" % (os.path.basename(rom_path),
+                                              name))
+            return ('<mistergamedescription>\n\t<rbf>%s</rbf>\n\t%s\n%s'
+                    '</mistergamedescription>\n'
+                    % (rbf, el, _datei_xml(delay, ftype, index, rom_path)))
+        LOG("Amiga: keine Einstellung mit Kickstart gefunden - %s startet "
+            "mit den eigenen des Minimig" % os.path.basename(rom_path))
     if _ist_core(rbf, "C64") and endung == ".t64":
         from fe.gimmick import prg_bereitstellen
         prg = prg_bereitstellen(rom_path, prg_ordner or C64_PRG_ORDNER)
@@ -424,6 +654,12 @@ def starthinweis(syskey, endung, rom_path, lesen=None):
             return ("hinweis_cpc_titel", [("hinweis_cpc_cat", ())])
         if endung == ".cdt":
             return ("hinweis_cpc_titel", [("hinweis_cpc_tape", ())])
+    if syskey == "AO486" and endung == ".mgl":
+        fehlt = dos_mgl_fehlend(rom_path)
+        if fehlt:
+            return ("hinweis_dos_titel",
+                    [("hinweis_dos_fehlt", (fehlt[0],)),
+                     ("hinweis_dos_zip", ())])
     return None
 
 
@@ -435,9 +671,6 @@ def _lesen(pfad):
 # ---------------------------------------------------------------------------
 # Der Computer-Check (System -> Wartung)
 # ---------------------------------------------------------------------------
-COMPUTER_ORDNER = "/media/fat/_Computer"
-
-
 def _core(muster, ordner=None):
     o = ordner or COMPUTER_ORDNER
     treffer = sorted(glob.glob(os.path.join(o, muster)))
@@ -483,8 +716,25 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
         zeilen.append((n > 0, "check_av_liste", (n,)))
         zeilen.append((os.path.isdir(os.path.join(inst, "shared")),
                        "check_av_shared", ()))
+        # Build 331: was der Minimig beim Start tatsaechlich liest -
+        # fehlt hier etwas, landet er beim Kickstart-Bild.
+        _r, _el, name, herkunft = amigavision_start(core_ordner)
+        cfg_pfad = os.path.join(CONFIG_ORDNER, name + ".cfg")
+        cfg = minimig_cfg_lesen(cfg_pfad)
+        zeilen.append((bool(herkunft), "check_av_mgl", (name,)))
+        zeilen.append((cfg is not None, "check_av_cfg",
+                       ("config/%s.cfg" % name,)))
+        if cfg:
+            kick = cfg["kickstart"]
+            zeilen.append((bool(kick) and os.path.isfile(mister_pfad(kick)),
+                           "check_av_kick", (kick or "-",)))
+            for h in cfg["hdf"][:2]:
+                zeilen.append((os.path.isfile(mister_pfad(h)),
+                               "check_av_hdf", (h,)))
     else:
         zeilen.append((False, "check_amigavision_fehlt", ()))
+    disk = amiga_diskette_start(core_ordner)
+    zeilen.append((None, "check_adf_mit", (disk[1] if disk else "Minimig",)))
     raus.append(("Amiga", zeilen))
     # Amstrad
     cpc_core = _core("Amstrad[_.]*rbf", core_ordner)
@@ -500,10 +750,12 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
     roms = any(os.path.isfile(os.path.join(o, "boot0.rom"))
                and os.path.isfile(os.path.join(o, "boot1.rom")) for o in ao)
     mgls = dos_mgls(dos_muster)
+    ohne = [n for n, p in mgls if dos_mgl_fehlend(p, basen)]
     raus.append(("DOS (ao486)", [
         (bool(ao_core), "check_core", (ao_core or "ao486",)),
         (bool(ao), "check_ordner", ("games/AO486",)),
         (roms, "check_ao486_roms", ()),
         (None, "check_dos_mgls", (len(mgls),)),
+        (not ohne, "check_dos_fehlt", (len(ohne),)),
     ]))
     return raus

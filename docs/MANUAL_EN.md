@@ -1477,9 +1477,38 @@ AmigaVision installation with its list and `shared/`, the ao486 boot
 ROMs (`boot0.rom`, `boot1.rom` in `games/AO486/`) and how many 0MHz
 games were found.
 
+**Which settings the Amiga starts with (since build 331).** The
+Minimig core reads its settings from `config/<setname>.cfg` — that is
+where the Kickstart and the hard disk are set. If the file or the
+Kickstart in it is missing, it stops at the Kickstart screen. So the
+frontend no longer hard-codes the setname but looks it up:
+
+- **AmigaVision entries** start exactly like AmigaVision's own MGL in
+  `_Computer` (normally `Amiga.mgl` with the settings
+  `config/Amiga.cfg`) — the frontend looks for the MGL whose settings
+  mount `AmigaVision.hdf`.
+- **ADF disks** start with your own `config/Minimig.cfg` if its
+  Kickstart exists. Otherwise with the "Amiga500" settings from the
+  AmigaVision package (Kickstart `games/Amiga500/1.3.rom`), and if
+  those are missing, with the AmigaVision settings — an Amiga boots
+  from the floppy before it looks at the hard disk.
+
+**0MHz games must be unpacked.** The collection comes as one zip per
+game, containing `_DOS Games/<game>.mgl` and
+`games/ao486/media/<game>/`. MiSTer cannot mount a hard disk from
+inside a zip. If an MGL's images are missing, the frontend shows "game
+files missing" with the missing path before the start (OK starts
+anyway, ESC does not).
+
+Since build 331 the **computer check** also shows the settings file,
+the Kickstart and the hard disks the Minimig really reads, which
+settings an ADF starts with, and how many 0MHz games have no game
+files.
+
 Covers come from the libretro databases "Commodore - 64", "Commodore -
-Amiga", "Amstrad - CPC" and "DOS". The four do not have their own
-category badge yet — the placeholder is shown for now.
+Amiga", "Amstrad - CPC" and "DOS". **Since build 331** the four have
+their own category badge (pixel art) and a device photo for tile wall,
+dashboard and carousel.
 
 ## 8l. Choosing a standard or RA core
 

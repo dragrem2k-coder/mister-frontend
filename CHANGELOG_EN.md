@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: Amiga games stopped at the Kickstart screen.** The Minimig
+  reads Kickstart and hard disk from `config/<setname>.cfg`; without the
+  matching file it starts with defaults and finds no Kickstart.
+  AmigaVision entries now start exactly like AmigaVision's own MGL in
+  `_Computer` (its setname and settings file are looked up, not
+  assumed); ADF disks start with your `Minimig.cfg`, otherwise with
+  "Amiga500" or the AmigaVision settings — only if their Kickstart
+  exists. The computer check now shows settings file, Kickstart and hard
+  disk (build 331).
+- **0MHz: missing game files are reported.** The collection comes as one
+  zip per game and must be unpacked. If an MGL's images are missing, the
+  frontend says which path is missing before the start (build 331).
+- **New: badges and device photos for C64, Amiga, Amstrad CPC and DOS**
+  — the badges from your pixel-art sheet in the shape of all the others,
+  the photos for tile wall, dashboard and carousel (build 331).
+
 - **New: the computers with games — C64, Amiga, Amstrad CPC, DOS.**
   Four new categories as soon as the core is on the card; games are
   read as everywhere else from `games/`, USB and the NAS. C64:

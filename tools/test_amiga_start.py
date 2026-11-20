@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Amiga startet mit den richtigen Einstellungen, 0MHz meldet fehlende Dateien (Build 331).
+
+NUTZERMELDUNG nach Build 330: "amiga spiele starten nicht da lande ich
+einfach bei der kickrom anzeige obwohl ich ein kickrom drauf habe" - und
+"bei der 0mhz collection muss ich die spiele entpacken damit die
+starten?". Dazu Geraetefotos und Abzeichen fuer die vier Computer.
+
+GEPRUEFT WIRD (alles mit nachgebauten Dateien):
+  1. Die Minimig-Einstellungsdatei wird gelesen wie MiSTer sie schreibt
+     (Kennung, Kickstart, Festplatten); Unsinn ergibt None.
+  2. Die Minimig-MGLs in _Computer: nur Minimig, nur ohne <file>, das
+     Setname-Element woertlich.
+  3. AmigaVision startet mit dem Setnamen der MGL, deren Einstellung
+     AmigaVision.hdf einhaengt - nicht fest mit "Amiga".
+  4. Eine ADF startet mit einer Einstellung, deren Kickstart da ist;
+     eine eigene Minimig.cfg hat Vorrang; ohne alles wie bisher.
+  5. write_mgl(): ein Fehler im Sonderfall wird protokolliert, und ein
+     AmigaVision-Eintrag faellt NIE auf type="ags" zurueck.
+  6. 0MHz: fehlende Abbilder werden erkannt (auch "ao486" klein), der
+     Hinweis vor dem Start kommt, die Tastatur-Zeile nicht.
+  7. Der Computer-Check zeigt Einstellungsdatei, Kickstart, Festplatte.
+  8. Die Bilder: vier Abzeichen 320x420 und vier Fotos 420x320 auf
+     C_PANEL.
+
+Ausfuehren:
+    python3 tools/test_amiga_start.py
+"""
+import os
+import shutil
+import struct
+import sys
+import tempfile
+import zlib
+
+_HIER = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HIER)
+
+import _harness as H                                     # noqa: E402
+
+fm = H.fm
+import fe.computer as C                                  # noqa: E402
+import fe.launch as L                                    # noqa: E402
+
+fails = []
+
+
+def check(label, cond, extra=""):
+    print(("  OK   " if cond else "  FEHL ") + label
+          + (("  " + str(extra)) if extra else ""))
+    if not cond:
+        fails.append(label)
+
+
+def schreiben(pfad, inhalt=b""):
+    os.makedirs(os.path.dirname(pfad), exist_ok=True)
+    with open(pfad, "wb") as f:
+        f.write(inhalt if isinstance(inhalt, bytes) else inhalt.encode())
+
+
+def cfg(kick, hdf=(), kennung=b"MNMGCFG0"):
+    """Eine Minimig-Einstellungsdatei, aufgebaut wie mm_configTYPE."""
+    d = bytearray(5216)
+    d[0:8] = kennung
+    k = kick.encode()
+    d[12:12 + len(k)] = k
+    for i, h in enumerate(hdf):
+        o = 1046 + i * 1026
+        d[o] = 1
+        hb = h.encode()
+        d[o + 2:o + 2 + len(hb)] = hb
+    return bytes(d)
+
+
+def mgl(rbf, setname=None, datei=None):
+    t = "<mistergamedescription>\n    <rbf>%s</rbf>\n" % rbf
+    if setname:
+        t += "    <setname>%s</setname>\n" % setname
+    if datei:
+        t += '    <file delay="1" type="f" index="0" path="%s"/>\n' % datei
+    return t + "</mistergamedescription>\n"
+
+
+print(__doc__.strip().split("\n")[0])
+print()
+
+TMP = tempfile.mkdtemp(prefix="amiga_")
+_alt = (C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP)
+try:
+    WURZEL = os.path.join(TMP, "fat")
+    KONF = os.path.join(WURZEL, "config")
+    COMP = os.path.join(WURZEL, "_Computer")
+    C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER = KONF, WURZEL, COMP
+    L.MGL_TMP = os.path.join(TMP, "start.mgl")
+
+    # -----------------------------------------------------------------------
+    print("Test 1: die Einstellungsdatei")
+    # -----------------------------------------------------------------------
+    p = os.path.join(TMP, "a.cfg")
+    schreiben(p, cfg("games/Amiga/AmigaVision.rom",
+                     ["games/Amiga/AmigaVision.hdf",
+                      "games/Amiga/AmigaVision-Saves.hdf"]))
+    e = C.minimig_cfg_lesen(p)
+    check("Kickstart gelesen", e and e["kickstart"]
+          == "games/Amiga/AmigaVision.rom", e)
+    check("beide Festplatten gelesen", e and e["hdf"]
+          == ["games/Amiga/AmigaVision.hdf",
+              "games/Amiga/AmigaVision-Saves.hdf"])
+    schreiben(p, cfg("x.rom", kennung=b"FALSCH00"))
+    check("GEGENPROBE fremde Kennung -> None", C.minimig_cfg_lesen(p) is None)
+    schreiben(p, b"MNMGCFG0" + b"\0" * 100)
+    check("GEGENPROBE zu kurz -> None", C.minimig_cfg_lesen(p) is None)
+    check("fehlt -> None", C.minimig_cfg_lesen(p + "x") is None)
+    check("relativer Pfad gegen die Wurzel der Karte",
+          C.mister_pfad("games/x.rom") == os.path.join(WURZEL, "games/x.rom"))
+    check("absoluter bleibt", C.mister_pfad("/media/usb0/x") == "/media/usb0/x")
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 2: die Minimig-MGLs")
+    # -----------------------------------------------------------------------
+    schreiben(os.path.join(COMP, "Amiga.mgl"),
+              mgl("_computer/minimig", "Amiga"))
+    schreiben(os.path.join(COMP, "Amiga 500.mgl"),
+              mgl("_computer/minimig", "Amiga500"))
+    schreiben(os.path.join(COMP, "C64 Spiel.mgl"), mgl("_computer/c64", "X"))
+    schreiben(os.path.join(COMP, "Mit Diskette.mgl"),
+              mgl("_computer/minimig", "D", "x.adf"))
+    m = C.minimig_mgls()
+    check("zwei Minimig-MGLs, nach Name",
+          [os.path.basename(x[0]) for x in m] == ["Amiga 500.mgl",
+                                                  "Amiga.mgl"], m)
+    check("Setname-Element woertlich",
+          m and m[1][2] == "<setname>Amiga</setname>" and m[1][3] == "Amiga")
+    check("GEGENPROBE: C64 und MGL mit <file> nicht dabei",
+          not any("C64" in x[0] or "Diskette" in x[0] for x in m))
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 3: AmigaVision startet mit der richtigen Einstellung")
+    # -----------------------------------------------------------------------
+    r = C.amigavision_start()
+    check("ohne Einstellungsdatei: Vorgabe Amiga, Herkunft leer",
+          r[2] == "Amiga" and r[3] == "", r)
+    schreiben(os.path.join(KONF, "Amiga.cfg"),
+              cfg("games/Amiga/AmigaVision.rom",
+                  ["games/Amiga/AmigaVision.hdf"]))
+    r = C.amigavision_start()
+    check("aus _Computer/Amiga.mgl", r[3] == os.path.join(COMP, "Amiga.mgl")
+          and r[0] == "_computer/minimig", r)
+    # Eine andere Installation: die AmigaVision-Einstellung heisst anders.
+    os.remove(os.path.join(KONF, "Amiga.cfg"))
+    schreiben(os.path.join(COMP, "AGS Neu.mgl"),
+              mgl("_Computer/Minimig", "AGSNeu"))
+    schreiben(os.path.join(KONF, "AGSNeu.cfg"),
+              cfg("games/Amiga/k.rom", ["games/Amiga/MegaAGS.hdf"]))
+    r = C.amigavision_start()
+    check("anderer Setname wird gefunden (MegaAGS.hdf)", r[2] == "AGSNeu", r)
+    schreiben(os.path.join(KONF, "Amiga.cfg"),
+              cfg("games/Amiga/AmigaVision.rom",
+                  ["games/Amiga/AmigaVision.hdf"]))
+    check("zwei passende: Amiga zuerst", C.amigavision_start()[2] == "Amiga")
+    os.remove(os.path.join(COMP, "AGS Neu.mgl"))
+    os.remove(os.path.join(COMP, "Amiga.mgl"))
+    os.remove(os.path.join(KONF, "Amiga.cfg"))
+    schreiben(os.path.join(KONF, "AGSNeu1.cfg"),
+              cfg("k.rom", ["games/Amiga/AmigaVision.hdf"]))
+    r = C.amigavision_start()
+    check("ohne MGL: aus den Einstellungsdateien, Platz 1 uebergangen",
+          r[2] == "AGSNeu" and r[1] == "<setname>AGSNeu</setname>", r)
+    os.remove(os.path.join(KONF, "AGSNeu1.cfg"))
+    os.remove(os.path.join(KONF, "AGSNeu.cfg"))
+    schreiben(os.path.join(COMP, "Amiga.mgl"),
+              mgl("_computer/minimig", "Amiga"))
+    schreiben(os.path.join(KONF, "Amiga.cfg"),
+              cfg("games/Amiga/AmigaVision.rom",
+                  ["games/Amiga/AmigaVision.hdf",
+                   "games/Amiga/AmigaVision-Saves.hdf"]))
+
+    av = os.path.join(WURZEL, "games", "Amiga")
+    schreiben(os.path.join(av, "AmigaVision.hdf"))
+    os.makedirs(os.path.join(av, "shared"))
+    xml = C.mgl_inhalt("_Computer/Minimig",
+                       os.path.join(av, "games", "Turrican"), 1, C.TYP_AGS, 0)
+    check("Start-MGL: rbf und Setname aus AmigaVisions MGL",
+          "<rbf>_computer/minimig</rbf>" in xml
+          and "<setname>Amiga</setname>" in xml and "<file" not in xml, xml)
+    check("ags_boot geschrieben",
+          open(os.path.join(av, "shared", "ags_boot")).read() == "Turrican\n")
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 4: eine ADF")
+    # -----------------------------------------------------------------------
+    adf = os.path.join(av, "Spiel.adf")
+    check("Kickstart von Amiga500 fehlt, AmigaVisions auch: Minimig wie "
+          "bisher", C.amiga_diskette_start() is None)
+    schreiben(os.path.join(WURZEL, "games/Amiga/AmigaVision.rom"))
+    check("nur AmigaVisions Kickstart da: mit Einstellung Amiga",
+          C.amiga_diskette_start() == ("<setname>Amiga</setname>", "Amiga"))
+    schreiben(os.path.join(KONF, "Amiga500.cfg"), cfg("games/Amiga500/1.3.rom"))
+    check("GEGENPROBE: Amiga500 ohne seinen Kickstart zaehlt nicht",
+          C.amiga_diskette_start()[1] == "Amiga")
+    schreiben(os.path.join(WURZEL, "games/Amiga500/1.3.rom"))
+    check("Amiga500 mit Kickstart: zuerst",
+          C.amiga_diskette_start() == ("<setname>Amiga500</setname>",
+                                       "Amiga500"))
+    xml = C.mgl_inhalt("_Computer/Minimig", adf, 1, "f", 0)
+    check("Start-MGL der ADF: Setname + Diskette an df0",
+          "<setname>Amiga500</setname>" in xml
+          and 'type="f" index="0"' in xml and "Spiel.adf" in xml, xml)
+    schreiben(os.path.join(KONF, "Minimig.cfg"), cfg("games/Amiga/KICK.ROM"))
+    check("GEGENPROBE eigene Minimig.cfg ohne Kickstart: zaehlt nicht",
+          C.amiga_diskette_start()[1] == "Amiga500")
+    schreiben(os.path.join(WURZEL, "games/Amiga/KICK.ROM"))
+    check("eigene Minimig.cfg mit Kickstart: hat Vorrang (None)",
+          C.amiga_diskette_start() is None
+          and C.mgl_inhalt("_Computer/Minimig", adf, 1, "f", 0) is None)
+    os.remove(os.path.join(KONF, "Minimig.cfg"))
+    check("GEGENPROBE andere Systeme unberuehrt",
+          C.mgl_inhalt("_Console/SNES", "/x.sfc", 2, "f", 0) is None)
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 5: write_mgl() bei einem Fehler")
+    # -----------------------------------------------------------------------
+    import fe.log
+    zeilen = []
+    _echt_log, _echt_inhalt = fe.log.LOG, C.mgl_inhalt
+    try:
+        fe.log.LOG = lambda t: zeilen.append(t)
+
+        def _kaputt(*a, **k):
+            raise ValueError("absichtlich")
+        C.mgl_inhalt = _kaputt
+        p = L.write_mgl("_Computer/Minimig", "/x/games/Turrican", 1, "ags", 0)
+        q = open(p).read()
+        check("AmigaVision faellt nicht auf type=\"ags\" zurueck",
+              'type="ags"' not in q and "<setname>Amiga</setname>" in q, q)
+        check("der Fehler steht im Protokoll",
+              any("absichtlich" in z for z in zeilen), zeilen)
+        p = L.write_mgl("_Console/SNES", "/x.sfc", 2, "f", 0)
+        check("andere Systeme: die gewoehnliche MGL",
+              'type="f" index="0"' in open(p).read())
+        C.mgl_inhalt = _echt_inhalt
+        del zeilen[:]
+        L.write_mgl("_Computer/Minimig", adf, 1, "f", 0)
+        check("die gestartete Sonder-MGL steht im Protokoll",
+              any(z.startswith("write_mgl: <mistergamedescription>")
+                  for z in zeilen), zeilen)
+    finally:
+        fe.log.LOG, C.mgl_inhalt = _echt_log, _echt_inhalt
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 6: 0MHz ohne entpackte Dateien")
+    # -----------------------------------------------------------------------
+    basis = os.path.join(WURZEL, "games")
+    dos = os.path.join(TMP, "_DOS Games")
+    schreiben(os.path.join(dos, "Doom.mgl"),
+              '<mistergamedescription><rbf>_computer/ao486</rbf>'
+              '<file delay="0" type="s" index="2" path="media/doom/doom.vhd"/>'
+              '</mistergamedescription>')
+    fehl = C.dos_mgl_fehlend(os.path.join(dos, "Doom.mgl"), [basis])
+    check("ohne Abbild: fehlt", fehl == ["media/doom/doom.vhd"], fehl)
+    schreiben(os.path.join(basis, "ao486", "media", "doom", "doom.vhd"))
+    check("in games/ao486 (klein, wie im ZIP): gefunden",
+          C.dos_mgl_fehlend(os.path.join(dos, "Doom.mgl"), [basis]) == [])
+    _b = C._basen
+    try:
+        C._basen = lambda: [os.path.join(TMP, "leer")]
+        h = C.starthinweis("AO486", ".mgl", os.path.join(dos, "Doom.mgl"))
+        check("Hinweis vor dem Start, wenn es fehlt",
+              h and h[0] == "hinweis_dos_titel"
+              and h[1][0] == ("hinweis_dos_fehlt", ("media/doom/doom.vhd",)),
+              h)
+        C._basen = lambda: [basis]
+        check("GEGENPROBE alles da: kein Hinweis",
+              C.starthinweis("AO486", ".mgl",
+                             os.path.join(dos, "Doom.mgl")) is None)
+        for k in ("hinweis_dos_titel", "hinweis_dos_fehlt", "hinweis_dos_zip",
+                  "hinweis_tasten_trotzdem"):
+            check("Text %s uebersetzt" % k, fm.t(k) != k)
+
+        C._basen = lambda: [os.path.join(TMP, "leer")]
+        H.set_screen(1280, 720)
+        f = H.make_frontend(page=0)
+        texte = []
+        echt = f.fb.text
+        f.fb.text = lambda x, y, txt, *a, **k: (texte.append(txt),
+                                                echt(x, y, txt, *a, **k))
+        f.fb.flip = lambda *a, **k: None
+        rest = ["ok"]
+
+        def _taste(timeout=None):
+            if not rest:
+                raise RuntimeError("Bildschirm wartet weiter")
+            return rest.pop(0)
+        f.inp.read_action = _taste
+        check("OK startet trotzdem",
+              f._computer_hinweis("AO486", ".mgl",
+                                  os.path.join(dos, "Doom.mgl")) is True)
+        check("die Tastatur-Zeile steht NICHT da",
+              fm.t("hinweis_tastatur") not in texte)
+        check("unten: trotzdem starten",
+              any(fm.t("hinweis_tasten_trotzdem") in t_ for t_ in texte))
+        del texte[:]
+        rest = ["ok"]
+        f._computer_hinweis("C64", ".d64", "/x.d64")
+        check("GEGENPROBE C64-Diskette: Tastatur-Zeile steht da",
+              fm.t("hinweis_tastatur") in texte)
+    finally:
+        C._basen = _b
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 7: der Computer-Check")
+    # -----------------------------------------------------------------------
+    os.remove(os.path.join(WURZEL, "games/Amiga/AmigaVision.rom"))
+    erg = dict(C.computer_check([basis], COMP, os.path.join(TMP, "_DOS*")))
+    am = erg["Amiga"]
+    check("Einstellungsdatei da", (True, "check_av_cfg",
+                                   ("config/Amiga.cfg",)) in am, am)
+    check("GEGENPROBE: der Kickstart fehlt - genau das Kickstart-Bild",
+          (False, "check_av_kick", ("games/Amiga/AmigaVision.rom",)) in am)
+    check("Festplatte da, Speicherstand-Platte fehlt",
+          (True, "check_av_hdf", ("games/Amiga/AmigaVision.hdf",)) in am
+          and (False, "check_av_hdf",
+               ("games/Amiga/AmigaVision-Saves.hdf",)) in am)
+    check("ADF-Einstellung genannt",
+          (None, "check_adf_mit", ("Amiga500",)) in am)
+    schreiben(os.path.join(WURZEL, "games/Amiga/AmigaVision.rom"))
+    am = dict(C.computer_check([basis], COMP))["Amiga"]
+    check("Kickstart da -> gruen",
+          (True, "check_av_kick", ("games/Amiga/AmigaVision.rom",)) in am)
+    schreiben(os.path.join(dos, "Fehlt.mgl"),
+              '<file type="s" index="2" path="media/weg/weg.vhd"/>')
+    erg = dict(C.computer_check([basis], COMP, os.path.join(TMP, "_DOS*")))
+    check("DOS: 1 von 2 ohne Spieldateien",
+          (False, "check_dos_fehlt", (1,)) in erg["DOS (ao486)"],
+          erg["DOS (ao486)"])
+    for name, zl in erg.items():
+        for _ok, k, a in zl:
+            if fm.t(k, *a) == k:
+                check("Text %s uebersetzt" % k, False)
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 8: die Bilder")
+    # -----------------------------------------------------------------------
+    FE = os.path.dirname(H.FRONTEND_PY)
+
+    def art(p):
+        d = open(p, "rb").read()
+        b, h = struct.unpack("<HH", d[4:8])
+        roh = zlib.decompress(d[8:])
+        return d[:4], b, h, roh
+
+    for ordner, (b0, h0) in (("sysart", (320, 420)),
+                             ("sysart_foto", (420, 320))):
+        for k in ("C64", "AMIGA", "AMSTRAD", "AO486"):
+            p = os.path.join(FE, ordner, k + ".art")
+            if not os.path.isfile(p):
+                check("%s/%s.art vorhanden" % (ordner, k), False)
+                continue
+            kenn, b, h, roh = art(p)
+            ecke = tuple(roh[0:3])
+            check("%s/%s.art: ART1, %dx%d, Ecke C_PANEL"
+                  % (ordner, k, b0, h0),
+                  kenn == b"ART1" and (b, h) == (b0, h0)
+                  and len(roh) == b * h * 4 and ecke == (44, 32, 28),
+                  (kenn, b, h, ecke))
+            mitte = roh[(h // 2 * b + b // 2) * 4:(h // 2 * b + b // 2) * 4 + 3]
+            check("GEGENPROBE %s/%s.art: in der Mitte steht etwas"
+                  % (ordner, k), tuple(mitte) != (44, 32, 28))
+finally:
+    C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP = _alt
+    shutil.rmtree(TMP, ignore_errors=True)
+
+print()
+if fails:
+    print("ROT: %d Pruefung(en) fehlgeschlagen:" % len(fails))
+    for f_ in fails:
+        print("   - " + f_)
+    sys.exit(1)
+print("ALLES GRUEN")

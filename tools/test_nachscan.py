@@ -52,6 +52,14 @@ import fe.scan as SCAN                                      # noqa: E402
 from _quelle import koerper, nur_code                       # noqa: E402
 import fe.translations as TR                                # noqa: E402
 
+# Build 331: die Pruefungen unten vergleichen mit den DEUTSCHEN Texten
+# (TRANSLATIONS[...]["de"]). Die Sprache kam bisher aus
+# /media/fat/frontend/language - in einer frischen Testumgebung gibt es
+# die Datei noch nicht, die Vorgabe ist Englisch, und "ein unbekanntes
+# Medium bekommt ein Wort" wurde rot, bis ein spaeterer Test die Datei
+# anlegte. Fest einstellen, ohne die Datei zu schreiben.
+TR.CURRENT_LANG = "de"
+
 fm = H.fm
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _QF = io.open(os.path.join(_REPO, "frontend", "frontend.py"),

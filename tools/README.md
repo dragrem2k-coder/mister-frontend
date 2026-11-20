@@ -11017,3 +11017,67 @@ die nachgestellte Taste ab, statt zu haengen.
 * Die Namen in AmigaVisions `games.txt` sind die Startnamen von
   AmigaVision; ob die libretro-Cover dazu passen, ist Glueckssache.
 * Kein eigenes Kategorie-Abzeichen fuer die vier - Platzhalter.
+
+## Nachtrag Build 331 - Amiga, 0MHz, Bilder
+
+**Stand:** 20.11.2026, `Dragend_Build_331.zip` (build_id
+`2026-11-20-331`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Seine Rueckmeldung zu Build 330: "c64 spiele starten, amiga spiele
+starten nicht da lande ich einfach bei der kickrom anzeige obwohl ich
+ein kickrom drauf habe, bei der 0mhz collection muss ich die spiele
+entpacken damit die starten?" - dazu vier Geraetefotos und ein Blatt
+mit Pixel-Art-Karten.
+
+### Die Ursache beim Amiga
+
+Nachgelesen statt vermutet, in `Main_MiSTer/support/minimig/
+minimig_config.cpp`: der Minimig liest `config/<Corename>.cfg`, und der
+Corename ist der Setname aus der MGL (ohne Setname "Minimig"). Fehlt
+die Datei, nimmt er Vorgaben und sucht einen Kickstart unter dem
+Vorgabenamen. Build 330 hat den Setnamen fuer AmigaVision fest
+geschrieben und ADF ganz ohne Setnamen gestartet.
+
+Das AmigaVision-Paket (Quelle: chris2fire/fpga-AmigaVision,
+`content/distro`) legt `_Computer/Amiga.mgl` (Setname `Amiga`) und
+`_Computer/Amiga 500.mgl` (Setname `Amiga500`) an, dazu
+`config/Amiga.cfg` (Kickstart `games/Amiga/AmigaVision.rom`, Festplatten
+`AmigaVision.hdf` und `AmigaVision-Saves.hdf`) und `config/Amiga500.cfg`
+(Kickstart `games/Amiga500/1.3.rom`). Der neue Leser
+`minimig_cfg_lesen()` liefert aus genau diesen Dateien genau diese
+Pfade - gegengeprueft, bevor der Test geschrieben wurde.
+
+Welche Datei bei ihm fehlt, weiss ich nicht. Der Computer-Check zeigt
+es jetzt: Einstellungsdatei, Kickstart, Festplatte.
+
+### Die Bilder
+
+* Abzeichen: neu `PC-Tools/sysart_karten.py` - Geraet aus der weissen
+  Karte freigestellt, ins beige Oval der anderen 60, Name neu gesetzt
+  (Roboto, Gewicht 900, Breite 75). Erster Versuch: die Achsen der
+  variablen Schrift in falscher Reihenfolge (Breite, Gewicht) - die
+  Schrift kam duenn heraus; und Reste des Kartenrands an den runden
+  Ecken. Beides am gerenderten Bild gesehen, nicht am Test.
+* Fotos: `sysart_foto_convert.py` hat drei Schalter dazubekommen
+  (`--saum`/`--saum-hell`, `--inseln`, `--weg`). Am Amstrad zuerst zu
+  wenig (14 Reihen, der Schattenkranz ist 40 breit), dann zu viel
+  (`--weg` ohne Helligkeitsgrenze nahm den ganzen Monitor mit - jetzt
+  `hell_min=110`). Bei Amiga und C64 nahm die Lochsuche das Zifferblatt
+  und das Diskettenetikett weg - `--loecher-anteil 0.02`.
+
+### Pruefungen
+
+`tools/test_amiga_start.py`. Verfaelscht gegengeprueft: AmigaVision-MGL
+nicht suchen, eigene Minimig.cfg ignorieren, "ao486" klein nicht
+suchen, Rueckfall in write_mgl() weg, Tastatur-Zeile immer - jedes Mal
+rot. Eine Falle dabei: eine Verfaelschung gleicher Laenge ("ags" ->
+"nie"), in derselben Sekunde zurueckkopiert, liess Python den alten
+Bytecode nehmen - der Test war danach rot, obwohl die Datei stimmte.
+`__pycache__` leeren, dann gruen.
+
+### Ehrlich dazu
+
+* Am Geraet nicht ausprobiert.
+* Die Bildquellen sind nicht nachpruefbar (siehe
+  `docs/LOGOS_NACHLIEFERN.md`, "Bildquellen").
