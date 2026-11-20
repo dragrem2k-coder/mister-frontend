@@ -390,7 +390,7 @@ weiter unten erklärt werden, aber nirgends beisammenstehen:
 | Optionen | Autostart, **ROM-Filter**, **Attract-Verzögerung**, Miniaturen vorbereiten |
 | Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen |
 | Info | Hilfe/Übersicht, Einrichtung erneut starten, Auf Updates prüfen, Mitwirkende, Geheimnisse |
-| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, und als Gimmick **Invade-a-Load** auf dem C64-Core (siehe unten) |
+| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, als Gimmick **Invade-a-Load** auf dem C64-Core und der **Computer-Check** (siehe unten) |
 
 **"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
 gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
@@ -1701,6 +1701,40 @@ C64-Cores: **„Reset & Run PRG"** im Menü des Cores (F12) einschalten.
 Sonst steht der C64 nach dem Laden bei READY. — dann `RUN` tippen.
 Zurück ins Frontend wie bei jedem Spiel: F1, Esc halten oder
 Start+Select+L+R am Nintendo-Pad.
+
+### Computer: C64, Amiga, Amstrad CPC und DOS (seit Build 330)
+
+Die vier Computer stehen wie die Konsolen als eigene Kategorie da —
+sobald ihr Core in `/media/fat/_Computer/` liegt. Gesucht wird wie
+überall in `/media/fat/games`, auf USB-Laufwerken und auf dem NAS.
+
+| Computer | Ordner | Was gelesen wird | Was passiert beim Start |
+|---|---|---|---|
+| Commodore 64 | `games/C64/` | `.crt` `.prg` `.t64` `.tap` `.d64` `.g64` `.d81` | Module (z.B. die **OneLoad64**-Sammlung) und PRGs laufen von selbst los; aus einer `.t64` wird das Programm herausgeholt. Disketten werden in Laufwerk 8 eingelegt — vorher zeigt das Frontend, was zu tippen ist: `LOAD"*",8,1` und `RUN` |
+| Amiga | `games/Amiga/` | `.adf` und die **AmigaVision**-Spieleliste | Jedes Spiel aus `listings/games.txt` (und die Demos aus `demos.txt`) steht als eigener Eintrag im Ordner „AmigaVision" und **bootet direkt in dieses Spiel** |
+| Amstrad CPC | `games/Amstrad/` | `.dsk` `.cdt` `.sna` | Snapshots laufen sofort. Bei einer Diskette liest das Frontend das Verzeichnis und zeigt z.B. `RUN"DISC`; beim Band `\|TAPE` und `RUN"` |
+| DOS (ao486) | `games/AO486/` und `/media/fat/_DOS Games/` | die **0MHz**-MGLs, dazu `.vhd` `.img` `.ima` `.vfd` | Eine 0MHz-MGL wird unverändert gestartet; ihre Abbilder erscheinen nicht noch ein zweites Mal. Eine eigene VHD wird mit dem CD-Abbild aus demselben Ordner und einem Reset gestartet |
+
+**Wie AmigaVision direkt startet:** das Frontend schreibt den Namen des
+Spiels in `games/Amiga/shared/ags_boot` — derselbe Weg, den Zaparoo
+geht — und startet den Minimig-Core mit den Einstellungen „Amiga", die
+AmigaVision angelegt hat. Das ist die **einzige** Datei, die das
+Frontend dort anfasst. Fehlt der Ordner `shared/`, bootet AmigaVision
+in sein eigenes Menü.
+
+**Der Hinweis vor dem Start** kommt nur bei Disketten und Bändern, die
+nicht von selbst losgehen. OK startet, ESC nicht. Zum Eintippen braucht
+es eine Tastatur am MiSTer.
+
+**Computer-Check** unter System → Wartung zeigt je Computer, was da ist
+und was fehlt: der Core, der Spieleordner, die AmigaVision-Installation
+mit Liste und `shared/`, die ao486-Boot-ROMs (`boot0.rom`, `boot1.rom`
+in `games/AO486/`) und wie viele 0MHz-Spiele gefunden wurden.
+
+Die Cover kommen aus den libretro-Datenbanken „Commodore - 64",
+„Commodore - Amiga", „Amstrad - CPC" und „DOS". Ein eigenes
+Kategorie-Abzeichen haben die vier noch nicht — dort steht vorerst der
+Platzhalter.
 
 ## 8l. Standard- oder RA-Core wählen
 
@@ -3164,6 +3198,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Spieledaten nachladen (braucht Netz) | `gameinfo_download` |
 | Anzeige neu aufbauen | `redraw` |
 | Gimmick: Invade-a-Load (C64) - nur wenn Datei und C64-Core da sind (seit Build 329) | `invade_a_load` |
+| Computer-Check (C64, Amiga, CPC, DOS): was da ist und was fehlt (seit Build 330) | `computer_check` |
 | MiSTer neu starten | `reboot` |
 | Frontend beenden | `quit` |
 

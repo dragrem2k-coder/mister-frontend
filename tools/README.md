@@ -10966,3 +10966,54 @@ Bytes.
   zwei Programme, Unsinn), Finden mit Gegenproben, Bereitstellen nur im
   eigenen Ordner, Menuepunkt nur mit Datei und Core, MGL-Inhalt,
   kein Start ohne Core oder bei unlesbarer Datei.
+
+## Nachtrag Build 330 - die Computer mit Spielen
+
+**Stand:** 20.11.2026, `Dragend_Build_330.zip` (build_id
+`2026-11-20-330`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er fragte: "Wie koennen wir die Computer cores, besonders Amiga, C64,
+amstrad, ao486 mit spielen noch schoen mit einbinden?" - und nannte
+seine Sammlungen: OneLoad64, AmigaVision, 0MHz-DOS. Spiele in
+`games/`, auf USB oder auf dem NAS.
+
+### Was Build 330 aendert
+
+* **`fe/systems.py`**: vier optionale Systeme `C64`, `AMIGA`,
+  `AMSTRAD`, `AO486` mit den Werten aus dem CONF_STR der Cores; die
+  libretro-Datenbanken dazu. `PC-Tools/boxart_fetch.py` aus der Quelle
+  neu erzeugt (test_system_abdeckung verlangt es).
+* **neu `fe/computer.py`**: `knoten_ergaenzen()` (AmigaVision-Listen,
+  0MHz-MGLs, Doppelte raus), `mgl_inhalt()` (ags_boot, T64->PRG, ao486
+  mit CD und Reset), `cpc_dsk_programme()`, `starthinweis()`,
+  `computer_check()`.
+* **`fe/launch.py`**: `write_mgl()` startet eine fertige MGL (Typ
+  `mgl`) unveraendert und fragt fuer alles andere zuerst
+  `mgl_inhalt()`.
+* **`fe/scan.py`**: der Aufruf im Einlesen (als `import fe.computer as
+  _computer` - ein schlichtes `import fe.computer` in der Funktion
+  machte `fe` dort lokal und warf UnboundLocalError; der Test hat es
+  gefunden); die Signatur kennt `/media/fat/_DOS*` und die
+  AmigaVision-Listen. `SCAN_LOGIC_VERSION` bleibt 6: die vier neuen
+  `core:`-Eintraege aendern die Signatur beim ersten Start ohnehin.
+* **Frontend**: `_computer_hinweis()` vor dem Start (Spielliste und
+  Zufallsstart), `computer_check_bildschirm()`, Menuepunkt
+  `computer_check`, vier Akzentfarben.
+
+### Pruefungen
+
+`tools/test_computer_systeme.py`, mit Gegenproben. Gegengeprueft durch
+Verfaelschen: Doppelte nicht entfernen, PCW-Muster, ags-Zweig aus,
+OK/ESC vertauscht - jedes Mal rot. Der Test fuer ESC lief beim ersten
+Versuch ewig (der verfaelschte Bildschirm wartete weiter); jetzt bricht
+die nachgestellte Taste ab, statt zu haengen.
+
+### Ehrlich dazu
+
+* Die MGL-Werte (Index, Reset, Setname "Amiga") kommen aus dem
+  Quelltext der Cores und aus Zaparoo, nicht aus einem Versuch am
+  Geraet.
+* Die Namen in AmigaVisions `games.txt` sind die Startnamen von
+  AmigaVision; ob die libretro-Cover dazu passen, ist Glueckssache.
+* Kein eigenes Kategorie-Abzeichen fuer die vier - Platzhalter.

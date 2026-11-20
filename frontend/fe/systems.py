@@ -259,6 +259,44 @@ OPTIONAL_GAME_SYSTEMS = [
         "_Console/WonderSwan",
         {".wsc": (1, "f", 1)},
         "/media/fat/_Console/WonderSwan*.rbf"),
+    # ==================================================================
+    # BUILD 330: DIE COMPUTER MIT SPIELEN. Nutzerwunsch: "Wie koennen wir
+    # die Computer cores, besonders Amiga, C64, amstrad, ao486 mit
+    # spielen noch schoen mit einbinden?" - er nutzt OneLoad64 (C64),
+    # AmigaVision (Amiga) und die 0MHz-DOS-Sammlung (ao486).
+    #
+    # Die Startwerte stehen im CONF_STR der Cores (MiSTer-devel, C64.sv,
+    # Amstrad.sv, ao486.sv) und decken sich mit Zaparoos Systemdatenbank:
+    #   C64      "S0,D64G64T64D81,Mount #8;"  "F1,PRGCRTREUTAP;"
+    #   Amstrad  "S0,DSK,Mount A:;"  "F4,CDT,Load tape;"
+    #            "F6,SNA,Load snapshot;"
+    #   ao486    "S0,IMGIMAVFD,Floppy A:;"  "S2,VHD,IDE 0-0;"
+    #   Minimig  df0 = F0 (ADF)
+    # Was ueber eine Datei hinausgeht - T64 umwandeln, CD-Abbild neben der
+    # Festplatte, Reset, AmigaVision, die 0MHz-MGLs - steht in
+    # fe/computer.py. Hier stehen sie hinten an, getrennt von den
+    # Konsolen, in der Reihenfolge seines Wunsches.
+    ("Commodore 64",    "C64",          ["C64"],            "_Computer/C64",
+        {".crt": (1, "f", 1), ".prg": (1, "f", 1), ".t64": (1, "f", 1),
+         ".tap": (1, "f", 1),
+         ".d64": (1, "s", 0), ".g64": (1, "s", 0), ".d81": (1, "s", 0)},
+        "/media/fat/_Computer/C64*.rbf"),
+    # .adf allein ergaebe bei AmigaVision eine leere Kategorie - die
+    # Spiele kommen dort aus listings/games.txt (fe/computer.py,
+    # knoten_ergaenzen()). Die Kategorie entsteht trotzdem nur, wenn der
+    # Minimig-Core da ist.
+    ("Amiga",           "AMIGA",        ["Amiga"],          "_Computer/Minimig",
+        {".adf": (1, "f", 0)},
+        "/media/fat/_Computer/Minimig*.rbf"),
+    # "Amstrad[_.]*" und nicht "Amstrad*": sonst zaehlte der PCW-Core
+    # (Amstrad-PCW_<Datum>.rbf) als CPC-Core.
+    ("Amstrad CPC",     "AMSTRAD",      ["Amstrad"],        "_Computer/Amstrad",
+        {".dsk": (1, "s", 0), ".cdt": (1, "f", 4), ".sna": (1, "f", 6)},
+        "/media/fat/_Computer/Amstrad[_.]*rbf"),
+    ("DOS (ao486)",     "AO486",        ["AO486"],          "_Computer/ao486",
+        {".vhd": (1, "s", 2), ".img": (1, "s", 0), ".ima": (1, "s", 0),
+         ".vfd": (1, "s", 0)},
+        "/media/fat/_Computer/ao486*.rbf"),
 ]
 
 
@@ -334,6 +372,13 @@ LIBRETRO_DB = {
     "VECTREX":          "GCE - Vectrex",
     "WONDERSWAN":       "Bandai - WonderSwan",
     "WONDERSWANCOLOR":  "Bandai - WonderSwan Color",
+    # Build 330: die Computer. Die vier Namen gibt es als Repository unter
+    # github.com/libretro-thumbnails (geprueft: Commodore_-_64,
+    # Commodore_-_Amiga, Amstrad_-_CPC, DOS).
+    "C64":              "Commodore - 64",
+    "AMIGA":            "Commodore - Amiga",
+    "AMSTRAD":          "Amstrad - CPC",
+    "AO486":            "DOS",
 }
 
 

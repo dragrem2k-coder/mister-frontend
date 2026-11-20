@@ -520,6 +520,34 @@ def _games_signature():
             entry = ("core:" + core_check_path, None)
         sig.append(entry)
         per_syskey.setdefault(sk, []).append(entry)
+    # Build 330: die Sammlungen der Computer liegen NICHT in den
+    # Spieleordnern oben - die 0MHz-MGLs in /media/fat/_DOS Games, die
+    # AmigaVision-Liste in games/Amiga/listings. Ohne diese Eintraege
+    # erschiene ein neu kopiertes DOS-Spiel erst beim naechsten
+    # manuellen Neueinlesen. SCAN_LOGIC_VERSION bleibt: die vier neuen
+    # core:-Eintraege aendern die Signatur beim ersten Start ohnehin.
+    try:
+        import fe.computer as _comp
+        for _o in sorted(glob.glob(_comp.DOS_MGL_MUSTER)):
+            try:
+                entry = ("dos:" + os.path.basename(_o),
+                         int(os.path.getmtime(_o)))
+            except OSError:
+                continue
+            sig.append(entry)
+            per_syskey.setdefault("AO486", []).append(entry)
+        _inst = _comp.amigavision_installation()
+        if _inst:
+            for _datei, _n in _comp.AMIGAVISION_LISTEN:
+                try:
+                    entry = ("ags:" + _datei, int(os.path.getmtime(
+                        os.path.join(_inst, "listings", _datei))))
+                except OSError:
+                    continue
+                sig.append(entry)
+                per_syskey.setdefault("AMIGA", []).append(entry)
+    except Exception:                                    # noqa: BLE001
+        pass
     sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
     global _LETZTE_SIGNATUR_MIT_NAS
     _LETZTE_SIGNATUR_MIT_NAS = any(e[0].startswith("nas:") for e in sig)
@@ -2025,6 +2053,16 @@ def _scan_games_disk(progress_cb=None, only_syskeys=None):
                 seen_roots.add(real)
                 sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
                 _merge_node(sys_node, sub_node)
+        # Build 330: die Sammlungen der Computer (AmigaVision-Listen,
+        # 0MHz-MGLs) - siehe fe/computer.py. Ein Fehler dort darf das
+        # Einlesen der anderen Systeme nicht kosten.
+        # ("import fe.computer" hier drin machte "fe" in der ganzen
+        # Funktion lokal - deshalb der Umweg ueber "as".)
+        try:
+            import fe.computer as _computer
+            _computer.knoten_ergaenzen(syskey, sys_node, rbf)
+        except Exception as e:                           # noqa: BLE001
+            LOG("Computer: %s nicht ergaenzt: %s" % (syskey, e))
         if sys_node["folders"] or sys_node["items"]:
             cats.append((disp, sys_node, syskey))
     return cats

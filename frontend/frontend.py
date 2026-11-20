@@ -390,6 +390,7 @@ from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
 import fe.cores as CORES
 # Build 329: das Gimmick unter System -> Wartung (Invade-a-Load).
 import fe.gimmick as GIMMICK
+import fe.computer as COMPUTER
 import fe.mister_favs as MFAV
 import fe.mister_system as MSYS
 # ACHTUNG: NICHT mit fe/retroachievements.py verwechseln - das sind zwei
@@ -685,6 +686,13 @@ SYSTEM_ACCENT = {
     # Master System (230,90,90) abhebt: kraeftiger und weniger ins
     # Rosa gehend, passend zum LED-Rot der echten Konsole.
     "VIRTUALBOY": (235, 45, 45),
+    # Build 330: die Computer - C64 im Hellblau seines Startbildschirms,
+    # Amiga im Rot des Boing-Balls, Amstrad im Gruen des Monitors,
+    # DOS im Grau eines Beige-PCs mit etwas Blau.
+    "C64":        (124, 112, 218),
+    "AMIGA":      (220, 70, 55),
+    "AMSTRAD":    (80, 190, 100),
+    "AO486":      (120, 160, 200),
     # NEU (Build 79, zusammen mit den 30 zusaetzlichen Konsolen in
     # fe/systems.py): ohne eigenen Eintrag bekaeme jedes davon die
     # allgemeine Akzentfarbe des Themes, und alle saehen gleich aus.
@@ -17149,6 +17157,95 @@ class Frontend:
     # BUILD 327: DAS RA-PROFIL (Vorschlag 5) - Punkte, Rang, letzte
     # Erfolge und was die eigene Sammlung an Auszeichnungen traegt.
     # ------------------------------------------------------------------
+    def computer_check_bildschirm(self, ergebnis=None):
+        """Build 330, System -> Wartung: je Computer, was da ist und was
+        fehlt (fe/computer.py, computer_check()). OK-Zeilen gruen, fehlende
+        rot, reine Auskunft grau - auf der Roehre umgebrochen statt
+        abgeschnitten."""
+        if ergebnis is None:
+            try:
+                ergebnis = COMPUTER.computer_check()
+            except Exception as e:                       # noqa: BLE001
+                LOG("Computer-Check: %s" % e)
+                ergebnis = []
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        fb.clear(C_BG)
+        titel = t("computer_check_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 8 * s
+        hint = t("ra_bilanz_hinweis")
+        sc = s - 1 if s > 1 else 1
+        unten = H - oy - self._hinweis_hoehe(hint, sc)
+        farben = {True: (90, 200, 110), False: (230, 80, 70), None: C_DIM}
+        zeichen = {True: "+ ", False: "- ", None: "  "}
+        for name, zeilen in ergebnis:
+            if y + 10 * s > unten:
+                break
+            fb.text(ox, y, name[:maxc], s, C_TITLE, C_BG)
+            y += 12 * s
+            for ok, key, args in zeilen:
+                text = zeichen[ok] + t(key, *args)
+                for z in self._wrap_text(text, maxc):
+                    if y + 10 * s > unten:
+                        break
+                    fb.text(ox, y, z, s, farben[ok], C_BG)
+                    y += 11 * s
+            y += 4 * s
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+        return ergebnis
+
+    def _computer_hinweis(self, syskey, ext, rom, lesen=None):
+        """Build 330: vor einem Computerspiel, das nicht von selbst
+        losgeht, zeigen, was man eintippen muss. True = starten, False =
+        der Nutzer hat abgebrochen. Ohne Hinweis sofort True."""
+        try:
+            hinweis = COMPUTER.starthinweis(syskey, ext, rom, lesen=lesen)
+        except Exception as e:                           # noqa: BLE001
+            LOG("Computer: Hinweis nicht ermittelt: %s" % e)
+            hinweis = None
+        if not hinweis:
+            return True
+        titel_key, zeilen = hinweis
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        fb.clear(C_BG)
+        titel = t(titel_key)
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 10 * s
+        gross = 2 * s if W >= 640 else s
+        for key, args in zeilen:
+            text = t(key, *args)
+            zs = self._fit_scale(text, W - 2 * ox, gross)
+            fb.text(ox, y, text, zs, C_TEXT, C_BG)
+            y += 10 * zs + 6 * s
+        y += 6 * s
+        for z in self._wrap_text(t("hinweis_tastatur"), maxc):
+            fb.text(ox, y, z, s, C_DIM, C_BG)
+            y += 12 * s
+        hint = t("hinweis_tasten")
+        sc = s - 1 if s > 1 else 1
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+        LOG("Computer: Hinweis %s fuer %s" % (titel_key, rom))
+        while True:
+            a = self.inp.read_action()
+            if a == "ok":
+                return True
+            if a in ("back", "exit", None):
+                return False
+
     def ra_profil_zaehlen(self):
         """Aus der eigenen Fortschrittstabelle: (gemeistert,
         abgeschlossen, beendet, angefangen) - je RA-Spielnummer einmal."""
@@ -26788,6 +26885,12 @@ class Frontend:
                             % (name, syskey,
                                self._core_wahl_log(ra_choice, ra_core,
                                                    netplay_core)))
+                        # Build 330: auch beim Zufallsstart sagen, was
+                        # eine Computer-Diskette zum Starten braucht.
+                        if not self._computer_hinweis(syskey, ext, rom):
+                            self._force_full_redraw = True
+                            self.draw()
+                            continue
                         record_recent(name, rand_arg)
                         mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
                         self.run_core(mgl, label=name, syskey=syskey)
@@ -27044,6 +27147,14 @@ class Frontend:
                                 # Disc 2.
                                 rbf = CORES.aufloesen_spiel(
                                     rom, syskey, rbf)
+                            # Build 330: eine Diskette am C64 oder
+                            # Amstrad startet nicht von selbst - vorher
+                            # sagen, was man eintippen muss. ESC = doch
+                            # nicht starten.
+                            if not self._computer_hinweis(syskey, ext, rom):
+                                self._force_full_redraw = True
+                                self.draw()
+                                continue
                             LOG("Spielstart: %s (%s)%s"
                                 % (label, syskey,
                                    self._core_wahl_log(ra_choice, ra_core,
@@ -27136,6 +27247,12 @@ class Frontend:
                             # Build 329: das Gimmick, siehe
                             # _gimmick_starten() und fe/gimmick.py.
                             self._gimmick_starten()
+                        elif kind == "computer_check":
+                            # Build 330: siehe computer_check_bildschirm().
+                            self.computer_check_bildschirm()
+                            self.inp.read_action()
+                            self._force_full_redraw = True
+                            self.draw()
                         elif kind == "rom_filter":
                             # NEUES FEATURE (Nutzerwunsch: "dass jeder
                             # wirklich das angezeigt bekommt, was er auch

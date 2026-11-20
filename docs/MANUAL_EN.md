@@ -1447,6 +1447,40 @@ the C64 stops at READY. after loading — then type `RUN`. Back to the
 frontend as with any game: F1, hold Esc or Start+Select+L+R on a
 Nintendo pad.
 
+### Computers: C64, Amiga, Amstrad CPC and DOS (since build 330)
+
+The four computers appear as their own categories, just like the
+consoles — as soon as their core is in `/media/fat/_Computer/`. Games
+are found as everywhere else: in `/media/fat/games`, on USB drives and
+on the NAS.
+
+| Computer | Folder | What is read | What happens on start |
+|---|---|---|---|
+| Commodore 64 | `games/C64/` | `.crt` `.prg` `.t64` `.tap` `.d64` `.g64` `.d81` | Cartridges (e.g. the **OneLoad64** collection) and PRGs run by themselves; from a `.t64` the program is extracted. Disks are inserted into drive 8 — before that the frontend shows what to type: `LOAD"*",8,1` and `RUN` |
+| Amiga | `games/Amiga/` | `.adf` and the **AmigaVision** game list | Every game in `listings/games.txt` (and the demos in `demos.txt`) is its own entry in the "AmigaVision" folder and **boots straight into that game** |
+| Amstrad CPC | `games/Amstrad/` | `.dsk` `.cdt` `.sna` | Snapshots run at once. For a disk the frontend reads the directory and shows e.g. `RUN"DISC`; for a tape `\|TAPE` and `RUN"` |
+| DOS (ao486) | `games/AO486/` and `/media/fat/_DOS Games/` | the **0MHz** MGLs, plus `.vhd` `.img` `.ima` `.vfd` | A 0MHz MGL is started unchanged; its images do not appear a second time. Your own VHD is started with the CD image from the same folder and a reset |
+
+**How AmigaVision starts directly:** the frontend writes the game's
+name into `games/Amiga/shared/ags_boot` — the same way Zaparoo does —
+and starts the Minimig core with the "Amiga" settings AmigaVision set
+up. That is the **only** file the frontend touches there. If the
+`shared/` folder is missing, AmigaVision boots into its own menu.
+
+**The hint before the start** only appears for disks and tapes that do
+not start by themselves. OK starts, ESC does not. Typing needs a
+keyboard on the MiSTer.
+
+**Computer check** under System → Maintenance shows, per computer, what
+is there and what is missing: the core, the games folder, the
+AmigaVision installation with its list and `shared/`, the ao486 boot
+ROMs (`boot0.rom`, `boot1.rom` in `games/AO486/`) and how many 0MHz
+games were found.
+
+Covers come from the libretro databases "Commodore - 64", "Commodore -
+Amiga", "Amstrad - CPC" and "DOS". The four do not have their own
+category badge yet — the placeholder is shown for now.
+
 ## 8l. Choosing a standard or RA core
 
 If you use **sage2050's "MiSTer_RetroAchievements" tool** (separate
@@ -2759,6 +2793,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Download game data (needs network) | `gameinfo_download` |
 | Redraw the display | `redraw` |
 | Gimmick: Invade-a-Load (C64) - only when the file and the C64 core are present (since build 329) | `invade_a_load` |
+| Computer check (C64, Amiga, CPC, DOS): what is there and what is missing (since build 330) | `computer_check` |
 | Reboot the MiSTer | `reboot` |
 | Quit the frontend | `quit` |
 

@@ -25,6 +25,20 @@ def write_mgl(rbf, rom_path, delay, ftype, index, setname=None):
     <setname same_dir="1">...</setname> zwischen <rbf> und <file>,
     exakt wie in einer echten .mgl-Datei von sage2050s Werkzeug
     verifiziert."""
+    # Build 330: die Computer-Systeme (C64, Amiga, Amstrad, ao486) haben
+    # Sonderfaelle - siehe mgl_inhalt() in fe/computer.py. Eine fertige
+    # MGL einer Sammlung (0MHz-DOS) wird unveraendert gestartet.
+    if ftype == "mgl":
+        return rom_path
+    try:
+        from fe.computer import mgl_inhalt
+        sonder = mgl_inhalt(rbf, rom_path, delay, ftype, index, setname)
+    except Exception:                                    # noqa: BLE001
+        sonder = None
+    if sonder:
+        with open(MGL_TMP, "w") as f:
+            f.write(sonder)
+        return MGL_TMP
     setname_xml = ('\t<setname same_dir="1">%s</setname>\n' % setname) \
         if setname else ""
     xml = ('<mistergamedescription>\n'

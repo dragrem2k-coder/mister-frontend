@@ -13,6 +13,17 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Neu: die Computer mit Spielen — C64, Amiga, Amstrad CPC, DOS.**
+  Vier neue Kategorien, sobald der Core auf der Karte liegt; gelesen
+  wird wie überall in `games/`, auf USB und auf dem NAS. C64: Module
+  (OneLoad64), PRG und T64 laufen von selbst los, bei Disketten zeigt
+  das Frontend vorher `LOAD"*",8,1`. Amiga: jedes Spiel aus der
+  **AmigaVision**-Liste ist ein eigener Eintrag und bootet direkt hinein.
+  DOS: die **0MHz**-MGLs aus `/media/fat/_DOS Games` stehen oben, ihre
+  Abbilder nicht doppelt. Amstrad: bei einer Diskette steht vorher der
+  passende `RUN"NAME` da. Dazu **Computer-Check** unter System →
+  Wartung: was fehlt (Core, Ordner, AmigaVision, Boot-ROMs) (Build 330).
+
 - **Neu: Gimmick unter System → Wartung — Invade-a-Load.** Der
   C64-Kassettenlader von 1987, in dem man Space Invaders spielt, startet
   auf dem C64-Core. Die Datei bringst du selbst mit (`.T64` oder `.PRG`

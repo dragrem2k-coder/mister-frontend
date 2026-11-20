@@ -139,7 +139,7 @@ gerade geht.
 - `Mitwirkende`
 - `Auf Updates prüfen: AN -> ausschalten`
 
-### Wartung (12 Eintraege)
+### Wartung (13 Eintraege)
 
 - `MiSTer-OSD öffnen (Settings/Buttons)`
 - `ROM-Wächter: AN`
@@ -151,6 +151,7 @@ gerade geht.
 - `Boxarts nachladen (braucht Netz, dauert etwas)`
 - `Spieledaten nachladen (braucht Netz, dauert etwas)`
 - `Anzeige neu aufbauen`
+- `Computer-Check (C64, Amiga, CPC, DOS)`
 - `MiSTer neu starten`
 - `Frontend beenden`
 
@@ -386,6 +387,7 @@ Quelltext selbst beschrieben ist.
 - **achievements** - Eigenes Erfolgssystem ("Easter Egg System"): versteckte, ereignis- basierte Erfolge (Nachteule, Marathon, Wochenend-Krieger, Comeback, Vielseitig), Profil-Statistiken, Frontend-Level, geheime Codes (Konami-artige Tastenfolgen ...
 - **anleitung** - Die Spielanleitung zum markierten Eintrag (Build 263)
 - **audio** - Audio: Lautstaerke-Verwaltung, Navigations-Soundeffekte (selbst erzeugte WAVs), MusicPlayer (MP3 + Rainwave-Internetradio)
+- **computer** - Die Computer-Systeme mit Spielen (Build 330): Commodore 64, Amiga, Amstrad CPC und DOS (ao486)
 - **cores** - Core-Verwaltung: welcher Core startet ein System? (Build 174)
 - **corestand** - Was hat update_all geaendert? (Build 250) Idee aus dem Vergleich mit Degauss: dort sieht man nach einem Update, was neu ist
 - **filter** - Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler (Build 142)

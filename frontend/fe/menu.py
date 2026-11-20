@@ -653,6 +653,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # C64-Core auf der Karte liegen (siehe fe/gimmick.py).
             *([(t("sys_invade_a_load"), "invade_a_load", None)]
               if GIMMICK.verfuegbar() else []),
+            # Build 330: was den Computern noch fehlt (fe/computer.py).
+            (t("sys_computer_check"), "computer_check", None),
             (t("sys_reboot"), "reboot", None),
             (t("sys_quit"), "quit", None),
         ),
