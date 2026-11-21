@@ -602,6 +602,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # ein einziger Umschalter statt der kompletten Remap-
             # Prozedur fuer genau diesen (haeufigsten) Einzelfall.
             (swap_ok_back_label, "swap_ok_back", None),
+            # Build 335: zeigt jede gedrueckte Taste (fe/padtest.py).
+            (t("sys_padtest"), "padtest", None),
         ),
         t("sys_group_info"): folder(
             (t("sys_help_action"), "help", None),

@@ -13,6 +13,21 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: start took 18 seconds (bug from build 334).** Your bench 24
+  showed it: building "Collections" cost 15.6 s, 86 % of the start. The
+  cause was the cover check for the attract mode — it ran over all
+  41,379 games at every start, and by mistake also applied to
+  collections, random roulette and the random start (F11). Now the
+  attract mode only checks the games it actually draws, and everything
+  else sees the whole collection again (build 335).
+- **New: attract mode you can use.** OK starts the game shown,
+  Left/Right switches the system (systems without covers are skipped);
+  any other button just wakes it as before (build 335).
+- **New: controller test** under System → Input & language: shows, per
+  device, the buttons pressed right now (several at once too), what the
+  frontend makes of them, and the direction of D-pad and stick. Back:
+  hold a button for two seconds or press Esc (build 335).
+
 - **Changed: "Amiga 500" instead of the AmigaVision game list.** The
   main page shows the category "Amiga 500". If AmigaVision is installed,
   entering it asks: "Start AmigaVision" (starts AmigaVision with its own

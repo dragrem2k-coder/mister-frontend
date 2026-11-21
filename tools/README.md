@@ -11215,3 +11215,53 @@ AmigaVision oder ADF. Dazu: Attract-Modus nur Spiele mit Cover.
 
 Neu `tools/test_attract_cover.py`, `tools/test_amiga_start.py` Teil 11.
 Verfaelscht: Filter weg, Index immer "ja", HD-Regel weg - jedes Mal rot.
+
+## Nachtrag Build 335 - der Start, Attract zum Bedienen, Controller-Test
+
+**Stand:** 21.11.2026, `Dragend_Build_335.zip` (build_id
+`2026-11-21-335`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+### Der eigene Fehler aus Build 334 - gefunden im Bench 24
+
+```
+Start bis Kategorien bereit             18161.97 ms
+     build_collections_category()         15570 ms    86 %
+```
+
+Build 334 hat die Cover-Pruefung fuer den Attract-Modus IN
+`_attract_games_pool()` gesetzt. Dieser Pool ist aber nicht nur der des
+Attract-Modus: `build_collections_category()` baut ihn bei jedem Start,
+und Zufalls-Zock und Zufallsstart (F11) ziehen daraus. Ergebnis: 41.379
+Cover-Pruefungen je Start (jede ohne Treffer laeuft durch Index,
+gamelist, fremde Datenbank und Basis-Spiel), und F11 startete nur noch
+Spiele mit Cover. Der Test aus Build 334 hat das nicht gefangen - er hat
+die Pruefung selbst geprueft, nicht, wer den Pool sonst noch benutzt.
+
+Jetzt: Pool ungefiltert; `_attract_waehlen()` zieht und fragt nur den
+Gezogenen (400 Zuege / 0,25 s, gemerkt je Spiel). Der Test zaehlt jetzt
+mit, dass `build_collections_category()` KEIN Cover abfragt, und dass
+eine Wahl aus 20.001 Spielen hoechstens 400 Fragen stellt.
+
+### Attract zum Bedienen (aus der Degauss-Einschaetzung, Punkt 1)
+
+OK -> `_attract_start_spiel`, `next_action()` liefert "random", der
+Zufallsstart nimmt genau dieses Spiel (Core-Frage, Protokoll wie F11).
+Links/Rechts -> `_attract_system_wechseln()`.
+
+### Controller-Test (Punkt 3)
+
+`fe/padtest.py`: Zustand statt Ereignisstrom (EVIOCGKEY/EVIOCGABS), damit
+auch Start+Select+L+R zugleich sichtbar ist. Verlassen ueber Halten
+(2 s) oder Esc - B allein darf nicht beenden, sonst liesse sich B nicht
+testen. Beim Bau aufgefallen: die erste Fassung der F-Tasten-Tabelle
+legte F11/F12 auf 69/70 (NumLock/ScrollLock) - richtig sind 87/88; der
+Test prueft das jetzt mit Gegenprobe.
+
+### Sonst im Bench 24 aufgefallen (nicht geaendert)
+
+* Pro Controller: 129 Ereignisse je Sekunde in Ruhe (Stick-Zittern ABS
+  X/Y), 3x SYN_DROPPED. Abhilfe waere eine Totzone im Kernel (EVIOCSABS
+  fuzz) - die gaelte aber auch fuer die Cores. Bewusst nicht.
+* Abschnitt P: ARCADE-Namensverzeichnis 4,8 s, laengster Happen 1,1 s.
+  Kandidat fuer einen spaeteren Build.

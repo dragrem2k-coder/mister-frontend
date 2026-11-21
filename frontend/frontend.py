@@ -4828,16 +4828,96 @@ class Frontend:
         for _name, node, syskey in self.cats:
             if syskey:
                 alle.extend(walk(node, syskey))
-        # Build 334, Nutzerwunsch: "das der attract modus nur spiele
-        # anzeigt die auch ein cover haben". Gezeigt wird dasselbe Bild,
-        # das draw_attract() holt (cover_quelle(): ab 720 Zeilen nur
-        # art_hd, darunter art und dann art_hd) - geprueft wird es hier
-        # nach genau dieser Regel, ueber die Indizes und ohne stat().
-        pool = [g for g in alle if self._hat_cover(g[1], g[0])]
-        LOG("Attract-Modus: %d von %d Spielen mit Cover"
-            % (len(pool), len(alle)))
-        self._attract_pool = pool
-        return pool
+        # BUILD 335: HIER WIRD NICHT MEHR GEFILTERT. Build 334 hat an
+        # dieser Stelle nur Spiele mit Cover behalten - und damit drei
+        # Fehler gemacht: (1) der Pool ist nicht nur der des Attract-
+        # Modus, sondern auch der der Sammlungen, des Zufalls-Zocks und
+        # des Zufallsstarts (F11) - die sahen ploetzlich nur noch Spiele
+        # mit Cover; (2) build_collections_category() baut ihn bei
+        # JEDEM Start - sein Bench 24 zeigte dafuer 15.570 ms, 86 % des
+        # ganzen Starts (vorher rund eine Sekunde); (3) die Pruefung lief
+        # ueber alle 41.379 Spiele, obwohl der Attract-Modus nur eines
+        # alle sechs Sekunden zeigt. Die Cover-Frage stellt jetzt
+        # _attract_waehlen(), und zwar nur fuer die Kandidaten, die er
+        # wirklich zieht.
+        self._attract_cover_cache = {}
+        self._attract_pool = alle
+        return alle
+
+    # Wie lange _attract_waehlen() hoechstens sucht - in Zuegen und in
+    # Zeit. Bei einer Sammlung, in der nur jedes hundertste Spiel ein
+    # Cover hat, findet er mit 400 Zuegen zu 98 % eins.
+    ATTRACT_SUCHE_ZUEGE = 400
+    ATTRACT_SUCHE_SEKUNDEN = 0.25
+
+    def _attract_waehlen(self, ausser=None, syskey=None):
+        """Ein zufaelliges Spiel MIT Cover (Build 335, Nutzerwunsch aus
+        Build 334: "das der attract modus nur spiele anzeigt die auch ein
+        cover haben") - oder None, wenn in der Frist keins gefunden wird.
+
+        Gezogen wird zufaellig, geprueft wird nur der gezogene Kandidat
+        (_hat_cover(), ueber die Indizes, ohne stat()), und das Ergebnis
+        je Spiel gemerkt. syskey: nur aus diesem System (Links/Rechts im
+        Attract-Modus). ausser: nicht direkt dasselbe noch einmal."""
+        pool = self._attract_games_pool()
+        if syskey is not None:
+            pool = [g for g in pool if g[1] == syskey]
+        if not pool:
+            return None
+        merk = getattr(self, "_attract_cover_cache", None)
+        if merk is None:
+            merk = self._attract_cover_cache = {}
+        t0 = time.monotonic()
+        for _ in range(self.ATTRACT_SUCHE_ZUEGE):
+            g = random.choice(pool)
+            if g == ausser and len(pool) > 1:
+                continue
+            schluessel = (g[1], g[0])
+            hat = merk.get(schluessel)
+            if hat is None:
+                hat = merk[schluessel] = self._hat_cover(g[1], g[0])
+            if hat:
+                return g
+            if time.monotonic() - t0 > self.ATTRACT_SUCHE_SEKUNDEN:
+                break
+        return None
+
+    def _attract_systeme(self):
+        """Die Systeme, die im Attract-Pool vorkommen, in der Reihenfolge
+        der Hauptseite."""
+        gesehen, raus = set(), []
+        for _n, _node, sk in self.cats:
+            if sk and sk not in gesehen:
+                gesehen.add(sk)
+                raus.append(sk)
+        im_pool = {g[1] for g in self._attract_games_pool()}
+        return [sk for sk in raus if sk in im_pool]
+
+    def _attract_system_wechseln(self, richtung):
+        """Links/Rechts im Attract-Modus (Build 335, nach dem Vorbild von
+        Degauss): das naechste bzw. vorige System mit einem Cover-Spiel.
+        Systeme ohne ein einziges Cover werden uebersprungen; nach einer
+        Sekunde Suche bleibt es beim jetzigen Spiel."""
+        systeme = self._attract_systeme()
+        if not systeme or not self._attract_game:
+            return False
+        jetzt = self._attract_game[1]
+        i = systeme.index(jetzt) if jetzt in systeme else -1
+        t0 = time.monotonic()
+        for schritt in range(1, len(systeme) + 1):
+            sk = systeme[(i + richtung * schritt) % len(systeme)]
+            if sk == jetzt and len(systeme) > 1:
+                continue
+            g = self._attract_waehlen(ausser=self._attract_game, syskey=sk)
+            if g:
+                self._attract_game = g
+                self._attract_change_next = (time.monotonic()
+                                             + ATTRACT_CHANGE_SECONDS)
+                self.draw()
+                return True
+            if time.monotonic() - t0 > 1.0:
+                break
+        return False
 
     def _hat_cover(self, syskey, name):
         """Hat dieses Spiel ein Cover, das draw_attract() zeigen wuerde?
@@ -6808,8 +6888,12 @@ class Frontend:
         fb.text(max(0, (W - sysname_w) // 2), title_y + 30 * s, syskey, s, accent, (0, 0, 0))
 
         hint = t("attract_hint")
-        hint_w = len(hint) * 8 * s
-        fb.text(max(0, (W - hint_w) // 2), H - 24 * s, hint, s, C_DIM, (0, 0, 0))
+        # Build 335: der Hinweis nennt jetzt OK und Links/Rechts - auf
+        # der Roehre notfalls kleiner statt abgeschnitten.
+        hs = self._fit_scale(hint, W - 8 * s, s)
+        hint_w = len(hint) * 8 * hs
+        fb.text(max(0, (W - hint_w) // 2), H - 24 * s, hint, hs, C_DIM,
+                (0, 0, 0))
         fb.flip()
 
     # ------------------------------------------------------------------
@@ -13432,30 +13516,33 @@ class Frontend:
         sich gar kein Spiel (z.B. komplett leere Sammlung), wird die
         Leerlauf-Uhr zurueckgesetzt, statt bei jedem Tick erneut
         erfolglos zu versuchen."""
-        pool = self._attract_games_pool()
-        if not pool:
+        # Build 335: nur ein Spiel mit Cover (siehe _attract_waehlen()).
+        # Findet sich in der Frist keins, wird die Leerlauf-Uhr
+        # zurueckgesetzt - wie bisher bei einer leeren Sammlung.
+        spiel = self._attract_waehlen()
+        if spiel is None:
+            LOG("Attract-Modus: kein Spiel mit Cover gefunden")
             self._last_input_time = time.monotonic()
             return
         idle_for = time.monotonic() - self._last_input_time
         LOG("Attract-Modus startet nach %.1fs Leerlauf (Schwelle: %ds)"
             % (idle_for, self._attract_delay_cached()))
         self.attract_mode = True
-        self._attract_game = random.choice(pool)
+        self._attract_game = spiel
         self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
         self.draw()
 
     def _advance_attract(self):
         """Naechstes zufaelliges Spiel im Attract-Modus - vermeidet,
         wenn moeglich, direkt zweimal hintereinander dasselbe."""
-        pool = self._attract_games_pool()
-        if not pool:
+        if not self._attract_games_pool():
             self.attract_mode = False
             return
-        if len(pool) > 1:
-            choices = [g for g in pool if g != self._attract_game]
-            self._attract_game = random.choice(choices) if choices else pool[0]
-        else:
-            self._attract_game = pool[0]
+        # Build 335: nur Spiele mit Cover. Findet sich diesmal keins,
+        # bleibt das jetzige stehen (es hat ja eins).
+        spiel = self._attract_waehlen(ausser=self._attract_game)
+        if spiel is not None:
+            self._attract_game = spiel
         self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
         self.draw()
 
@@ -13536,6 +13623,25 @@ class Frontend:
                     # Jetzt wird der naechste Aufbau einmalig als voller
                     # Neuaufbau erzwungen (siehe _overlay_active()).
                     self._force_full_redraw = True
+                if self.attract_mode and act == "ok" and self._attract_game:
+                    # Build 335 (nach dem Vorbild von Degauss): OK startet
+                    # das gezeigte Spiel. Gestartet wird ueber den Weg
+                    # des Zufallsstarts (F11) - mit derselben Core-Frage
+                    # und demselben Protokoll -, nur mit genau diesem
+                    # Spiel statt eines zufaelligen.
+                    self.attract_mode = False
+                    self._last_input_time = time.monotonic()
+                    self._attract_start_spiel = self._attract_game
+                    LOG("Attract-Modus: starte %s (%s)"
+                        % (self._attract_game[0], self._attract_game[1]))
+                    return "random"
+                if self.attract_mode and act in ("left", "right"):
+                    # Build 335: Links/Rechts wechselt das System, der
+                    # Attract-Modus laeuft weiter.
+                    self._attract_system_wechseln(
+                        -1 if act == "left" else 1)
+                    self.music.tick()
+                    continue
                 if self.attract_mode:
                     # Erste Eingabe beendet NUR den Attract-Modus -
                     # wird nicht zusaetzlich als normale Navigation
@@ -17243,6 +17349,93 @@ class Frontend:
     # BUILD 327: DAS RA-PROFIL (Vorschlag 5) - Punkte, Rang, letzte
     # Erfolge und was die eigene Sammlung an Auszeichnungen traegt.
     # ------------------------------------------------------------------
+    # Der Controller-Test liest den Zustand in diesem Takt; eine Sekunde
+    # Sicherheitsfrist zum Verlassen, falls jemand das Pad weglegt und
+    # eine Taste klemmt, gibt es nicht - Halten ist ja das Verlassen.
+    PADTEST_TAKT = 0.05
+    PADTEST_MAX_SEKUNDEN = 600
+
+    def padtest_bildschirm(self, takte=None):
+        """Build 335: der Controller-Test (System -> Eingabe & Sprache).
+
+        Je Geraet: Name, die JETZT gedrueckten Tasten mit dem, was das
+        Frontend daraus macht, und die Richtung von Steuerkreuz und
+        Stick (fe/padtest.py). Gezeichnet wird nur, wenn sich etwas
+        geaendert hat. Verlassen: eine Taste zwei Sekunden halten, oder
+        Esc. takte: fuer den Test - nach so vielen Runden aufhoeren."""
+        import fe.padtest as PT
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        halten = PT.Halten()
+        letztes = None
+        t_ende = time.monotonic() + self.PADTEST_MAX_SEKUNDEN
+        runde = 0
+        try:
+            while time.monotonic() < t_ende:
+                runde += 1
+                geraete = list(getattr(self.inp, "devices", {}).values())
+                stand = PT.zustand(geraete, t)
+                codes = [c for _n, tasten, _r in stand
+                         for _name, _a, c in tasten]
+                fertig = halten.melden(codes)
+                rest = halten.rest()
+                bild = (stand, None if rest is None else round(rest, 1))
+                if bild != letztes:
+                    letztes = bild
+                    self._padtest_zeichnen(stand, rest, s, ox, oy, maxc)
+                if fertig:
+                    break
+                if takte is not None and runde >= takte:
+                    break
+                time.sleep(self.PADTEST_TAKT)
+        finally:
+            # Die Ereignisse, die waehrenddessen aufgelaufen sind (jeder
+            # Druck im Test), duerfen danach nicht als Navigation wirken.
+            try:
+                self.inp.flush()
+            except Exception:                            # noqa: BLE001
+                pass
+            self._last_input_time = time.monotonic()
+        return runde
+
+    def _padtest_zeichnen(self, stand, rest, s, ox, oy, maxc):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        fb.clear(C_BG)
+        titel = t("padtest_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 8 * s
+        hint = t("padtest_hinweis")
+        sc = s - 1 if s > 1 else 1
+        unten = H - oy - self._hinweis_hoehe(hint, sc)
+        if not stand:
+            fb.text(ox, y, t("padtest_keine_geraete")[:maxc], s, C_DIM, C_BG)
+        for name, tasten, richtungen in stand:
+            if y + 22 * s > unten:
+                break
+            fb.text(ox, y, name[:maxc], s, C_DIM, C_BG)
+            y += 12 * s
+            teile = ["%s (%s)" % (n, a) if a else n for n, a, _c in tasten]
+            teile += richtungen
+            zeile = ", ".join(teile) if teile else t("padtest_keine")
+            for z in self._wrap_text(zeile, maxc - 2):
+                if y + 10 * s > unten:
+                    break
+                fb.text(ox + 16 * s, y, z, s,
+                        C_TITLE if teile else C_DIM, C_BG)
+                y += 12 * s
+            y += 6 * s
+        if rest is not None and rest < 1.95:
+            fb.text(ox, unten - 14 * s, t("padtest_rest", rest)[:maxc], s,
+                    C_DIM, C_BG)
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+
     def computer_check_bildschirm(self, ergebnis=None):
         """Build 330, System -> Wartung: je Computer, was da ist und was
         fehlt (fe/computer.py, computer_check()). OK-Zeilen gruen, fehlende
@@ -26915,6 +27108,13 @@ class Frontend:
                     # getroffene System eine hat.
                     move_streak = page_streak = 0
                     pool = self._attract_games_pool()
+                    # Build 335: OK im Attract-Modus startet genau das
+                    # gezeigte Spiel (siehe next_action()).
+                    _aus_attract = getattr(self, "_attract_start_spiel",
+                                           None)
+                    if _aus_attract is not None:
+                        self._attract_start_spiel = None
+                        pool = [_aus_attract]
                     # Build 256: "Zufaelliger Favorit" aus dem
                     # Kontextmenue laeuft durch denselben Zweig, nur
                     # mit einer kleineren Auswahl. Faellt die Auswahl
@@ -27349,6 +27549,11 @@ class Frontend:
                             # Build 329: das Gimmick, siehe
                             # _gimmick_starten() und fe/gimmick.py.
                             self._gimmick_starten()
+                        elif kind == "padtest":
+                            # Build 335: siehe padtest_bildschirm().
+                            self.padtest_bildschirm()
+                            self._force_full_redraw = True
+                            self.draw()
                         elif kind == "computer_check":
                             # Build 330: siehe computer_check_bildschirm().
                             self.computer_check_bildschirm()

@@ -801,9 +801,20 @@ systems are affected (Recently played/Scripts/System are left out).
 **Since build 334 only games with a cover.** The attract mode only shows
 games that have a cover — by the same rule as the picture itself: on
 HDMI (720 lines and up) only a cover in `art_hd/` counts, on a CRT one in
-`art/` or `art_hd/`. If there is none at all, the attract mode does not
-start. The log says how many games qualify ("Attract-Modus: … von …
-Spielen mit Cover").
+`art/` or `art_hd/`. If none is found, the attract mode does not start.
+Only the games it draws are checked, not the whole collection (since
+build 335 — in build 334 that cost 15 seconds at every start).
+
+**Since build 335 you can use it:** in attract mode **OK** starts the
+game shown (with the same core question as the random start),
+**Left/Right** switches the system (systems without a single cover are
+skipped). Any other button just wakes it up as before.
+
+**Controller test (since build 335).** Under *System → Input & language
+→ "Controller test"* the frontend shows, per device, the buttons pressed
+right now — several at once too, e.g. Start+Select+L+R — with what the
+frontend makes of them (e.g. "A (ok)"), and the direction of D-pad and
+stick. Back: hold a button for two seconds or press Esc.
 
 ## 8e. Favorites
 
@@ -2811,6 +2822,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Configure key mapping | `remap` |
 | Reset to default mapping | `remap_reset` |
 | Swap confirm/cancel: ON/OFF | `swap_ok_back` |
+| Controller test: shows every pressed button (since build 335) | `padtest` |
 
 ### Info
 

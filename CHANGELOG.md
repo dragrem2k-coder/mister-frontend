@@ -13,6 +13,21 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Repariert: Start dauerte 18 Sekunden (Fehler aus Build 334).** Dein
+  Bench 24 zeigte es: „Sammlungen" bauen kostete 15,6 s, 86 % des
+  Starts. Ursache war die Cover-Prüfung für den Attract-Modus — sie lief
+  über alle 41.379 Spiele, bei jedem Start, und galt versehentlich auch
+  für Sammlungen, Zufalls-Zock und den Zufallsstart (F11). Jetzt prüft
+  der Attract-Modus nur die Spiele, die er tatsächlich zieht, und alles
+  andere sieht wieder die ganze Sammlung (Build 335).
+- **Neu: Attract-Modus bedienbar.** OK startet das gezeigte Spiel,
+  Links/Rechts wechselt das System (Systeme ohne Cover werden
+  übersprungen); jede andere Taste weckt wie bisher nur auf (Build 335).
+- **Neu: Controller-Test** unter System → Eingabe & Sprache: zeigt je
+  Gerät die gerade gedrückten Tasten (auch mehrere zugleich), was das
+  Frontend daraus macht, und die Richtung von Steuerkreuz und Stick.
+  Zurück: eine Taste zwei Sekunden halten oder Esc (Build 335).
+
 - **Geändert: „Amiga 500" statt AmigaVision-Spieleliste.** Auf der
   Hauptseite steht die Kategorie „Amiga 500". Beim Betreten fragt sie,
   wenn AmigaVision installiert ist: „AmigaVision starten" (startet

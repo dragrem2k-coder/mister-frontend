@@ -124,12 +124,13 @@ gerade geht.
 - `Beim Start auf NAS/Netzwerk warten: AUS -> einschalten (automatisch erkannt)`
 - `Autostart: AUS -> einschalten (Frontend startet zusammen mit dem MiSTer)`
 
-### Eingabe & Sprache (4 Eintraege)
+### Eingabe & Sprache (5 Eintraege)
 
 - `Sprache: Deutsch -> auf Englisch wechseln`
 - `Tastenbelegung anpassen`
 - `Auf Standardbelegung zurücksetzen`
 - `Bestätigen/Abbrechen vertauschen: AUS -> einschalten`
+- `Controller-Test`
 
 ### Info (5 Eintraege)
 
@@ -398,6 +399,7 @@ Quelltext selbst beschrieben ist.
 - **masken** - MiSTers eigene Shadow Masks - gelesen, nicht mitgeliefert (Build 226)
 - **mister_favs** - MiSTers
 - **obs_websocket** - Minimaler OBS-WebSocket-v5-Client (reine Python-Standardbibliothek, kein "websockets"-Paket verfuegbar auf dem MiSTer) - fuer genau
+- **padtest** - Der Controller-Test unter System -> Eingabe & Sprache (Build 335)
 - **playtime** - Spielzeit-Tracking, Tagebuch, Jahresrueckblick, Meilensteine
 - **prewarm** - Cover-Miniaturen im Leerlauf vorberechnen
 - **ra_settings** - RetroAchievements-Einstellungen der MiSTer-Hauptanwendung lesen und schreiben (Build 95)

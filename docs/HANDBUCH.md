@@ -388,7 +388,7 @@ weiter unten erklärt werden, aber nirgends beisammenstehen:
 | Statistiken & Erfolge | Trophäenraum, Jahresrückblick, Spieltagebuch, Top-10-Listen, Meilensteine |
 | Anzeige & Sound | Theme, Menü-Auflösung, Lautstärke, **Musik-Quelle** (eigene MP3s oder Internetradio), **Bildrand X/Y** (Build 113), Ansicht Spieleliste/Hauptseite, schnelles Scrollen, Boot-Logo, Laufschrift |
 | Optionen | Autostart, **ROM-Filter**, **Attract-Verzögerung**, Miniaturen vorbereiten |
-| Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen |
+| Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen, **Controller-Test** |
 | Info | Hilfe/Übersicht, Einrichtung erneut starten, Auf Updates prüfen, Mitwirkende, Geheimnisse |
 | Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, als Gimmick **Invade-a-Load** auf dem C64-Core und der **Computer-Check** (siehe unten) |
 
@@ -979,9 +979,21 @@ vor).
 **Seit Build 334 nur Spiele mit Cover.** Der Attract-Modus zeigt nur
 noch Spiele, zu denen ein Cover da ist — nach derselben Regel wie das
 Bild selbst: auf HDMI (ab 720 Zeilen) zählt nur ein Cover in `art_hd/`,
-auf der Röhre eines in `art/` oder `art_hd/`. Gibt es gar keins, startet
-der Attract-Modus nicht. Wie viele Spiele in Frage kommen, steht im
-Protokoll („Attract-Modus: … von … Spielen mit Cover").
+auf der Röhre eines in `art/` oder `art_hd/`. Findet sich keins, startet
+der Attract-Modus nicht. Geprüft werden nur die Spiele, die er zieht,
+nicht die ganze Sammlung (seit Build 335 — in Build 334 kostete das bei
+jedem Start 15 Sekunden).
+
+**Seit Build 335 bedienbar:** im Attract-Modus startet **OK** das gezeigte
+Spiel (mit derselben Core-Frage wie der Zufallsstart), **Links/Rechts**
+wechselt das System (Systeme ohne ein einziges Cover werden
+übersprungen). Jede andere Taste weckt wie bisher nur auf.
+
+**Controller-Test (seit Build 335).** Unter *System → Eingabe & Sprache
+→ „Controller-Test"* zeigt das Frontend je Gerät die gerade gedrückten
+Tasten — auch mehrere gleichzeitig, etwa Start+Select+L+R — mit dem, was
+das Frontend daraus macht (z.B. „A (ok)"), und die Richtung von
+Steuerkreuz und Stick. Zurück: eine Taste zwei Sekunden halten oder Esc.
 
 ## 8e. Favoriten
 
@@ -3212,6 +3224,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Tastenbelegung anpassen | `remap` |
 | Auf Standardbelegung zurücksetzen | `remap_reset` |
 | Bestätigen/Abbrechen vertauschen: AN/AUS | `swap_ok_back` |
+| Controller-Test: zeigt jede gedrückte Taste (seit Build 335) | `padtest` |
 
 ### Info
 
