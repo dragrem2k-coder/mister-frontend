@@ -1854,7 +1854,7 @@ the pad.
 All four live in the system menu under *Display & Sound*, right below
 the two view settings.
 
-**Scroll speed** — 0.5x to 2x. The value is a **factor**, not a fixed
+**Scroll speed** — 0.5x to 4x. The value is a **factor**, not a fixed
 number of steps: since Build 93 the frontend measures how long a frame
 actually takes and sets the repeat rate from that. So slower always
 works. **Faster only works up to what your device can really draw** —
@@ -1862,6 +1862,15 @@ and that is deliberate. Asking for more repeats than the picture can
 deliver does not make the list faster; the surplus piles up and the
 list keeps running after you let go. That is exactly the bug Build 93
 fixed.
+
+**3x and 4x (since build 337).** At 2x the frontend usually already
+polls as often as your device can draw — there are no more repeats to
+be had. The two new levels therefore get faster through **distance**:
+while you hold up/down, after the short run-up each step jumps several
+rows (up to four), and still only one frame is drawn. The first press
+and the run-up stay one row, left/right and page jumps never jump, and
+at the end of the list the jump stops on the last entry before it
+wraps around as usual.
 
 **Since build 302 the setting actually does something (it did not
 always).** Underneath the measurement sat a rigid 40 ms lower bound,
@@ -2773,7 +2782,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Shadow mask | `masken` |
 | Game list view (list / grid / gallery / coverflow) | `ansicht` |
 | Main page view | `ansicht_haupt` |
-| Scroll speed (0.5x to 2x) | `scroll_tempo` |
+| Scroll speed (0.5x to 4x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |
 | Watch for ROM changes: ON/OFF | `romwacht` |
 | Re-read ROM changes automatically: ON/OFF | `romwacht_auto` |

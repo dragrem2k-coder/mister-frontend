@@ -2168,7 +2168,7 @@ Buchstaben einfach; der Eintrag ist für das Pad da.
 Alle vier stehen im Systemmenü unter *Anzeige & Sound*, direkt unter
 den beiden Ansichten.
 
-**Scrollgeschwindigkeit** — 0,5x bis 2x. Der Wert ist ein **Faktor**,
+**Scrollgeschwindigkeit** — 0,5x bis 4x. Der Wert ist ein **Faktor**,
 keine feste Schrittzahl: das Frontend misst seit Build 93 selbst, wie
 lange ein Bildaufbau dauert, und richtet die Wiederholrate danach.
 Langsamer geht deshalb immer. **Schneller geht nur bis zu dem, was
@@ -2176,6 +2176,15 @@ dein Gerät wirklich zeichnen kann** — und das ist Absicht. Fordert man
 mehr Wiederholungen an, als das Bild hergibt, wird die Liste nicht
 schneller; der Überschuss staut sich und sie läuft nach dem Loslassen
 weiter. Genau das war der Fehler, den Build 93 behoben hat.
+
+**3x und 4x (seit Build 337).** Auf 2x fragt das Frontend meist schon
+so oft, wie dein Gerät zeichnen kann — mehr Wiederholungen gibt es
+nicht. Die beiden neuen Stufen machen es deshalb über die **Weite**
+schneller: hältst du hoch/runter, springt ein Schritt nach dem kurzen
+Anlauf mehrere Zeilen (bis zu vier), gezeichnet wird trotzdem nur ein
+Bild. Der erste Druck und der Anlauf bleiben eine Zeile, links/rechts
+und Seitensprünge springen nie, und am Listenende hält der Sprung auf
+dem letzten Eintrag an, bevor es wie gewohnt herumgeht.
 
 **Die Einstellung wirkt seit Build 302 wirklich (vorher nicht immer).**
 Unter der Messung lag eine starre Untergrenze von 40 ms, und die hat
@@ -3176,7 +3185,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Lochmaske | `masken` |
 | Ansicht Spieleliste (Liste / Raster / Galerie / Coverflow) | `ansicht` |
 | Ansicht Hauptseite (Liste / Raster / Galerie / Kachelwand / Dashboard / Karussell) | `ansicht_haupt` |
-| Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
+| Scrollgeschwindigkeit (0,5x bis 4x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |
 | ROM-Wächter: AN/AUS | `romwacht` |
 | ROM-Änderungen automatisch nachlesen: AN/AUS | `romwacht_auto` |

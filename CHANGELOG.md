@@ -13,6 +13,12 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Neu: Scrollgeschwindigkeit 3x und 4x** (System → Anzeige & Sound).
+  Auf 2x scrollt die Liste meist schon so oft, wie dein MiSTer zeichnen
+  kann. Die neuen Stufen machen es über die Weite schneller: hältst du
+  hoch/runter, springt jeder Schritt nach dem kurzen Anlauf mehrere
+  Zeilen (bis zu vier). Der erste Druck bleibt eine Zeile, am Listenende
+  hält der Sprung auf dem letzten Eintrag an (Build 337).
 - **Repariert: erster Start auf einer frischen Karte zeigte zwei Minuten
   lang nichts.** Beim ersten Start liest das Frontend den Arcade-Ordner
   ein — bei dir dauerte das 106 s, und so lange blieb MiSTers eigenes

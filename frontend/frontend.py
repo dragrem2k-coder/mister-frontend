@@ -26058,6 +26058,14 @@ class Frontend:
 
         Rueckgabe: wieviele Druecker dieser eine Schritt abgedeckt hat.
         """
+        # Build 336: die Weite einer Wiederholung auf Stufe 3x/4x (siehe
+        # sprung_abholen() in fe/input.py). VOR gestaute_schritte()
+        # abgeholt - das liest weiter und koennte sonst den Wert einer
+        # anderen Aktion sehen.
+        try:
+            sprung = int(self.inp.sprung_abholen())
+        except Exception:                                # noqa: BLE001
+            sprung = 1
         n = 1
         if zusammen:
             n += self.inp.gestaute_schritte(act)
@@ -26065,7 +26073,20 @@ class Frontend:
         rueck = act in ("up", "left")
         if hoch_runter:
             self._last_scroll_dir = -1 if rueck else 1
-        schritt = weite * n * (-1 if rueck else 1)
+        schritt = weite * n * max(1, sprung) * (-1 if rueck else 1)
+
+        def neu(idx, laenge):
+            ziel = idx + schritt
+            # Build 336: ein Sprung ueber mehrere Zeilen haelt am Ende
+            # der Liste an, statt irgendwo am Anfang zu landen. Erst
+            # der naechste Schritt (vom letzten Eintrag aus) laeuft wie
+            # bisher herum - genau wie ohne Sprung.
+            if sprung > 1 and not 0 <= ziel < laenge:
+                rand = laenge - 1 if ziel >= laenge else 0
+                if idx != rand:
+                    return rand
+                ziel = idx + weite * n * (-1 if rueck else 1)
+            return ziel % laenge
         if self.page == 0:
             # Die Schranke auf len(self.cats) ist neu (vorher stand hier
             # das Modulo ohne Pruefung). Ohne Kategorien war das ein
@@ -26073,9 +26094,9 @@ class Frontend:
             # der nicht vorkommen soll, aber als Absturz die
             # schlechteste aller Antworten hat.
             if self.cats:
-                self.cat_i = (self.cat_i + schritt) % len(self.cats)
+                self.cat_i = neu(self.cat_i, len(self.cats))
         elif items:
-            self.item_i = (self.item_i + schritt) % len(items)
+            self.item_i = neu(self.item_i, len(items))
             self.marquee_reset()
         return n
 

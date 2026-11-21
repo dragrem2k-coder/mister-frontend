@@ -13,6 +13,12 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **New: scroll speed 3x and 4x** (System → Display & Sound). At 2x the
+  list usually already scrolls as often as your MiSTer can draw. The new
+  levels get faster through distance: while you hold up/down, each step
+  jumps several rows (up to four) after the short run-up. The first
+  press stays one row, and at the end of the list the jump stops on the
+  last entry (build 337).
 - **Fixed: the first start on a fresh card showed nothing for two
   minutes.** On the first start the frontend reads the arcade folder —
   for you that took 106 s, and MiSTer's own menu stayed on screen the

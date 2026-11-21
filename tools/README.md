@@ -11324,3 +11324,44 @@ Weg, null isdir/stat, Anzeige und Drossel, F9 nur beim Start, Boxart).
 Verfaelscht: isdir zurueck, Log-Sperre weg, flip/Redraw weg, Start-Sperre
 weg, update_all im Modus "neu" wieder geladen, Drossel weg - jedes Mal
 rot.
+
+## Nachtrag Build 337 - Scrollgeschwindigkeit 3x und 4x
+
+**Stand:** 21.11.2026, `Dragend_Build_337.zip` (build_id
+`2026-11-21-337`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: "auf 2X stellen. koennen wir das noch schneller machen?"
+
+### Warum nicht einfach eine hoehere Rate
+
+Die Wiederholrate haengt seit Build 93 an der gemessenen Zeichendauer
+(mit Reserve, Build 301; Vorsichtsboden fuer >1x seit Build 302 nur
+noch die Bildrate). Auf 2x schlaegt sie in teuren Ansichten schon dort
+an: `_tempo_anwenden()` liefert dann `gemessen * 1,15`, egal ob 2x, 3x
+oder 10x. Eine Stufe, die nur die Rate erhoeht, waere eine Stufe ohne
+Wirkung - oder, ohne die Grenze, der Stau aus Build 93.
+
+### Die Weite
+
+`_sprung_merken(act, boden, iv, gemessen, seite)` in `fe/input.py`:
+k = round(iv * faktor / boden), 1 bis `SPRUNG_MAX` (4). Ist die Rate
+angeschlagen (iv = boden), ergibt das k = faktor; reicht die Rate
+(billiges Zeichnen), wird k entsprechend kleiner. Nur fuer hoch/runter,
+nicht fuer Seitenspruenge (`seiten_aktionen`), nur mit Messung, nur ueber
+`SPRUNG_AB` (2.0) - bis 2x bleibt alles gleich.
+
+`read_action()` setzt `wiederhol_sprung = 1` vor allem anderen und nur
+im Wiederholzweig, wenn das Intervall am Boden angekommen ist (Endtempo),
+auf k. `sprung_abholen()` liefert den Wert einmal. `nav_anwenden()` holt
+ihn VOR `gestaute_schritte()` ab, bewegt um Weite x Schritte und haelt
+bei einem Sprung am Listenende an (erst der naechste Schritt vom letzten
+Eintrag laeuft wie bisher herum).
+
+### Pruefungen
+
+Neu `tools/test_scrolltempo_sprung.py`: Stufen, Weite je Faktor und
+Messung, die Intervall-Grenze auch fuer 3x/4x, `read_action()` echt
+durchlaufen (Anlauf 1, Endtempo 4), `nav_anwenden()` mit Anhalten am
+Ende. Verfaelscht: Endtempo-Pruefung weg, Schwelle auf 1x, Abholen ohne
+Zuruecksetzen, Anhalten weg, links/rechts zugelassen - jedes Mal rot.

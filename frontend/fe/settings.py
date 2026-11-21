@@ -2419,7 +2419,14 @@ def ansicht_weiter():
 # Loslassen noch weiterlaeuft. Das fuehlt sich nicht nach "schnell" an,
 # sondern nach kaputt.
 SCROLL_TEMPO_FILE = "/media/fat/frontend/scroll_tempo"
-SCROLL_TEMPO_STUFEN = (0.5, 0.75, 1.0, 1.5, 2.0)
+#
+# BUILD 336, NUTZERWUNSCH: "auf 2X stellen. koennen wir das noch
+# schneller machen?" - dazu 3x und 4x. Die Wiederholrate bleibt dabei
+# an der gemessenen Zeichendauer gebunden (Build 93). Schneller wird es
+# auf diesen Stufen durch die WEITE: beim Halten von hoch/runter springt
+# ein Schritt mehrere Zeilen, sobald die Wiederholung ihr Endtempo
+# erreicht hat. Siehe _sprung_merken() in fe/input.py.
+SCROLL_TEMPO_STUFEN = (0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0)
 SCROLL_TEMPO_STD = 1.0
 
 

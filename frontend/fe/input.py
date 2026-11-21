@@ -716,6 +716,11 @@ REPEAT_FLOOR_MIN    = 0.04
 # weit ueber 16,6. Die Konstante ist der Sicherheitsgurt fuer eine
 # absurd kleine Messung, nicht der neue Arbeitspunkt.
 REPEAT_FLOOR_BILD   = 1.0 / 60.0
+# BUILD 336: Zeilensprung beim Halten auf den Stufen ueber 2x - siehe
+# _sprung_merken(). SPRUNG_MAX haelt es lesbar: vier Zeilen je Bild
+# sind bei 25 Bildern je Sekunde schon hundert Eintraege.
+SPRUNG_AB = 2.0
+SPRUNG_MAX = 4
 # BUILD 306: wieviele Ereignisse ein Leseaufruf hoechstens holt.
 #
 # DER BEFUND. Nutzermeldung vom 07.11.: "wenn ich hoch und runter
@@ -1826,7 +1831,61 @@ class InputManager:
         else:
             boden = min(REPEAT_FLOOR_MAX,
                         max(minimum, gemessen * REPEAT_MESS_RESERVE))
-        return self._tempo_anwenden(boden, gemessen, minimum, seite)
+        iv = self._tempo_anwenden(boden, gemessen, minimum, seite)
+        self._sprung_merken(act, boden, iv, gemessen, seite)
+        return iv
+
+    def _sprung_merken(self, act, boden, iv, gemessen, seite):
+        """Wieviele Zeilen EIN Wiederholschritt springt (Build 336).
+
+        NUTZERWUNSCH: "Scrollgeschwindigkeit auf 2X ... koennen wir das
+        noch schneller machen?" - Stufen 3x und 4x.
+
+        DIE GRENZE AUS BUILD 93 BLEIBT: schneller fragen als das Bild
+        zeichnet, staut nur (die Liste laeuft nach dem Loslassen
+        weiter). Auf 2x ist die Wiederholung deshalb oft schon an der
+        gemessenen Zeichendauer angeschlagen - eine hoehere Rate gibt
+        es nicht. Was es gibt, ist eine groessere WEITE: wer in
+        derselben Zeit zwei Zeilen statt einer weitergeht, scrollt
+        doppelt so schnell, und gezeichnet wird trotzdem nur ein Bild.
+
+        Gerechnet wird, wieviele Zeilen der gewuenschte Takt
+        (boden / faktor) in das tatsaechlich lieferbare Intervall iv
+        packt: k = iv * faktor / boden, gerundet, 1 bis SPRUNG_MAX.
+
+        BEWUSST NUR:
+          - ab Stufe ueber 2x (SPRUNG_AB) - bis 2x bleibt alles, wie es
+            ist, auch fuer den, der sich daran gewoehnt hat;
+          - hoch/runter - links/rechts sind Seiten oder Spalten, ein
+            Doppelsprung dort waere ein Ruck, keine Beschleunigung;
+          - mit einer Messung - ohne sie ist nicht bekannt, was das
+            Geraet liefert.
+        Angewandt wird der Wert nur auf eine Wiederholung im Endtempo,
+        nie auf den ersten Druck - siehe read_action()."""
+        k = 1
+        if act in ("up", "down") and not seite and gemessen is not None \
+                and boden > 0 and iv > 0:
+            try:
+                from fe.settings import load_scroll_tempo
+                faktor = float(load_scroll_tempo())
+            except Exception:                            # noqa: BLE001
+                faktor = 1.0
+            if faktor > SPRUNG_AB:
+                k = int(round(iv * faktor / boden))
+                k = max(1, min(SPRUNG_MAX, k))
+        sprung = getattr(self, "_sprung_je_akt", None)
+        if sprung is None:
+            sprung = self._sprung_je_akt = {}
+        sprung[act] = k
+
+    def sprung_abholen(self):
+        """Die Weite der zuletzt gelieferten Aktion (Build 336) - 1 fuer
+        jeden echten Tastendruck, mehr nur fuer eine Wiederholung im
+        Endtempo auf Stufe 3x/4x. Wird beim Abholen auf 1 gesetzt, damit
+        derselbe Wert nie zweimal wirkt."""
+        k = getattr(self, "wiederhol_sprung", 1) or 1
+        self.wiederhol_sprung = 1
+        return k
 
     def _tempo_anwenden(self, boden, gemessen, minimum, seite=False):
         """Die eingestellte Scrollgeschwindigkeit (Build 256) auf den
@@ -2253,6 +2312,9 @@ class InputManager:
         # BUILD 307: eine beim Zusammenfassen zuviel gelesene Aktion
         # ist die AELTESTE, die es gibt - sie geht allem vor, auch
         # einer faelligen Wiederholung. Siehe gestaute_schritte().
+        # Build 336: jede Aktion ist zunaechst EIN Schritt weit; nur die
+        # Wiederholung unten setzt mehr. Siehe sprung_abholen().
+        self.wiederhol_sprung = 1
         _vor = getattr(self, "_vorgelegt", None)
         if _vor is not None:
             self._vorgelegt = None
@@ -2505,8 +2567,16 @@ class InputManager:
                 # _repeat_floor()): hoch/runter behaelt die bisherigen
                 # 0.08s, links/rechts bekommt den groesseren Boden, da
                 # dort jeder Schritt eine ganze Seite neu aufbaut.
-                iv = max(self._repeat_floor(act), iv * 0.85)
+                _boden_jetzt = self._repeat_floor(act)
+                iv = max(_boden_jetzt, iv * 0.85)
                 self.held = (kid, act, time.monotonic() + iv, iv)
+                # Build 336: die Weite erst im Endtempo. Waehrend des
+                # Anlaufs (iv noch ueber dem Boden) springt nichts -
+                # sonst wuerde schon der zweite Schritt nach dem
+                # Druecken ueber Eintraege hinweggehen.
+                if iv <= _boden_jetzt + 1e-9:
+                    self.wiederhol_sprung = \
+                        getattr(self, "_sprung_je_akt", {}).get(act, 1)
                 # Nur HIER (bei einer echten Wiederholung) vermerken,
                 # nicht bei jedem Tastendruck - siehe _hold()/
                 # REPEAT_REVERSE_DELAY: nur ein nachweislich laufender
