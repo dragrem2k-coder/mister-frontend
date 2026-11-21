@@ -83,6 +83,16 @@ _spec = importlib.util.spec_from_file_location("frontend_mod", FRONTEND_PY)
 fm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fm)
 
+# BUILD 338: die Merkdatei der je benutzten HD-Ansichten NICHT auf die
+# echte Stelle schreiben. Sonst schaltet ein Test, der den Coverflow
+# einschaltet, fuer jeden spaeteren Test dessen drei Kastengroessen in
+# "Miniaturen vorbereiten" frei - ein Test haengt dann an der
+# Reihenfolge, in der die Suite laeuft.
+import tempfile as _tempfile                             # noqa: E402
+import fe.settings as _SE                                # noqa: E402
+_SE.ANSICHTEN_BENUTZT_FILE = os.path.join(
+    _tempfile.mkdtemp(prefix="harness_ansichten_"), "ansichten_benutzt")
+
 # Aufloesung, die die naechste Framebuffer-Instanz melden soll.
 SCREEN = [1920, 1080]
 

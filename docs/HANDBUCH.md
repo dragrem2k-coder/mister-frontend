@@ -390,7 +390,7 @@ weiter unten erklärt werden, aber nirgends beisammenstehen:
 | Optionen | Autostart, **ROM-Filter**, **Attract-Verzögerung**, Miniaturen vorbereiten |
 | Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen, **Controller-Test** |
 | Info | Hilfe/Übersicht, Einrichtung erneut starten, Auf Updates prüfen, Mitwirkende, Geheimnisse |
-| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, als Gimmick **Invade-a-Load** auf dem C64-Core und der **Computer-Check** (siehe unten) |
+| Wartung | **Boxarts nachladen**, **Spieledaten nachladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten, als Gimmick **Invade-a-Load** auf dem C64-Core und der **Computer-Check** (siehe unten) |
 
 **"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
 gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
@@ -528,7 +528,7 @@ kostenloser Dienst - wir hören hier nur passiv zu (anonym, ohne Konto).
 ## 6. Boxart und Spielinfos laden
 
 Direkt auf dem MiSTer, kein PC nötig (bequemer geht es über
-*System -> Wartung -> "Boxart herunterladen"*, oder über den
+*System -> Wartung -> "Boxarts nachladen"*, oder über den
 Scripts-Ordner im System-Menü):
 ```bash
 python3 /media/fat/frontend/mister_boxart.py            # Cover, CRT-Groesse
@@ -575,7 +575,7 @@ dort, wird es angezeigt (Stufe 1 der Liste oben).
 
 **Das ist eine Möglichkeit, keine Voraussetzung.** Wer Update All nicht
 nutzt oder nicht nutzen will, lädt die Cover einfach wie oben
-beschrieben über *System → Wartung → „Boxart herunterladen"* — das
+beschrieben über *System → Wartung → „Boxarts nachladen"* — das
 Ergebnis ist dasselbe. Und wer beides hat, bekommt keinen Konflikt:
 eigenes Artwork hat immer Vorrang, die Datenbank füllt nur Lücken.
 

@@ -1,7 +1,9 @@
 # Die PDFs neu erzeugen
 
-Es sind vier — zwei Dokumente in zwei Sprachen. Jedes hat eine
-HTML-Quelle im selben Ordner. **Änderungen gehören in die HTML-Datei,
+Es sind fünf — zwei Dokumente in zwei Sprachen, dazu seit Build 338 die
+Einsteiger-Anleitung (nur Deutsch). Jedes hat eine HTML-Quelle im selben
+Ordner. Die Einsteiger-Anleitung übernimmt den `<style>`-Block aus
+`anleitung_source.html` Zeichen für Zeichen und hängt eigene Klassen an. **Änderungen gehören in die HTML-Datei,
 nicht in die PDF.**
 
 | PDF | Quelle | Inhalt |
@@ -10,6 +12,7 @@ nicht in die PDF.**
 | `Dragend_Manual_EN.pdf` | `manual_source_en.html` | dasselbe auf Englisch |
 | `Installation_und_Update.pdf` | `installation_source.html` | 4 Seiten: Übersicht, Installation, nach der Installation, Update & Hilfe |
 | `Installation_and_Update_EN.pdf` | `installation_source_en.html` | dasselbe auf Englisch |
+| `Dragend_Einsteiger.pdf` | `einsteiger_source.html` | 11 Seiten, nur Deutsch (Build 338): was das Frontend kann und jede Einstellung im Systemmenü erklärt |
 
 ```bash
 CHROME=chromium   # oder der Pfad zu deinem Chromium/Chrome
@@ -17,7 +20,8 @@ CHROME=chromium   # oder der Pfad zu deinem Chromium/Chrome
 for p in anleitung_source:Dragend_Anleitung \
          installation_source:Installation_und_Update \
          manual_source_en:Dragend_Manual_EN \
-         installation_source_en:Installation_and_Update_EN; do
+         installation_source_en:Installation_and_Update_EN \
+         einsteiger_source:Dragend_Einsteiger; do
   "$CHROME" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
       --print-to-pdf="docs/${p##*:}.pdf" "file://$PWD/docs/${p%%:*}.html"
 done

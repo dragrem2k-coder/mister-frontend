@@ -11,8 +11,29 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## After v5.0 — not released yet
+## After v5.1 — not released yet
 
+## v5.1 — computers with games, a pad that takes you back, and a start in under two seconds
+
+- **Fixed: after toggling something in the system menu you sometimes
+  landed on "Zufalls-Zock / Display & Sound" with 0 entries.** Switches
+  like music source or volume rebuild the main page. If a category was
+  added during that (such as the RA Achievement Hunter, once its data
+  had arrived in the background), the selection pointed one category
+  too early. The category is now found again by its name, and of the
+  folder path whatever still exists is kept (build 338).
+- **"Prepare thumbnails" no longer forgets the coverflow.** It was only
+  included if it was the default or had been switched on in the same
+  session. Anyone using it via the button and preparing after a restart
+  never got its three cover sizes. The frontend now remembers that you
+  have used it. The computer categories (C64, Amiga, Amstrad, DOS) are
+  checked to be prepared as well (build 338).
+- **Help updated:** "Switch view" names the coverflow, and the pad exit
+  is Start+Select+L+R as it has been since build 326 (build 338).
+- **New: beginner's guide** (`docs/Dragend_Einsteiger.pdf`, German):
+  what the frontend can do and what every setting in the system menu
+  does — for everyone who does not tinker with the MiSTer every day
+  (build 338).
 - **New: scroll speed 3x and 4x** (System → Display & Sound). At 2x the
   list usually already scrolls as often as your MiSTer can draw. The new
   levels get faster through distance: while you hold up/down, each step

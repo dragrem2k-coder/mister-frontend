@@ -268,6 +268,15 @@ print()
 print("Test 5: der Coverflow wird vorbereitet, wenn man ihn benutzt")
 # ---------------------------------------------------------------------------
 f2 = H.make_frontend(page=1, titles=titel)
+# Build 338: benutzte HD-Ansichten werden ueber Neustarts gemerkt
+# (ANSICHTEN_BENUTZT_FILE). Ein frueherer Teil dieser Datei hat den
+# Coverflow schon eingeschaltet - fuer "nie benutzt" muss die Merkdatei
+# leer sein. Der Harness legt sie in ein Temp-Verzeichnis.
+import fe.settings as _SE                                # noqa: E402
+try:
+    os.remove(_SE.ANSICHTEN_BENUTZT_FILE)
+except OSError:
+    pass
 _echt_lesen = fm.ansicht_lesen
 fm.ansicht_lesen = lambda: "liste"
 try:

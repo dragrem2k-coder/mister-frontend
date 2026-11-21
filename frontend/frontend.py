@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v5.0
+MiSTer Custom Frontend - v5.1
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -326,6 +326,7 @@ from fe.settings import (
     arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ANSICHTEN_NUR_HD, ansicht_lesen, ansicht_schreiben,
+    ansichten_benutzt, ansicht_benutzt_merken,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
     # Build 316: die Hauptseite hat sechs Ansichten, nicht drei.
     ANSICHTEN_HAUPT, ANSICHTEN_HAUPT_NUR_HD, haupt_stil_uebernehmen,
@@ -3074,6 +3075,9 @@ class Frontend:
         # speicherbereinigung_einfrieren()). Nur vermerkt, nicht hier
         # getan: diese Methode hat mehrere Ausgaenge.
         self._gc_einfrieren_faellig = True
+        # BUILD 338: wo der Nutzer gerade steht - VOR dem Neuaufbau
+        # gemerkt, danach wiedergefunden. Siehe _position_wiederfinden().
+        _vorher = self._position_merken()
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
         # welche entfernt worden sein.
@@ -3337,6 +3341,86 @@ class Frontend:
         # fe/hauptseite.py) - wer es ausblenden koennte, saesse ohne
         # Einstellungen da.
         self._hauptseite_anwenden()
+        self._position_wiederfinden(_vorher)
+
+    def _position_merken(self):
+        """(Name, Systemkey) der gerade gewaehlten Kategorie - oder None
+        (Build 338). Beim allerersten Aufbau gibt es noch keine."""
+        cats = getattr(self, "cats", None)
+        i = getattr(self, "cat_i", 0)
+        if not cats or not 0 <= i < len(cats):
+            return None
+        return (cats[i][0], cats[i][2])
+
+    def _position_wiederfinden(self, vorher):
+        """Nach einem Neuaufbau dieselbe Kategorie und denselben Ordner
+        wieder waehlen (Build 338).
+
+        DER FEHLER (Nutzer: "wenn ich ab und zu mal die musikquellen
+        durchgehe oder aender lande ich ab und zu mal auf einen
+        bildschirm zufalls-zock / anzeige & sound 0 eintraege"):
+        build_categories() baute self.cats neu und liess cat_i als
+        nackte ZAHL stehen. Kommt beim Neuaufbau eine Kategorie hinzu
+        (etwa der Erfolgsjaeger, sobald die RA-Daten im Hintergrund
+        angekommen sind, oder "Weiterspielen"), rutscht "System" um eins
+        nach hinten - und dieselbe Zahl zeigt auf die Kategorie davor,
+        Zufalls-Zock. nav_path ("Anzeige & Sound") gibt es dort nicht,
+        also 0 Eintraege. Jeder Schalter im Systemmenue, der neu
+        aufbaut (Musik, Lautstaerke, Sprache, ...), konnte das.
+
+        Jetzt wie in _sync_favorites_category(): die Kategorie wird ueber
+        Name und Systemkey wiedergefunden, und vom Ordnerpfad bleibt
+        der Teil, den es im neuen Baum noch gibt. Gibt es die Kategorie
+        nicht mehr, geht es zurueck auf die Hauptseite statt auf eine
+        falsche Liste."""
+        cats = getattr(self, "cats", None) or []
+        if not cats:
+            self.cat_i = 0
+            return
+        if vorher is not None:
+            for i, c in enumerate(cats):
+                if (c[0], c[2]) == vorher:
+                    self.cat_i = i
+                    break
+            else:
+                self.cat_i = min(getattr(self, "cat_i", 0), len(cats) - 1)
+                if getattr(self, "page", 0) == 1:
+                    self.page = 0
+                    self.nav_path = []
+                    self._nav_position_stack = []
+                    self.item_i = 0
+                    self.scroll = 0
+                LOG("Neuaufbau: Kategorie %r gibt es nicht mehr - zurueck "
+                    "zur Hauptseite" % (vorher[0],))
+                return
+        else:
+            self.cat_i = min(max(0, getattr(self, "cat_i", 0)), len(cats) - 1)
+        pfad = list(getattr(self, "nav_path", None) or [])
+        if not pfad:
+            return
+        node = cats[self.cat_i][1]
+        gueltig = []
+        for name in pfad:
+            unter = node.get("folders", {}).get(name)
+            if unter is None:
+                break
+            gueltig.append(name)
+            node = unter
+        if len(gueltig) < len(pfad):
+            LOG("Neuaufbau: Ordner %r gibt es nicht mehr - zurueck auf %r"
+                % ("/".join(pfad), "/".join(gueltig) or "(oberste Ebene)"))
+            self.nav_path = gueltig
+            stapel = getattr(self, "_nav_position_stack", None) or []
+            del stapel[len(gueltig):]
+            self.item_i = 0
+            self.scroll = 0
+        if getattr(self, "page", 0) == 1:
+            try:
+                n = len(self._display_items())
+            except Exception:                            # noqa: BLE001
+                return
+            if self.item_i >= n:
+                self.item_i = max(0, n - 1)
 
     def _go_back_or_confirm_quit(self):
         """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 zuerst
@@ -5691,6 +5775,13 @@ class Frontend:
         if getattr(self, "_ansicht_je_kat", None) is None:
             self._ansicht_je_kat = {}
         self._ansicht_je_kat[self._ansicht_schluessel()] = wert
+        # Build 338: fuer "Miniaturen vorbereiten" merken, dass es den
+        # Coverflow gibt - auch nach einem Neustart. Siehe
+        # ANSICHTEN_BENUTZT_FILE in fe/settings.py.
+        try:
+            ansicht_benutzt_merken(wert)
+        except Exception:                                # noqa: BLE001
+            pass
         if merken:
             ansicht_schreiben(wert)
             # Die Vorgabe gilt ab jetzt ueberall - die bisher einzeln
@@ -15663,6 +15754,12 @@ class Frontend:
         # nie benutzt. Wer ihn benutzt, will seine Cover darin sehen.
         _benutzt = set((getattr(self, "_ansicht_je_kat", None)
                         or {}).values())
+        # Build 338: und alles, was je benutzt wurde - auch vor einem
+        # Neustart (siehe ANSICHTEN_BENUTZT_FILE in fe/settings.py).
+        try:
+            _benutzt |= ansichten_benutzt()
+        except Exception:                                # noqa: BLE001
+            pass
         for _a in ANSICHTEN:
             if _a == "liste":
                 continue

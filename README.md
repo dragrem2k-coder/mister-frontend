@@ -1,10 +1,11 @@
-# Dragend — MiSTer Custom Frontend v5.0
+# Dragend — MiSTer Custom Frontend v5.1
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
 **Dennsen**.
 
 🇬🇧 [English](README_EN.md) · 📖 [Handbuch](docs/HANDBUCH.md) ·
 📄 [Anleitung als PDF](docs/Dragend_Anleitung.pdf) ·
+🔰 [Für Einsteiger (PDF)](docs/Dragend_Einsteiger.pdf) ·
 📝 [Changelog](CHANGELOG.md)
 
 Ein Spiele-Browser für den MiSTer FPGA: Boxart, Spielinfos, Gamepad- und
@@ -28,6 +29,31 @@ Standard-Python, keine einzige zusätzliche Abhängigkeit auf dem MiSTer.
 <p align="center"><sub>Liste, Raster, Galerie, Trophäenraum — und der Steckbrief eines Spiels. Alle Bilder direkt aus dem Programmcode gerendert (<code>tools/screenshots_bauen.py</code>), Boxart und Spielstände sind Platzhalter.</sub></p>
 
 ---
+
+## Neu in v5.1
+
+Zwanzig Builds seit v5.0 (319–338). Das Wichtigste in sechs Zeilen —
+alles Weitere im [Changelog](CHANGELOG.md):
+
+- **Die Computer mit Spielen:** C64 (One-Load), Amiga (AmigaVision und
+  ADF-Disketten), Amstrad CPC und DOS (0MHz) als eigene Kategorien mit
+  Gerätefoto und Abzeichen — dazu ein **Computer-Check**, der sagt, was
+  fehlt.
+- **Per Pad zurück aus dem Spiel:** Start+Select+L+R am Nintendo-Pad,
+  auch wenn MiSTer den Controller sperrt. Dazu ein **Controller-Test**,
+  der jede gedrückte Taste zeigt.
+- **Schnell und ruhig:** Start in **1,9 Sekunden** bei 41.397 Spielen
+  (Bench 24), Seitenwechsel ohne Vollbild, kein Pad-Hänger in den ersten
+  Sekunden, und ein erster Start auf einer frischen Karte, den man sieht.
+- **Scrollgeschwindigkeit bis 4x** — auf 3x und 4x springt ein
+  gehaltener Schritt mehrere Zeilen.
+- **Attract-Modus zum Bedienen:** nur Spiele mit Cover, OK startet das
+  gezeigte Spiel, links/rechts wechselt das System. Dazu ein
+  **Bootlogo zum Aussuchen** und **RetroAchievements-Auszeichnungen**
+  direkt in der Liste.
+- **Boxart-Download ohne fremden Spiegel:** was Update All schon
+  geliefert hat, wird erkannt und nicht noch einmal geladen. Neu: eine
+  **Einsteiger-Anleitung** als PDF.
 
 ## Neu in v5.0
 

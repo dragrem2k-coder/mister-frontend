@@ -11,8 +11,28 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## Nach v5.0 — noch nicht veröffentlicht
+## Nach v5.1 — noch nicht veröffentlicht
 
+## v5.1 — die Computer mit Spielen, ein Pad, das zurückführt, und ein Start in unter zwei Sekunden
+
+- **Behoben: nach dem Umschalten im Systemmenü landete man ab und zu
+  auf „Zufalls-Zock / Anzeige & Sound" mit 0 Einträgen.** Schalter wie
+  Musik-Quelle oder Lautstärke bauen die Hauptseite neu auf. Kam dabei
+  eine Kategorie dazu (etwa der RA-Erfolgsjäger, sobald seine Daten im
+  Hintergrund angekommen sind), zeigte die Auswahl eine Kategorie zu
+  früh. Jetzt wird die Kategorie über ihren Namen wiedergefunden, und
+  vom Ordnerpfad bleibt, was es noch gibt (Build 338).
+- **„Miniaturen vorbereiten" vergisst den Coverflow nicht mehr.** Er
+  wurde nur mitgerechnet, wenn er die Vorgabe war oder in derselben
+  Sitzung eingeschaltet wurde. Wer ihn per Taste nutzt und nach einem
+  Neustart vorbereitet, bekam seine drei Covergrößen nie. Das Frontend
+  merkt sich jetzt, dass du ihn benutzt hast. Die Computer-Kategorien
+  (C64, Amiga, Amstrad, DOS) werden geprüft mit vorbereitet (Build 338).
+- **Hilfe aktualisiert:** „Ansicht wechseln" nennt den Coverflow, und
+  der Pad-Ausstieg heißt Start+Select+L+R wie seit Build 326 (Build 338).
+- **Neu: Einsteiger-Anleitung** (`docs/Dragend_Einsteiger.pdf`): was das
+  Frontend alles kann und was jede Einstellung im Systemmenü macht —
+  für alle, die nicht jeden Tag mit dem MiSTer basteln (Build 338).
 - **Neu: Scrollgeschwindigkeit 3x und 4x** (System → Anzeige & Sound).
   Auf 2x scrollt die Liste meist schon so oft, wie dein MiSTer zeichnen
   kann. Die neuen Stufen machen es über die Weite schneller: hältst du

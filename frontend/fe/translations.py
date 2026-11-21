@@ -337,8 +337,8 @@ TRANSLATIONS = {
     "help_list_ansicht_key": {"en": "F10 / Select+Y (pad)",
                               "de": "F10 / Select+Y (Pad)"},
     "help_list_ansicht_desc": {
-        "en": "Switch view: list, grid, gallery (main page too)",
-        "de": "Ansicht wechseln: Liste, Raster, Galerie (auch Hauptseite)"},
+        "en": "Switch view: list, grid, gallery, coverflow (main page: six views)",
+        "de": "Ansicht wechseln: Liste, Raster, Galerie, Coverflow (Hauptseite: sechs Ansichten)"},
     "help_list_random_key": {"en": "F11 (keyboard only)",
                              "de": "F11 (nur Tastatur)"},
     "help_list_random_desc": {"en": "Start a random game across all systems",
@@ -400,14 +400,21 @@ TRANSLATIONS = {
     # bleibt als Absicherung bestehen, falls es auf anderer Hardware
     # doch geht - die Hilfe darf es aber nicht als sichere Zusage
     # verkaufen.
-    "help_playing_exit_pad_key": {"en": "Start + Select (pad, hold ~0.8s)",
-                                  "de": "Start + Select (Pad, ca. 0,8s halten)"},
+    # Build 338: die Hilfe nannte noch Start+Select - seit Build 326
+    # fuehrt am Nintendo-Pad Start+Select+L+R zurueck (rohe HID-Ebene,
+    # auch wenn MiSTer den Controller sperrt). Start+Select bleibt fuer
+    # andere Pads, solange MiSTer sie nicht sperrt.
+    "help_playing_exit_pad_key": {"en": "Start+Select+L+R (pad, hold briefly)",
+                                  "de": "Start+Select+L+R (Pad, kurz halten)"},
     "help_playing_exit_pad_desc":
-        {"en": "Only works if MiSTer does not lock the controller - on the pads "
-               "tested so far it does. The reliable way out is the keyboard.",
-         "de": "Funktioniert nur, wenn MiSTer den Controller nicht sperrt - bei "
-               "den bisher getesteten Pads tut es das. Verlässlich ist der "
-               "Ausstieg über die Tastatur."},
+        {"en": "On Nintendo pads (Pro Controller, Joy-Con) the frontend reads "
+               "the buttons directly, even while MiSTer locks the controller. "
+               "Other pads: Start+Select (hold ~0.8s), only if MiSTer does not "
+               "lock them - the reliable way out is the keyboard.",
+         "de": "Bei Nintendo-Pads (Pro Controller, Joy-Con) liest das Frontend "
+               "die Tasten direkt, auch wenn MiSTer den Controller sperrt. "
+               "Andere Pads: Start+Select (ca. 0,8s), nur wenn MiSTer sie "
+               "nicht sperrt - verlässlich ist der Ausstieg über die Tastatur."},
     # KORRIGIERT (Build 88): stand als "ca. 0,6s halten" drin. Seit
     # Build 75 ist RESET_HOLD = 0.0, der Reset loest also beim ersten
     # erkannten Tastendruck aus - genau so war es damals gewuenscht.
@@ -668,9 +675,12 @@ TRANSLATIONS = {
     "wizard_esc_hint_1": {
         "en": "To exit a running game, hold Esc on a connected keyboard.",
         "de": "Um ein laufendes Spiel zu verlassen: Esc auf einer angeschlossenen Tastatur halten."},
+    # Build 338: seit Build 326 geht es am Nintendo-Pad auch ohne
+    # Tastatur (Start+Select+L+R) - der Satz "mit einem Controller
+    # allein geht das nicht" stimmte nicht mehr.
     "wizard_esc_hint_2": {
-        "en": "Needs a keyboard - a gamepad alone can't do this.",
-        "de": "Braucht eine Tastatur - mit einem Controller allein geht das nicht."},
+        "en": "Nintendo pad (Pro Controller, Joy-Con): Start+Select+L+R briefly.",
+        "de": "Nintendo-Pad (Pro Controller, Joy-Con): Start+Select+L+R kurz halten."},
     "sys_setup_wizard": {"en": "Run setup wizard again", "de": "Einrichtung erneut starten"},
 
     "ra_reload_done": {"en": "RetroAchievements: %d games matched",

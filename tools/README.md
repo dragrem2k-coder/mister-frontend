@@ -11365,3 +11365,57 @@ Messung, die Intervall-Grenze auch fuer 3x/4x, `read_action()` echt
 durchlaufen (Anlauf 1, Endtempo 4), `nav_anwenden()` mit Anhalten am
 Ende. Verfaelscht: Endtempo-Pruefung weg, Schwelle auf 1x, Abholen ohne
 Zuruecksetzen, Anhalten weg, links/rechts zugelassen - jedes Mal rot.
+
+## Nachtrag Build 338 - Version 5.1
+
+**Stand:** 21.11.2026, `Dragend_Build_338.zip` (build_id
+`2026-11-21-338`). **Version 5.1.** Bench-Fassung bleibt 24.
+C-Bibliothek unveraendert (Fassung 8).
+
+### Der Sprung auf "Zufalls-Zock / Anzeige & Sound, 0 Eintraege"
+
+Nutzer: "wenn ich ab und zu mal die musikquellen durchgehe oder aender
+lande ich ab und zu mal auf einen bildschirm zufalls-zock / anzeige &
+sound 0 eintraege". `build_categories()` baute `self.cats` neu und liess
+`cat_i` als Zahl stehen. Kommt dabei eine Kategorie hinzu (Erfolgsjaeger,
+sobald die RA-Daten im Hintergrund da sind; Weiterspielen), rutscht
+"System" um eins nach hinten - und dieselbe Zahl zeigt auf die Kategorie
+davor: Zufalls-Zock. `nav_path` = ["Anzeige & Sound"] gibt es dort nicht.
+Jetzt `_position_merken()` am Anfang und `_position_wiederfinden()` am
+Ende: Kategorie ueber (Name, Systemkey), vom Ordnerpfad der gueltige
+Teil, sonst zur Hauptseite.
+
+### Coverflow beim Vorbereiten
+
+`vorbereitungs_kaesten()` nahm HD-Ansichten nur, wenn sie Vorgabe waren
+oder in `_ansicht_je_kat` standen - und das lebt nur im Speicher. Neu
+`ANSICHTEN_BENUTZT_FILE` (`fe/settings.py`): `ansicht_setzen()` vermerkt
+jede HD-Ansicht einmal, `vorbereitungs_kaesten()` nimmt sie dazu. Der
+Harness lenkt die Datei in ein Temp-Verzeichnis (sonst haengt ein Test an
+der Suite-Reihenfolge). Computer-Kategorien: im Test nachgewiesen, dass
+ihre Spiele (auch in Unterordnern) je Kastengroesse ein Ziel bekommen.
+
+### Hilfe und Einrichtung
+
+`help_list_ansicht_desc` nennt den Coverflow, `help_playing_exit_pad_*`
+Start+Select+L+R (Build 326), `wizard_esc_hint_2` sagte noch "mit einem
+Controller allein geht das nicht".
+
+### Version 5.1 und die Dokumente
+
+`VERSION`, `frontend/VERSION`, `FRONTEND_VERSION` (fe/update_check.py),
+Dateikopf, READMEs ("Neu in v5.1"), Changelogs (Abschnitt v5.1, neuer
+offener Kopf). Neu `docs/einsteiger_source.html` -> `Dragend_Einsteiger.pdf`
+(11 Seiten; Menuepunkte aus `system_items()` abgeschrieben und gegen die
+Texte geprueft; Rechnerfotos aus `frontend/sysart_foto/*.art` nach PNG).
+Neu erzeugt: Anleitung, Installation (beide: "Boxarts nachladen" statt des
+alten Namens), Funktionsliste. Die englischen PDFs sind unveraendert.
+
+### Pruefungen
+
+Neu `tools/test_neuaufbau_und_vorbereiten.py`. Angepasst `_harness.py`.
+
+### Aus Bench 24 (Build 336) gesehen, nicht geaendert
+
+* K: "Liste galerie/coverflow, Taste gedrueckt" - Aussparung 0 von 20.
+* P: laengster Happen Genesis 431,9 ms, MegaCD 336,8 ms.

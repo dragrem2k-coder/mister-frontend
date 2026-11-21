@@ -1762,6 +1762,41 @@ ANSICHTEN = ("liste", "raster", "galerie", "coverflow")
 # waeren auf 320x240 fuenf Flecken.
 ANSICHTEN_NUR_HD = ("coverflow",)
 
+# BUILD 338: welche HD-Ansichten JE benutzt wurden - auch nur einmal
+# ueber die Taste. Nutzer: "coverflow hab ich das gefuehl das die covers
+# nicht mit vorbereitet wurden". Stimmte: "Miniaturen vorbereiten"
+# rechnete den Coverflow nur, wenn er die Vorgabe war oder in DIESER
+# Sitzung fuer eine Kategorie gewaehlt wurde (_ansicht_je_kat lebt nur
+# im Speicher). Wer ihn per Taste nutzt und nach einem Neustart
+# vorbereitet, bekam seine drei Kastengroessen nie. Die Datei merkt sich
+# das ueber Neustarts hinweg; ein Eintrag je Zeile.
+ANSICHTEN_BENUTZT_FILE = "/media/fat/frontend/ansichten_benutzt"
+
+
+def ansichten_benutzt():
+    """Die HD-Ansichten, die je eingeschaltet waren (Menge)."""
+    try:
+        with open(ANSICHTEN_BENUTZT_FILE, encoding="utf-8") as f:
+            return {z.strip() for z in f if z.strip() in ANSICHTEN_NUR_HD}
+    except OSError:
+        return set()
+
+
+def ansicht_benutzt_merken(wert):
+    """Eine HD-Ansicht als benutzt vermerken - nur, wenn sie neu ist,
+    damit nicht jeder Tastendruck auf die Karte schreibt."""
+    if wert not in ANSICHTEN_NUR_HD or wert in ansichten_benutzt():
+        return False
+    try:
+        d = os.path.dirname(ANSICHTEN_BENUTZT_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(ANSICHTEN_BENUTZT_FILE, "a", encoding="utf-8") as f:
+            f.write(wert + "\n")
+        return True
+    except OSError:
+        return False
+
 # ---------------------------------------------------------------------------
 # BUILD 313: DER STIL DER GALERIE
 # ---------------------------------------------------------------------------

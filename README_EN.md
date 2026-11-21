@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v5.0
+# Dragend — MiSTer Custom Frontend v5.1
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -28,6 +28,30 @@ Plain standard Python — not a single extra dependency on the MiSTer.
 <p align="center"><sub>List, grid, gallery, trophy room — and a game’s info page. Every image rendered straight from the program code (<code>tools/screenshots_bauen.py</code>); cover art and save data are placeholders.</sub></p>
 
 ---
+
+## New in v5.1
+
+Twenty builds since v5.0 (319-338). The essentials in six lines -
+everything else is in the [changelog](CHANGELOG_EN.md):
+
+- **Computers with games:** C64 (One-Load), Amiga (AmigaVision and ADF
+  disks), Amstrad CPC and DOS (0MHz) as categories of their own with a
+  console photo and badge - plus a **computer check** that tells you
+  what is missing.
+- **Back from a game by pad:** Start+Select+L+R on a Nintendo pad, even
+  while MiSTer locks the controller. Plus a **controller test** that
+  shows every button you press.
+- **Fast and calm:** start in **1.9 seconds** with 41,397 games (bench
+  24), page turns without a full-screen redraw, no pad stall in the
+  first seconds, and a first start on a fresh card that you can see.
+- **Scroll speed up to 4x** - at 3x and 4x a held step jumps several
+  rows.
+- **An attract mode you can use:** only games with a cover, OK starts
+  the game shown, left/right switches the system. Plus a **boot logo to
+  choose** and **RetroAchievements awards** right in the list.
+- **Box art download without a third-party mirror:** whatever Update
+  All has already delivered is detected and not downloaded again. New:
+  a **beginner's guide** as a PDF (German).
 
 ## New in v5.0
 

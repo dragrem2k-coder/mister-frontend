@@ -316,6 +316,7 @@ setzt die Einstellung dagegen gefahrlos auf die Vorgabe zurueck.
 
 - `ansicht`
 - `ansicht_haupt`
+- `ansichten_benutzt`
 - `attract_delay`
 - `boot_logo_wahl`
 - `bootanim`
@@ -354,7 +355,7 @@ Das Frontend bringt seine eigene Hilfe mit, unter
 - **Buchstabentaste (Tastatur)** - Springt zum nächsten Eintrag mit diesem Buchstaben
 - **Esc (Tastatur, ca. 0,6s halten)** - Ebenfalls zurück ins Menü - Esc behält die Haltezeit, weil viele Spiele Esc selbst für ihr eigenes Pausenmenü benutzen
 - **F1 (Tastatur)** - Sofort zurück ins Menü
-- **F10 / Select+Y (Pad)** - Ansicht wechseln: Liste, Raster, Galerie (auch Hauptseite)
+- **F10 / Select+Y (Pad)** - Ansicht wechseln: Liste, Raster, Galerie, Coverflow (Hauptseite: sechs Ansichten)
 - **F11 (nur Tastatur)** - Zufälliges Spiel über alle Systeme starten
 - **F12 / Mode-Taste (Pad)** - MiSTer-OSD öffnen (Joystick-Definition, Einstellungen)
 - **F3 / F4 (Tastatur), Select+L / Select+R (Pad)** - An den Anfang / ans Ende der Liste springen
@@ -370,7 +371,7 @@ Das Frontend bringt seine eigene Hilfe mit, unter
 - **RA-Erfolgsjäger** - Offene Erfolge in deiner Bibliothek
 - **Sammlungen** - Automatische Gruppierungen
 - **Select (Pad)** - Zeigt die Kombinationen an; GEHALTEN ist Select der Umschalter für Select+A, Select+X und Select+L/R (zurück geht B)
-- **Start + Select (Pad, ca. 0,8s halten)** - Funktioniert nur, wenn MiSTer den Controller nicht sperrt - bei den bisher getesteten Pads tut es das. Verlässlich ist der Ausstieg über die Tastatur.
+- **Start+Select+L+R (Pad, kurz halten)** - Bei Nintendo-Pads (Pro Controller, Joy-Con) liest das Frontend die Tasten direkt, auch wenn MiSTer den Controller sperrt. Andere Pads: Start+Select (ca. 0,8s), nur wenn MiSTer sie nicht sperrt - verlässlich ist der Ausstieg über die Tastatur.
 - **Statistiken & Erfolge** - Top-10-Listen, Trophäenraum, Jahresrückblick, Spieltagebuch
 - **Wartung** - Boxarts und Spieledaten nachträglich laden, Spieleliste neu einlesen, MiSTer-OSD öffnen
 - **Weiterspielen** - Dein zuletzt offenes Spiel
