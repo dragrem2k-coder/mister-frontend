@@ -484,16 +484,18 @@ python3 /media/fat/frontend/mister_boxart.py hd          # additionally sharp co
 python3 /media/fat/frontend/mister_gameinfo.py           # year/genre/player count
 ```
 
-**Where the covers come from - four stages, first hit wins:**
+**Where the covers come from - two stages, first hit wins (since Build 336):**
 
-1. **From the MiSTer itself.** If the cover is already in the artwork
-   database under `/media/fat/docs` or in an artpack, there is nothing
-   to download - the frontend shows it anyway.
-2. **Ready-made PNG/JPG from a mirror.** Stored as-is: no decoding, no
-   conversion.
-3. **Pre-scaled `.art` from the same mirror.**
-4. **thumbnails.libretro.com**, independent of the mirror, as the last
-   safety net.
+1. **From the MiSTer itself.** Before anything is downloaded, the
+   download checks whether **Update All** (Extra Content → Game Artwork
+   DBs) or an artpack has already put the covers under `/media/fat/docs`
+   or next to it, and says so right at the start ("Found: … covers in …
+   systems"). Those games are not downloaded, not even in `neu` mode -
+   the frontend shows them anyway.
+2. **thumbnails.libretro.com** (GitHub as fallback) for whatever is
+   still missing.
+
+The former mirror source (dennsen86clips.de) was removed in Build 336.
 
 The file extension is determined from the **content**, not from the
 name on the server - some servers report the wrong file type for

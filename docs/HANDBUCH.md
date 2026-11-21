@@ -537,16 +537,19 @@ python3 /media/fat/frontend/mister_boxart.py hd neu      # vorhandene Cover ERSE
 python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranzahl
 ```
 
-**Woher die Cover kommen - vier Stufen, erster Treffer gewinnt:**
+**Woher die Cover kommen - zwei Stufen, erster Treffer gewinnt (seit Build 336):**
 
-1. **Vom MiSTer selbst.** Liegt das Cover schon in der
-   Artwork-Datenbank unter `/media/fat/docs` oder in einem Artpack,
-   gibt es nichts zu laden - das Frontend zeigt es ohnehin an.
-2. **Fertige PNG/JPG von einem Spiegel.** Werden 1:1 abgelegt, kein
-   Dekodieren, kein Umwandeln.
-3. **Fertig verkleinerte `.art` vom selben Spiegel.**
-4. **thumbnails.libretro.com**, unabhängig vom Spiegel, als letztes
-   Netz.
+1. **Vom MiSTer selbst.** Bevor irgendetwas geladen wird, schaut der
+   Download nach, ob **Update All** (Extra Content → Game Artwork DBs)
+   oder ein Artpack die Cover schon unter `/media/fat/docs` oder
+   daneben abgelegt hat, und sagt das gleich am Anfang („Gefunden: …
+   Cover in … Systemen“). Diese Spiele werden nicht geladen, auch
+   nicht im Modus `neu` - das Frontend zeigt sie ohnehin an.
+2. **thumbnails.libretro.com** (Rückfall GitHub) für alles, was dann
+   noch fehlt.
+
+Die frühere Spiegel-Quelle (dennsen86clips.de) ist seit Build 336
+entfernt.
 
 Die Dateiendung wird nach dem **Inhalt** bestimmt, nicht nach dem
 Namen auf dem Server - manche Server melden für Bilder einen falschen

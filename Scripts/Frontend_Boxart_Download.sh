@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
 # Boxart-Download fuer das MiSTer-Frontend
-# Erzeugt .art-Dateien unter /media/fat/frontend/art/ (bzw.
-# art_hd/ fuer HD). Seit mister_boxart.py v4.0: zwei Quellen
-# automatisch kombiniert - zuerst ein schneller Mirror mit
-# bereits fertigen .art-Dateien (kein Dekodieren auf dem MiSTer
-# noetig), fuer alles, was der Mirror nicht liefert, automatisch
-# ein Rueckfall auf den bisherigen Weg (thumbnails.libretro.com,
-# Fallback GitHub). Details siehe Kopfkommentar in mister_boxart.py.
+# Legt Cover unter /media/fat/frontend/art/ (bzw. art_hd/ fuer
+# HD) ab. Seit Build 336 (mister_boxart.py v4.1): zuerst wird
+# nachgesehen, was update_all (Game Artwork DBs) schon auf die
+# Karte gelegt hat - das wird nicht geladen. Fuer den Rest
+# thumbnails.libretro.com (Rueckfall GitHub). Die fruehere
+# Mirror-Quelle ist entfernt. Details siehe Kopfkommentar in
+# mister_boxart.py.
 #
 # Startbar aus dem MiSTer-OSD (Scripts), aus der Scripts-
 # Kategorie des Frontends oder per SSH.

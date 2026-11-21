@@ -1831,6 +1831,17 @@ class Frontend:
         # Absicherung sitzt jetzt in _konsole_sichern().
         self._f9_wiederholt = 0
         self._f9_aufraeumen_ab = None
+        # BUILD 336: die Uhr der F9-Nachfasser laeuft ab HIER, nicht
+        # erst nach dem Einlesen. Auf einer frischen Karte dauerte das
+        # Einlesen beim Nutzer 106 s, und weil _boot_time erst danach
+        # gesetzt wurde und die Nachfasser nur aus der Hauptschleife
+        # kamen, sass er zwei Minuten im MiSTer-Menue ("nix zu sehen").
+        # Jetzt klopft _einlesen_lebenszeichen() auch WAEHREND des
+        # Einlesens an. Weiter unten wird _boot_time wie bisher neu
+        # gesetzt - die Zaehlung der Nachfasser laeuft dann einfach
+        # weiter.
+        self._boot_time = time.monotonic()
+        self._im_start = False
         # Build 264: beim naechsten Nachfassen NICHT erst nachsehen,
         # sondern in jedem Fall wischen. Siehe _konsole_aufraeumen().
         self._f9_blind = False
@@ -2149,7 +2160,14 @@ class Frontend:
         self._startmarke("Musik, RA-Abruf angestossen")
         self._metadaten_vorwaermen_starten()
         self._startmarke("davon Metadaten-Vorwaermer angestossen")
-        self.build_categories()
+        # Build 336: nur WAEHREND dieses ersten Einlesens darf eine
+        # Fortschrittsanzeige auch F9 nachschicken - siehe
+        # _einlesen_lebenszeichen().
+        self._im_start = True
+        try:
+            self.build_categories()
+        finally:
+            self._im_start = False
         self._startmarke("Spieleliste eingelesen")
 
         def _prewarm_one_cat_art(name, syskey):
@@ -2857,6 +2875,94 @@ class Frontend:
             hinweis = hinweis[:max(1, maxc - 1)] + "~"
         fb.text(ox, oy + 66 * s, hinweis, s, C_DIM, C_BG)
         fb.flip()
+        self._einlesen_lebenszeichen()
+
+    # Build 336: ab wann und wie oft die Arcade-Anzeige zeichnet. Erst
+    # nach einer kleinen Weile - ein kurzes Neu-Einlesen soll nicht
+    # aufblitzen -, danach hoechstens fuenfmal je Sekunde, damit das
+    # Zeichnen das Einlesen nicht selbst bremst.
+    EINLESEN_ANZEIGE_AB = 0.4
+    EINLESEN_ANZEIGE_TAKT = 0.2
+
+    def _einlesen_lebenszeichen(self):
+        """Waehrend des ERSTEN Einlesens beim Start die F9-Nachfasser
+        laufen lassen (Build 336).
+
+        DER FEHLER (Nutzer, frischer MiSTer: "restart. Aber nix zu
+        sehen"): das erste F9 geht nach 0,7 s raus. Auf einer frischen
+        Karte faehrt MiSTer da noch hoch und nimmt es nicht an. Die
+        Nachfasser (_konsole_sichern()) kamen nur aus der Hauptschleife
+        und aus der Boot-Animation - und die beginnen erst NACH dem
+        Einlesen. Das dauerte beim Nutzer 106 s, so lange zeigte der
+        Bildschirm MiSTers Menue.
+
+        Nur beim Start (self._im_start) und nur mit eingeschalteter
+        Mechanik, genau wie in der Hauptschleife. Spaeteres
+        Neu-Einlesen zeigt seine Anzeige, klopft aber nicht an.
+        Ein Fehler hier darf das Einlesen nie abbrechen."""
+        if not getattr(self, "_im_start", False):
+            return
+        try:
+            if self.konsole_mechanik():
+                self._konsole_sichern()
+        except Exception:                                # noqa: BLE001
+            LOG("Einlesen: F9-Nachfasser fehlgeschlagen:\n"
+                + traceback.format_exc())
+
+    def _draw_arcade_einlesen(self, dateien, ordner):
+        """Fortschritt beim echten Einlesen des Arcade-Ordners (Build
+        336) - gerufen von fe/scan.py nach jedem gelesenen Ordner.
+
+        Die Gesamtzahl ist vorher unbekannt (sie zu ermitteln hiesse,
+        alles zweimal zu lesen). Gezeigt werden deshalb die bisher
+        gefundenen Dateien und Ordner und ein wandernder Block - genug,
+        um zu sehen, dass etwas geschieht. Dieselbe schlichte Machart
+        wie _draw_scan_progress(): self.cats ist noch nicht fertig."""
+        jetzt = time.monotonic()
+        seit = getattr(self, "_arcade_einlesen_seit", None)
+        if seit is None or jetzt - seit < self.EINLESEN_ANZEIGE_AB:
+            return
+        if jetzt - getattr(self, "_arcade_einlesen_zuletzt", 0.0) \
+                < self.EINLESEN_ANZEIGE_TAKT:
+            return
+        self._arcade_einlesen_zuletzt = jetzt
+        n = getattr(self, "_arcade_einlesen_bilder", 0)
+        self._arcade_einlesen_bilder = n + 1
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        maxc = max(4, (W - 2 * ox) // (8 * s))
+
+        def kurz(txt):
+            if len(txt) > maxc:
+                return txt[:max(1, maxc - 1)] + "~"
+            return txt
+        fb.clear(C_BG)
+        fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
+        fb.text(ox, oy + 50 * s, kurz(t("arcade_einlesen")), s, C_TEXT, C_BG)
+        bar_w = min(W - 2 * ox, 300 * s)
+        bar_h = 10 * s
+        by = oy + 70 * s
+        fb.rect(ox, by, bar_w, bar_h, C_PANEL)
+        block = max(1, bar_w // 5)
+        weg = max(1, bar_w - block)
+        stelle = (n * max(1, block // 3)) % (2 * weg)
+        if stelle > weg:
+            stelle = 2 * weg - stelle
+        fb.rect(ox + stelle, by, block, bar_h, C_ACCENT)
+        fb.text(ox, by + 16 * s,
+                kurz(t("arcade_einlesen_stand", dateien, ordner)),
+                s, C_DIM, C_BG)
+        fb.text(ox, by + 32 * s, kurz(t("arcade_einlesen_hinweis")),
+                s, C_DIM, C_BG)
+        fb.flip()
+        # Die Anzeige hat das Bild ueberschrieben - wer spaeter (etwa
+        # nach _refresh_system_category()) weiterzeichnet, muss alles
+        # neu zeichnen, sonst bliebe sie stehen.
+        self._force_full_redraw = True
+        self._einlesen_lebenszeichen()
 
     def _draw_scan_progress(self, i, total, name):
         """Einfacher Lade-Fortschritt waehrend des (seltenen)
@@ -2884,6 +2990,7 @@ class Frontend:
         fb.rect(ox, by, filled, bar_h, C_ACCENT)
         fb.text(ox, by + 16 * s, "%d / %d" % (i + 1, total), s, C_DIM, C_BG)
         fb.flip()
+        self._einlesen_lebenszeichen()
 
     # Nutzerwunsch (Hauptmenue aufraeumen, "zu viele Eintraege"):
     # "Consoles", "Console (autoboot)" und "RA Cores" wandern gemeinsam
@@ -2918,7 +3025,13 @@ class Frontend:
         _arcade_tree_cached())."""
         top_level = []
         cores_subcats = []
-        for n, it, sk in scan_cores(skip_dir=marked_recent, force=force_rescan):
+        # Build 336: Fortschritt beim (seltenen) echten Einlesen des
+        # Arcade-Ordners - siehe _draw_arcade_einlesen().
+        self._arcade_einlesen_seit = time.monotonic()
+        self._arcade_einlesen_bilder = 0
+        self._arcade_einlesen_zuletzt = 0.0
+        for n, it, sk in scan_cores(skip_dir=marked_recent, force=force_rescan,
+                                    melden=self._draw_arcade_einlesen):
             if n in self.MOVE_TO_CORES_FOLDER:
                 cores_subcats.append((n, it))
             elif n in self.DROP_ENTIRELY:

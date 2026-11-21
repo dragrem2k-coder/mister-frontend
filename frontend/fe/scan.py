@@ -16,7 +16,7 @@ Einfrier-Falle) - modul-qualifizierter Zugriff, nicht per direktem
 Import. _wait_for_network_ready() haelt fe.paths.GAMES_BASES bei
 jeder Neuermittlung synchron.
 """
-import os, glob, re, struct, time, pickle, socket, threading
+import os, glob, re, struct, time, pickle, socket, threading, traceback
 import threading as _threading
 from fe.log import LOG
 from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
@@ -221,7 +221,47 @@ def _has_network():
     except OSError:
         return False
 
-def _arcade_folder_tree(path):
+def _ordner_eintraege(path):
+    """Die Eintraege EINES Ordners als [(Name, ist_ordner, ist_link)],
+    nach Namen ohne Gross/Klein sortiert, Punkt-Dateien weggelassen.
+    Wirft OSError wie os.listdir(), wenn der Ordner nicht lesbar ist.
+
+    BUILD 336, DER GRUND (Nutzer: "neue MiSTer ... restart. Aber nix zu
+    sehen"; im Log "davon _partition_core_cats() 106632 ms"): bisher
+    stand an beiden Stellen os.listdir() und danach os.path.isdir() fuer
+    JEDEN Eintrag - ein stat() je Datei. Auf der exFAT-Karte des MiSTer
+    sucht der Kernel bei jedem stat() den Namen erneut im Verzeichnis,
+    in einem Ordner mit Tausenden .mra also Tausende Male durch Tausende
+    Eintraege. os.scandir() liefert die Art des Eintrags gleich beim
+    Lesen des Verzeichnisses mit (d_type) - ein Durchlauf statt
+    Tausender. Wo das Dateisystem die Art nicht mitliefert, fragt
+    Python selbst per stat() nach; das Ergebnis ist also dasselbe wie
+    vorher, nur ohne den Umweg.
+
+    is_dir() folgt Links wie os.path.isdir(); ein kaputter Link oder ein
+    Lesefehler zaehlt wie dort als "kein Ordner"."""
+    raus = []
+    with os.scandir(path) as it:
+        for e in it:
+            name = e.name
+            if name.startswith("."):
+                continue
+            try:
+                ist_ordner = e.is_dir()
+            except OSError:
+                ist_ordner = False
+            ist_link = False
+            if ist_ordner:
+                try:
+                    ist_link = e.is_symlink()
+                except OSError:
+                    ist_link = False
+            raus.append((name, ist_ordner, ist_link))
+    raus.sort(key=lambda x: x[0].lower())
+    return raus
+
+
+def _arcade_folder_tree(path, melden=None, _stand=None):
     """Wie _folder_items(), aber REKURSIV - nur fuer den Arcade-Ordner
     gedacht (siehe scan_cores() unten).
 
@@ -244,24 +284,45 @@ def _arcade_folder_tree(path):
     eingefuehrt - die anderen generischen _*-Core-Ordner (Console/
     Computer/Utility/...) bleiben unveraendert flach, dort ist eine
     tiefe Ordnerorganisation in der Praxis kaum gebraeuchlich."""
+    #
+    # BUILD 336: melden(dateien, ordner) wird nach jedem gelesenen
+    # Ordner mit dem bisherigen Stand gerufen - das Frontend zeigt
+    # damit beim ersten Einlesen einen Fortschritt, statt zwei Minuten
+    # lang nichts. _stand traegt [Dateien, Ordner, Anzeige aus] durch
+    # die Rekursion und ist nur fuer sie gedacht.
+    if _stand is None:
+        _stand = [0, 0, False]
+    while len(_stand) < 3:
+        _stand.append(False)
     node = _empty_node()
     try:
-        entries = sorted(os.listdir(path), key=str.lower)
+        entries = _ordner_eintraege(path)
     except OSError:
         return node
+    _stand[1] += 1
     files = []
-    for entry in entries:
-        if entry.startswith("."):
-            continue
+    for entry, ist_ordner, _ist_link in entries:
         full = os.path.join(path, entry)
-        if os.path.isdir(full):
-            sub = _arcade_folder_tree(full)
+        if ist_ordner:
+            sub = _arcade_folder_tree(full, melden, _stand)
             if sub["folders"] or sub["items"]:
                 node["folders"][entry] = sub
         else:
             ext = os.path.splitext(entry)[1].lower()
             if ext in (".mra", ".rbf", ".mgl"):
                 files.append(full)
+    _stand[0] += len(files)
+    if melden is not None and not _stand[2]:
+        try:
+            melden(_stand[0], _stand[1])
+        except Exception:                                # noqa: BLE001
+            # Eine Anzeige darf das Einlesen nie abbrechen - und nach
+            # dem ersten Fehler wird sie fuer den ganzen Durchlauf
+            # abgeschaltet, sonst stuende derselbe Fehler je Ordner
+            # im Log.
+            _stand[2] = True
+            LOG("Arcade einlesen: Fortschrittsanzeige fehlgeschlagen:\n"
+                + traceback.format_exc())
     items = []
     for f in sorted(files, key=lambda p: os.path.basename(p).lower()):
         name = os.path.splitext(os.path.basename(f))[0]
@@ -327,7 +388,7 @@ def _save_arcade_tree_cache(data):
     except OSError:
         pass
 
-def _arcade_tree_cached(path, force=False):
+def _arcade_tree_cached(path, force=False, melden=None):
     """_arcade_folder_tree(path), aber mit Mtime-Signatur-Cache (siehe
     ausfuehrliche Begruendung oben) - baut den Baum nur dann wirklich
     neu auf, wenn sich die Mtime von 'path' selbst seit dem letzten
@@ -340,11 +401,20 @@ def _arcade_tree_cached(path, force=False):
         cached = _load_arcade_tree_cache()
         if cached.get("path") == path and cached.get("sig") == sig:
             return cached.get("node", _empty_node())
-    node = _arcade_folder_tree(path)
+    # Build 336: der teure Fall soll im Log stehen - mit Zahlen, damit
+    # ein langsamer erster Start nachzulesen ist und nicht vermutet
+    # werden muss.
+    t0 = time.monotonic()
+    stand = [0, 0, False]
+    node = _arcade_folder_tree(path, melden, stand)
+    LOG("Arcade-Ordner eingelesen: %d Dateien in %d Ordnern, %.0f ms (%s)"
+        % (stand[0], stand[1], (time.monotonic() - t0) * 1000.0,
+           "Neu einlesen erzwungen" if force else "kein passender "
+           "Zwischenspeicher"))
     _save_arcade_tree_cache({"path": path, "sig": sig, "node": node})
     return node
 
-def scan_cores(skip_dir=None, force=False):
+def scan_cores(skip_dir=None, force=False, melden=None):
     """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
     skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
     separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt).
@@ -361,7 +431,9 @@ def scan_cores(skip_dir=None, force=False):
 
     force=True (manueller Rescan) erzwingt fuer Arcade einen
     vollstaendigen Neuaufbau des Baums, ignoriert also einen eventuell
-    noch passenden Cache-Eintrag."""
+    noch passenden Cache-Eintrag.
+
+    melden (Build 336) geht an _arcade_folder_tree() - siehe dort."""
     cats = []
     skip_real = os.path.realpath(skip_dir) if skip_dir else None
     for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
@@ -373,7 +445,7 @@ def scan_cores(skip_dir=None, force=False):
         base = os.path.basename(d).lstrip("_").lower()
         syskey = "ARCADE" if "arcade" in base else None
         if syskey == "ARCADE":
-            node = _arcade_tree_cached(d, force=force)
+            node = _arcade_tree_cached(d, force=force, melden=melden)
             if node["folders"] or node["items"]:
                 cats.append((nice_name(os.path.basename(d)), node, syskey))
             continue
@@ -1890,8 +1962,10 @@ def _scan_folder_tree(path, syskey, rbf, extmap, _tiefe=0, _vorfahren=(),
             _real = path
     if not _vorfahren:
         _vorfahren = (_real,)
+    # Build 336: _ordner_eintraege() statt listdir() plus isdir() je
+    # Eintrag - siehe dort, derselbe Grund wie beim Arcade-Ordner.
     try:
-        entries = sorted(os.listdir(path), key=str.lower)
+        entries = _ordner_eintraege(path)
     except OSError:
         return node
     # Einmal pro Ordner abfragen statt pro Datei - der Schalter ist eine
@@ -1905,16 +1979,14 @@ def _scan_folder_tree(path, syskey, rbf, extmap, _tiefe=0, _vorfahren=(),
     # einzelordner_aufloesen() in fe/settings.py.
     _einzeln = einzelordner_aufloesen()
     raw_items = []
-    for entry in entries:
-        if entry.startswith("."):
-            continue
+    for entry, ist_ordner, ist_link in entries:
         full = os.path.join(path, entry)
-        if os.path.isdir(full):
+        if ist_ordner:
             # Build 200: der Schleifenschutz, siehe SCAN_MAX_TIEFE.
             if _tiefe + 1 >= SCAN_MAX_TIEFE:
                 _scan_schleife_melden("zu tief verschachtelt", full)
                 continue
-            if os.path.islink(full):
+            if ist_link:
                 try:
                     _kind_real = os.path.realpath(full)
                 except OSError:

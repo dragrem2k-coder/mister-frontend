@@ -13,6 +13,17 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: the first start on a fresh card showed nothing for two
+  minutes.** On the first start the frontend reads the arcade folder —
+  for you that took 106 s, and MiSTer's own menu stayed on screen the
+  whole time. It now reads the folder without a separate query per file
+  (much faster on the exFAT card), shows "Reading the arcade folder …"
+  with counts, and takes over the screen while it reads (build 336).
+- **Changed: box art download without the mirror source.** The queries
+  to dennsen86clips.de are gone. Before downloading anything, it checks
+  what Update All (Game Artwork DBs) has already put on the card and
+  says so at the start; those covers are never downloaded, not even in
+  "neu" mode. Everything else comes from libretro as before (build 336).
 - **Fixed: start took 18 seconds (bug from build 334).** Your bench 24
   showed it: building "Collections" cost 15.6 s, 86 % of the start. The
   cause was the cover check for the attract mode — it ran over all

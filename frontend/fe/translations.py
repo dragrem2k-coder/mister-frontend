@@ -1725,6 +1725,13 @@ TRANSLATIONS = {
     "attract_hint": {"en": "OK play  </> system  other: back",
                      "de": "OK spielen  </> System  sonst zurück"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
+    # Build 336: die Anzeige beim ersten Einlesen des Arcade-Ordners
+    "arcade_einlesen": {"en": "Reading the arcade folder ...",
+                        "de": "Arcade-Ordner wird eingelesen ..."},
+    "arcade_einlesen_stand": {"en": "%d files in %d folders",
+                              "de": "%d Dateien in %d Ordnern"},
+    "arcade_einlesen_hinweis": {"en": "Only on the first start",
+                                "de": "Nur beim ersten Start"},
     "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
     "continue_cat": {"en": "Continue Playing", "de": "Weiterspielen"},
     "ra_hunter_cat": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjäger"},

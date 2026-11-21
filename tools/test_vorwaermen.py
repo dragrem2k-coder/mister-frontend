@@ -262,10 +262,13 @@ check("die Filterschleife wartet vorher auf den Thread",
 # EINER Marke haengt, geht daran kaputt, ohne dass sich an der Sache
 # etwas aendert).
 i_start = quelltext.index("self._metadaten_vorwaermen_starten()")
-i_bauen = quelltext.index("self.build_categories()\n        "
-                          'self._startmarke("Spieleliste eingelesen")')
+# Build 336: der Aufruf steht jetzt in einem try/finally (die
+# Start-Markierung fuer die F9-Nachfasser). Gesucht wird deshalb die
+# Marke danach und der Aufruf dazwischen, nicht die genaue Zeilenfolge.
+i_marke = quelltext.index('self._startmarke("Spieleliste eingelesen")')
+i_bauen = quelltext.rfind("self.build_categories()", 0, i_marke)
 check("der Thread startet VOR dem Einlesen der Spieleliste",
-      i_start < i_bauen)
+      0 <= i_start < i_bauen < i_marke, "%d < %d < %d" % (i_start, i_bauen, i_marke))
 
 shutil.rmtree(_tmp, ignore_errors=True)
 

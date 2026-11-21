@@ -11265,3 +11265,62 @@ Test prueft das jetzt mit Gegenprobe.
   fuzz) - die gaelte aber auch fuer die Cores. Bewusst nicht.
 * Abschnitt P: ARCADE-Namensverzeichnis 4,8 s, laengster Happen 1,1 s.
   Kandidat fuer einen spaeteren Build.
+
+## Nachtrag Build 336 - der erste Start und der Boxart-Download
+
+**Stand:** 21.11.2026, `Dragend_Build_336.zip` (build_id
+`2026-11-21-336`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+### Frische Karte: zwei Minuten nichts zu sehen
+
+```
+13:18:46  START davon find_continue_game()        80 ms   (gesamt   1.28 s)
+14:20:33  START davon _partition_core_cats()  106632 ms   (gesamt 107.91 s)
+```
+
+(Der Sprung 13:18 -> 14:20 ist die Uhr: UTC -> Ortszeit waehrend des
+Boots. Gemessen sind 106,6 s.) Ursache in zwei Teilen:
+
+1. **Das Einlesen selbst.** `_arcade_folder_tree()` (wie
+   `_scan_folder_tree()`) machte `os.listdir()` und dann
+   `os.path.isdir()` je Eintrag - ein `stat()` je Datei. Auf exFAT sucht
+   der Kernel dabei den Namen jedes Mal neu im Verzeichnis. Jetzt
+   `_ordner_eintraege()` mit `os.scandir()`: die Art kommt aus dem
+   Verzeichnis selbst (d_type), ohne Systemaufruf je Eintrag. Wo das
+   Dateisystem sie nicht liefert, fragt Python selbst nach - das Ergebnis
+   ist dasselbe. EHRLICH: im Container (tmpfs) ist kein Unterschied
+   messbar (39 ms gegen 43 ms bei 20.000 Dateien, dort ist stat() billig);
+   bewiesen ist hier nur "0 statt N stat()". Was es auf der Karte bringt,
+   zeigt die neue Logzeile `Arcade-Ordner eingelesen: N Dateien in M
+   Ordnern, X ms` beim naechsten ersten Start oder nach "Spieleliste neu
+   einlesen".
+2. **Das Bild.** Das erste F9 geht nach 0,7 s raus; ein frisch
+   startender MiSTer nimmt es nicht an. Die Nachfasser
+   (`_konsole_sichern()`) kamen nur aus Hauptschleife und Boot-Animation -
+   beide beginnen erst NACH dem Einlesen. Jetzt ruft
+   `_einlesen_lebenszeichen()` sie aus allen drei Fortschrittsanzeigen
+   (Spiele-Scan, Laufwerk-Warten, neu: Arcade), nur waehrend des ersten
+   Einlesens (`self._im_start`) und nur mit eingeschalteter Mechanik.
+   `_boot_time` steht jetzt vor dem Einlesen (wird danach wie bisher neu
+   gesetzt). Neu `_draw_arcade_einlesen()`: ab 0,4 s, hoechstens 5 Bilder
+   je Sekunde, danach `_force_full_redraw`.
+
+### Boxart-Download: Mirror raus, update_all zuerst
+
+Nutzerwunsch. `mister_boxart.py` v4.1: Mirror-Code (dennsen86clips.de,
+.art- und png/-Baum, samt Fortschritts-Helfern) entfernt; geblieben ist
+`original_ablegen()`/Arbeitskopie fuer den libretro-Weg. Neu
+`update_all_artwork()`/`update_all_melden()`: zaehlt vor dem Download die
+Cover in den Boxart-Unterordnern unter `/media/fat/docs` und daneben
+(Orte aus `fe/art.py`, nicht kopiert) und sagt es. Ein Cover, das
+update_all schon hat, wird auch im Modus "neu" nicht geladen ("neu"
+ersetzt nur EIGENE alte Cover).
+
+### Pruefungen
+
+Neu `tools/test_erster_start.py` (Eintraege, Arcade-Baum gegen den alten
+Weg, null isdir/stat, Anzeige und Drossel, F9 nur beim Start, Boxart).
+Verfaelscht: isdir zurueck, Log-Sperre weg, flip/Redraw weg, Start-Sperre
+weg, update_all im Modus "neu" wieder geladen, Drossel weg - jedes Mal
+rot.

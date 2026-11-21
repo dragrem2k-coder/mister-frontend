@@ -13,6 +13,19 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Repariert: erster Start auf einer frischen Karte zeigte zwei Minuten
+  lang nichts.** Beim ersten Start liest das Frontend den Arcade-Ordner
+  ein — bei dir dauerte das 106 s, und so lange blieb MiSTers eigenes
+  Menü stehen. Jetzt liest es den Ordner ohne eine Einzelabfrage je
+  Datei (deutlich schneller auf der exFAT-Karte), zeigt dabei
+  „Arcade-Ordner wird eingelesen …" mit Zahlen und holt sich den
+  Bildschirm schon während des Einlesens (Build 336).
+- **Geändert: Boxart-Download ohne die Mirror-Quelle.** Die Abfrage bei
+  dennsen86clips.de ist raus. Bevor etwas geladen wird, schaut der
+  Download nach, was Update All (Game Artwork DBs) schon auf die Karte
+  gelegt hat, und sagt es am Anfang; diese Cover werden nie geladen,
+  auch nicht im Modus „neu". Der Rest kommt wie bisher von libretro
+  (Build 336).
 - **Repariert: Start dauerte 18 Sekunden (Fehler aus Build 334).** Dein
   Bench 24 zeigte es: „Sammlungen" bauen kostete 15,6 s, 86 % des
   Starts. Ursache war die Cover-Prüfung für den Attract-Modus — sie lief

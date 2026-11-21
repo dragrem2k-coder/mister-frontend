@@ -6,32 +6,18 @@ mister_boxart.py - Boxart-Downloader fuer den MiSTer
 v4.0
 Keine Abhaengigkeiten - nur Python-Standardbibliothek.
 
-VIER STUFEN, automatisch der Reihe nach (Build 123):
-  0. DAS GERAET SELBST: liegt das Cover schon in der Artwork-Datenbank
-     unter /media/fat/docs (oder als Artpack daneben), gibt es nichts
-     zu laden - das Frontend zeigt es ohnehin. Kostet null Bandbreite
-     und null Platz.
-  1. MIRROR, png/-BAUM (neu): fertige PNG/JPG-Cover, die genau so
-     abgelegt werden, wie sie kommen - kein Dekodieren, kein
-     Verkleinern, kein Umwandeln. Seit Build 119 ist das die Form, in
-     der wir Cover haben wollen.
-  2. MIRROR, art/-BAUM: dieselbe Quelle, aber bereits FERTIG
-     verkleinerte .art-Dateien (einmalig auf einem PC erzeugt, siehe
-     art_build_mirror.py auf der Mirror-Seite). Im "art"-Modus die
-     erste Wahl, sonst das Netz unter Stufe 1.
-  3. FALLBACK (langsamer, aber unabhaengig): fuer alles, was der
-     Mirror nicht listet oder nicht zuordnen kann, faellt das Skript
-     automatisch auf den bisherigen Weg zurueck - PNG-Cover von
-     thumbnails.libretro.com (Fallback: GitHub) laden und in reinem
-     Python selbst dekodieren/skalieren. Genau der Weg, den dieses
-     Skript vor v4.0 exklusiv genutzt hat.
+ZWEI STUFEN, automatisch der Reihe nach (Build 336):
+  0. DAS GERAET SELBST: zuerst wird nachgesehen, ob update_all (Extra
+     Content -> Game Artwork DBs) oder ein Artpack schon Cover auf die
+     Karte gelegt hat (/media/fat/docs und daneben) - das Ergebnis
+     steht gleich am Anfang auf dem Bildschirm. Was dort liegt, wird
+     nicht geladen: das Frontend zeigt es ohnehin. Kostet null
+     Bandbreite und null Platz.
+  1. LIBRETRO: fuer alles, was dann noch fehlt, PNG-Cover von
+     thumbnails.libretro.com (Rueckfall: GitHub).
 
-Warum beide statt nur der schnellen Mirror-Variante: der Mirror ist
-ein einzelner, dritter Server - faellt er aus, hat eine reine
-Mirror-Loesung KEINE Cover mehr. Mit dem automatischen Rueckfall auf
-die etablierte, breit genutzte libretro-thumbnails-Quelle bleibt
-Boxart-Download auch dann funktionsfaehig, nur eben langsamer fuer die
-betroffenen Eintraege - kein Alles-oder-nichts.
+ENTFERNT (Build 336, Nutzerwunsch): die Mirror-Quelle auf
+dennsen86clips.de, die bis dahin zwischen Stufe 0 und libretro lag.
 
 Aufruf (SSH oder ueber die Scripts-Kategorie des Frontends):
   python3 /media/fat/frontend/mister_boxart.py            # alle Systeme, CRT-Profil
@@ -49,8 +35,7 @@ schneller (kein Dekodieren und Verkleinern in Python auf der
 MiSTer-CPU) und behaelt die volle Aufloesung - dieselbe Datei bedient
 damit CRT UND HDMI, statt wie bisher pro Profil einen eigenen
 Durchlauf zu brauchen. Der Preis ist Platz auf der Karte; mit dem
-zusaetzlichen Wort "art" laeuft es wie frueher. Der Mirror-Weg liefert
-weiterhin fertige .art-Dateien - dort gibt es nichts umzuwandeln.
+zusaetzlichen Wort "art" laeuft es wie frueher.
 
 Mit dem zusaetzlichen Wort "neu" werden vorhandene Cover NICHT
 uebersprungen, sondern noch einmal erzeugt. Das ist einmalig sinnvoll,
@@ -61,6 +46,9 @@ fuer immer uebersprungen. Der Lauf dauert damit natuerlich so lange wie
 beim ersten Mal - er laesst sich jederzeit abbrechen und fortsetzen.
 
 Versionshistorie:
+  v4.1 - (Build 336) Mirror-Quelle entfernt; vor dem Download wird
+         angezeigt, was update_all schon geliefert hat, und solche
+         Cover werden auch im Modus "neu" nicht geladen.
   v4.0 - Mirror-Fetch als schnellen Hauptweg ergaenzt (Nutzerwunsch,
          nach Pruefung eines vom Nutzer als vertrauenswuerdig
          bestaetigten Mirrors uebernommen), mit automatischem
@@ -111,8 +99,6 @@ Versionshistorie:
 """
 
 import re, difflib, glob, html, json, os, ssl, struct, sys, threading, time, zlib
-import http.client
-import queue
 import urllib.request, urllib.parse
 import concurrent.futures
 from collections import Counter
@@ -327,355 +313,14 @@ def collect_arcade_names():
     return result
 
 # ---------------------------------------------------------------------------
-# Geschwindigkeits-Tracker + Fortschrittsanzeige (thread-safe)
+# ENTFERNT (Build 336): die Mirror-Quelle auf dennsen86clips.de (frueher
+# Quelle 1 und 2, .art- und png/-Baum). Nutzerwunsch: "das mit dennsen86
+# wo er die boxarts abfragt muss raus". Geblieben ist nur, was der
+# libretro-Weg weiterhin braucht: das Ablegen des Originals samt
+# JPEG-Arbeitskopie.
 # ---------------------------------------------------------------------------
 
-class SpeedTracker:
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._bytes = 0; self._start = time.time(); self._window = []
-        self._total_done = 0; self._total_jobs = 0
-    def reset(self, total_jobs):
-        with self._lock:
-            self._bytes = 0; self._start = time.time(); self._window = []
-            self._total_done = 0; self._total_jobs = total_jobs
-    def add(self, n):
-        now = time.time()
-        with self._lock:
-            self._bytes += n; self._window.append((now, n))
-            cut = now - 5.0
-            self._window = [(t, b) for t, b in self._window if t >= cut]
-    def finish_one(self):
-        with self._lock:
-            self._total_done += 1
-    def stats(self):
-        now = time.time()
-        with self._lock:
-            done, total = self._total_done, self._total_jobs
-            if self._window:
-                wb = sum(b for _, b in self._window)
-                el = now - self._window[0][0]
-                speed = (wb / el) if el > 0.1 else 0.0
-            else:
-                speed = 0.0
-            rem = total - done
-            if speed > 0 and rem > 0:
-                avg = (self._bytes / done) if done > 0 else 20000
-                eta_str = _fmt_eta((avg * rem) / speed)
-            else:
-                eta_str = "--:--"
-        return done, total, speed / (1024*1024), eta_str
-
-_speed = SpeedTracker()
-
-def _fmt_eta(sec):
-    sec = int(sec)
-    if sec < 60:   return "%ds" % sec
-    if sec < 3600: return "%dm%02ds" % (sec // 60, sec % 60)
-    return "%dh%02dm" % (sec // 3600, (sec % 3600) // 60)
-
-_progress_stop = threading.Event()
-
-def _download_progress():
-    first = True
-    while not _progress_stop.is_set():
-        done, total, mbs, eta = _speed.stats()
-        bw = 20; filled = int(bw * done / total) if total else 0
-        bar = "#" * filled + "-" * (bw - filled)
-        line = "  [%s] %d/%d  %.2f MB/s  ETA %s   " % (bar, done, total, mbs, eta)
-        sys.stdout.write((line + "\n") if first else ("\r" + line))
-        sys.stdout.flush(); first = False
-        time.sleep(0.5)
-    done, total, mbs, _ = _speed.stats()
-    el = time.time() - _speed._start
-    sys.stdout.write("\r  fertig: %d Dateien in %.1fs (%.2f MB/s)%s\n"
-                     % (done, el, mbs, " " * 8))
-    sys.stdout.flush()
-
-def _match_bar(done, total, t0):
-    el = time.time() - t0
-    rate = done / el if el > 0 else 0.0
-    pct = done * 100 // total if total else 100
-    bw = 20; filled = bw * done // total if total else bw
-    bar = "#" * filled + "-" * (bw - filled)
-    sys.stdout.write("\r  Abgleich [%s] %d/%d (%d%%)  %.0f ROMs/s   "
-                     % (bar, done, total, pct, rate))
-    sys.stdout.flush()
-
-# ---------------------------------------------------------------------------
-# QUELLE 1: Mirror (schnell, fertige .art-Dateien, Klartext-HTTP,
-# Keep-Alive) - siehe Modul-Docstring oben.
-# ---------------------------------------------------------------------------
-
-HTTP_HOST      = "dennsen86clips.de"
-HTTP_BASE_PATH = "boxarts"
-REMOTE_ART     = {"sd": "art", "hd": "art_hd"}   # muss zu art_build_mirror.py passen
 DOWNLOAD_WORKERS = 6
-
-_http_local = threading.local()
-
-def _get_http():
-    conn = getattr(_http_local, "conn", None)
-    if conn is None:
-        conn = http.client.HTTPConnection(HTTP_HOST, 80, timeout=30)
-        _http_local.conn = conn
-    return conn
-
-_HREF_ART = re.compile(r'href="([^"?]+\.art)"', re.I)
-
-def list_art(system, remote_dir):
-    """Fertige .art per HTTP-Verzeichnisindex auflisten. Leere Liste
-    bei jedem Fehler (Mirror nicht erreichbar, System dort nicht
-    vorhanden usw.) - der Aufrufer faellt dann automatisch auf die
-    langsamere Quelle 2 zurueck, siehe process_system_mirror()."""
-    base = ("%s/" % HTTP_BASE_PATH.strip("/")) if HTTP_BASE_PATH else ""
-    url  = "/" + urllib.parse.quote("%s%s/%s/" % (base, remote_dir, system))
-    try:
-        conn = _get_http()
-        conn.request("GET", url, headers={"Connection": "keep-alive"})
-        resp = conn.getresponse()
-        body = resp.read()
-        if resp.status != 200:
-            return []
-        if "text/html" not in (resp.getheader("Content-Type") or "").lower():
-            return []
-        names = []
-        for href in _HREF_ART.findall(body.decode("utf-8", "replace")):
-            fn = os.path.basename(urllib.parse.unquote(href))
-            if fn.lower().endswith(".art"):
-                names.append(fn)
-        return names
-    except Exception as e:
-        _http_local.conn = None
-        print("  Mirror-Listing-Fehler (%s): %s - falle auf Einzel-Quelle zurueck" % (system, e))
-        return []
-
-def download_art_http(system, remote_dir, artname, retries=3):
-    base = ("%s/" % HTTP_BASE_PATH.strip("/")) if HTTP_BASE_PATH else ""
-    url  = "/" + urllib.parse.quote("%s%s/%s/%s" % (base, remote_dir, system, artname))
-    for attempt in range(retries):
-        try:
-            conn = _get_http()
-            conn.request("GET", url, headers={"Connection": "keep-alive"})
-            resp = conn.getresponse()
-            data = resp.read()
-            if resp.status == 200:
-                return data
-            return None
-        except Exception:
-            try: _get_http().close()
-            except Exception: pass
-            _http_local.conn = None
-            if attempt == retries - 1:
-                return None
-            time.sleep(0.3 * (attempt + 1))
-    return None
-
-def _fetch_worker_mirror(jobs_q, sysname, remote_dir, out_dir, gesamt, lock):
-    _DONE = _MIRROR_DONE
-    while True:
-        item = jobs_q.get()
-        if item is _DONE:
-            jobs_q.put(_DONE); break
-        rom, art = item
-        data = download_art_http(sysname, remote_dir, art)
-        if data is None:
-            _speed.finish_one()
-            continue
-        with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
-            f.write(data)
-        _speed.add(len(data)); _speed.finish_one()
-        with lock:
-            gesamt["neu"] += 1
-
-_MIRROR_DONE = object()
-
-def process_system_mirror(syskey, roms, sysname, remote_dir, out_dir, gesamt):
-    """Versucht den Mirror fuer eine Liste ROM-Namen (alle mit
-    derselben Cover-Quelle 'sysname'). Liefert die Namen zurueck, die
-    NICHT ueber den Mirror geloest werden konnten (Mirror hat das
-    System nicht gelistet, oder einzelne ROMs ohne Treffer/Download-
-    Fehler) - diese werden vom Aufrufer an process_system_fallback()
-    weitergereicht, statt als endgueltig fehlend zu gelten."""
-    if not roms:
-        return []
-    arts = list_art(sysname, remote_dir)
-    if not arts:
-        return list(roms)   # Mirror kennt dieses System (gerade) nicht - alles an Fallback
-    idx_exact, idx_strip = build_index(arts)
-    tri = build_trigram_index(idx_strip)
-    print("  Mirror (%s): %d .art verfuegbar, %d ROMs abgleichen ..."
-          % (sysname, len(arts), len(roms)))
-    jobs, unresolved = [], []
-    t1 = time.time()
-    for i, rom in enumerate(roms, 1):
-        art, how = match_rom(rom, idx_exact, idx_strip, tri)
-        if art:
-            jobs.append((rom, art))
-        else:
-            unresolved.append(rom)
-        if i % 250 == 0 or i == len(roms):
-            _match_bar(i, len(roms), t1)
-    sys.stdout.write("\n")
-    if not jobs:
-        return unresolved
-
-    _speed.reset(len(jobs))
-    _progress_stop.clear()
-    prog = threading.Thread(target=_download_progress, daemon=True)
-    prog.start()
-
-    jobs_q = queue.Queue(maxsize=DOWNLOAD_WORKERS * 4)
-    lock = threading.Lock()
-    threads = []
-    before_ok = {"neu": gesamt.get("neu", 0)}
-    got_names = set()
-    lock2 = threading.Lock()
-
-    def _worker():
-        while True:
-            item = jobs_q.get()
-            if item is _MIRROR_DONE:
-                jobs_q.put(_MIRROR_DONE); break
-            rom, art = item
-            data = download_art_http(sysname, remote_dir, art)
-            if data is None:
-                _speed.finish_one()
-                with lock2:
-                    unresolved.append(rom)
-                continue
-            with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
-                f.write(data)
-            _speed.add(len(data)); _speed.finish_one()
-            with lock2:
-                got_names.add(rom)
-            with lock:
-                gesamt["neu"] += 1
-
-    for _ in range(DOWNLOAD_WORKERS):
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start(); threads.append(t)
-    for job in jobs:
-        jobs_q.put(job)
-    jobs_q.put(_MIRROR_DONE)
-    for t in threads:
-        t.join()
-    _progress_stop.set(); prog.join()
-
-    return unresolved
-
-# ---------------------------------------------------------------------------
-# QUELLE 1b: derselbe Mirror, aber der png/-Baum (Build 123)
-#
-# NEU, und der Grund dafuer steht in Build 119: seitdem legen wir Cover
-# als ORIGINAL ab (PNG/JPG) statt sie in .art zu wandeln. Der Mirror
-# hatte bis dahin nur fertige .art-Dateien - mit dem png/-Baum liefert
-# er jetzt genau das, was wir eigentlich wollen, und zwar immer noch
-# ohne dass der MiSTer irgendetwas dekodieren muss.
-#
-# Drei Eigenheiten der Quelle, alle vom Betreiber so dokumentiert:
-#
-#   - KLARTEXT-HTTP, kein SSL. Der Host hat bewusst kein Zertifikat.
-#     Deshalb dieselbe HTTPConnection wie beim .art-Zweig, nicht
-#     urllib mit https.
-#
-#   - ZWEI ABLAGEORTE. Die Bilder liegen uneinheitlich: bei den meisten
-#     Systemen unter <System>/Named_Boxarts/, bei einigen (Amiga,
-#     Amstrad) direkt unter <System>/. Beide werden gelistet und
-#     zusammengeworfen.
-#
-#     Der Named_Boxarts-Zweig BLEIBT ausdruecklich drin, auch wenn das
-#     Ziel irgendwann flach sein sollte (Nutzerentscheidung: "kostet
-#     fast nichts und macht die lange Migration schmerzfrei"). Es ist
-#     ein einziges zusaetzliches Verzeichnis-Listing pro System.
-#
-#   - DER SERVER MELDET FALSCHE CONTENT-TYPES (.art z.B. als
-#     message/rfc822). Die Endung wird deshalb nach den ersten Bytes
-#     bestimmt, nicht nach dem Namen auf dem Server und schon gar nicht
-#     nach dem Header - dieselbe Regel, die der libretro-Zweig seit
-#     Build 119 anwendet.
-#
-# Die Dateinamen folgen der No-Intro-Konvention, also derselbe
-# unscharfe Abgleich wie ueberall sonst (match_rom()).
-# ---------------------------------------------------------------------------
-
-PNG_EXT = (".png", ".jpg", ".jpeg")
-_HREF_ANY = re.compile(r'href="([^"?]+)"', re.I)
-
-
-def _listing_lesen(pfad):
-    """Einen HTTP-Verzeichnisindex lesen -> (dateien, unterordner).
-
-    Leere Listen bei JEDEM Fehler - der Aufrufer faellt dann auf die
-    naechste Quelle zurueck, genau wie beim .art-Zweig."""
-    try:
-        conn = _get_http()
-        conn.request("GET", "/" + urllib.parse.quote(pfad),
-                     headers={"Connection": "keep-alive"})
-        resp = conn.getresponse()
-        body = resp.read()
-        if resp.status != 200:
-            return [], []
-        if "text/html" not in (resp.getheader("Content-Type") or "").lower():
-            return [], []
-        dateien, ordner = [], []
-        for href in _HREF_ANY.findall(body.decode("utf-8", "replace")):
-            if href.startswith(("?", "/", "..")):
-                continue
-            name = urllib.parse.unquote(href)
-            (ordner if name.endswith("/") else dateien).append(name.rstrip("/"))
-        return dateien, ordner
-    except Exception as e:                               # noqa: BLE001
-        _http_local.conn = None
-        print("  Mirror-PNG-Listing-Fehler (%s): %s" % (pfad, e))
-        return [], []
-
-
-def list_png(system):
-    """Alle PNG/JPG eines Systems - direkt UND in Named_Boxarts.
-
-    Rueckgabe: {Basisname ohne Endung: voller Pfad unter dem Host}.
-    Kommt ein Name in beiden Ablagen vor, gewinnt die direkte - sie ist
-    das Ziel der Migration."""
-    basis = "%s/png/%s/" % (HTTP_BASE_PATH.strip("/"), system)
-    raus = {}
-    dateien, ordner = _listing_lesen(basis)
-    for fn in dateien:
-        if fn.lower().endswith(PNG_EXT):
-            raus.setdefault(os.path.splitext(fn)[0], basis + fn)
-    for d in ordner:
-        if d.lower() != "named_boxarts":
-            continue
-        unter = basis + d + "/"
-        unterdateien, _ = _listing_lesen(unter)
-        for fn in unterdateien:
-            if fn.lower().endswith(PNG_EXT):
-                raus.setdefault(os.path.splitext(fn)[0], unter + fn)
-    return raus
-
-
-def download_png_http(relpfad, retries=3):
-    """Eine Datei ueber ihren vollen Pfad holen. Bytes oder None."""
-    url = "/" + urllib.parse.quote(relpfad)
-    for versuch in range(retries):
-        try:
-            conn = _get_http()
-            conn.request("GET", url, headers={"Connection": "keep-alive"})
-            resp = conn.getresponse()
-            data = resp.read()
-            if resp.status == 200:
-                return data
-            return None
-        except Exception:                                # noqa: BLE001
-            try:
-                _get_http().close()
-            except Exception:                            # noqa: BLE001
-                pass
-            _http_local.conn = None
-            if versuch == retries - 1:
-                return None
-            time.sleep(0.3 * (versuch + 1))
-    return None
 
 
 def endung_nach_inhalt(data):
@@ -773,7 +418,7 @@ def original_ablegen(out_dir, rom, daten):
     """Ein heruntergeladenes Cover ablegen - Original plus, wenn es ein
     PNG ist, die JPEG-Arbeitskopie daneben.
 
-    EINE Stelle fuer beide Quellen (Mirror und Fallback). Vorher stand
+    EINE Stelle fuer alle Quellen (frueher auch der Mirror). Vorher stand
     das Schreiben an zwei Stellen; mit der Arbeitskopie waeren es vier
     geworden, und zwei davon haetten irgendwann auseinandergelebt."""
     endung = endung_nach_inhalt(daten)
@@ -787,93 +432,9 @@ def original_ablegen(out_dir, rom, daten):
     return pfad
 
 
-def process_system_mirror_png(syskey, roms, sysname, out_dir, gesamt):
-    """Cover als ORIGINAL (PNG/JPG) vom Mirror holen.
-
-    Gibt die Namen zurueck, die hier NICHT geloest werden konnten -
-    der Aufrufer reicht sie an die naechste Quelle weiter. Gleiche
-    Vertragsform wie process_system_mirror()."""
-    if not roms:
-        return []
-    verfuegbar = list_png(sysname)
-    if not verfuegbar:
-        return list(roms)      # System dort (gerade) nicht vorhanden
-    idx_exact, idx_strip = build_index(list(verfuegbar))
-    tri = build_trigram_index(idx_strip)
-    print("  Mirror PNG (%s): %d Cover verfuegbar, %d ROMs abgleichen ..."
-          % (sysname, len(verfuegbar), len(roms)))
-    jobs, offen = [], []
-    t1 = time.time()
-    for i, rom in enumerate(roms, 1):
-        treffer, _wie = match_rom(rom, idx_exact, idx_strip, tri)
-        if treffer and treffer in verfuegbar:
-            jobs.append((rom, verfuegbar[treffer]))
-        else:
-            offen.append(rom)
-        if i % 250 == 0 or i == len(roms):
-            _match_bar(i, len(roms), t1)
-    sys.stdout.write("\n")
-    if not jobs:
-        return offen
-
-    _speed.reset(len(jobs))
-    _progress_stop.clear()
-    prog = threading.Thread(target=_download_progress, daemon=True)
-    prog.start()
-
-    jobs_q = queue.Queue(maxsize=DOWNLOAD_WORKERS * 4)
-    lock = threading.Lock()
-    lock2 = threading.Lock()
-    threads = []
-
-    def _worker():
-        while True:
-            item = jobs_q.get()
-            if item is _MIRROR_DONE:
-                jobs_q.put(_MIRROR_DONE)
-                break
-            rom, relpfad = item
-            data = download_png_http(relpfad)
-            endung = endung_nach_inhalt(data)
-            if endung is None:
-                # Nichts geladen, oder was geladen wurde ist kein Bild.
-                # Beides derselbe Fall: an die naechste Quelle geben,
-                # statt eine kaputte Datei auf der Karte abzulegen.
-                _speed.finish_one()
-                with lock2:
-                    offen.append(rom)
-                continue
-            try:
-                # Legt das Original ab und, bei einem PNG, die
-                # JPEG-Arbeitskopie daneben (Build 129).
-                original_ablegen(out_dir, rom, data)
-            except OSError as e:
-                print("  Schreibfehler (%s): %s" % (rom, e))
-                _speed.finish_one()
-                with lock2:
-                    offen.append(rom)
-                continue
-            _speed.add(len(data))
-            _speed.finish_one()
-            with lock:
-                gesamt["neu"] += 1
-
-    for _ in range(DOWNLOAD_WORKERS):
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start()
-        threads.append(t)
-    for job in jobs:
-        jobs_q.put(job)
-    jobs_q.put(_MIRROR_DONE)
-    for t in threads:
-        t.join()
-    _progress_stop.set()
-    prog.join()
-    return offen
-
 # ---------------------------------------------------------------------------
-# QUELLE 2: Fallback (langsamer, dekodiert selbst) - unveraendert der
-# bisherige Weg dieses Skripts, siehe Modul-Docstring.
+# DOWNLOAD: libretro (seit Build 336 die einzige Quelle im Netz), siehe
+# Modul-Docstring.
 # ---------------------------------------------------------------------------
 
 LIBRETRO_BASE = "https://thumbnails.libretro.com"
@@ -1232,9 +793,8 @@ def process_one_rom_fallback(rom, sysname, idx_exact, idx_strip, tri, out_dir, b
             return (rom, "png_error", str(e))
 
 def process_system_fallback(syskey, roms, sysname, out_dir, box, gesamt):
-    """Der bisherige, langsame Weg (dekodiert selbst) - wird nur fuer
-    die ROMs aufgerufen, die process_system_mirror() nicht loesen
-    konnte."""
+    """Der libretro-Weg - seit Build 336 der einzige Download, fuer
+    alle ROMs, fuer die auf dem Geraet noch kein Cover liegt."""
     if not roms:
         return []
     print("  Fallback (%s): %d ROMs ueber thumbnails.libretro.com ..." % (sysname, len(roms)))
@@ -1285,13 +845,86 @@ def _write_missing(art_base, syskey, missing):
 # main
 # ---------------------------------------------------------------------------
 
+# Build 336: wo update_all seine Boxarts ablegt. Die Orte kommen aus
+# fe/art.py (dieselben, an denen das Frontend sie zum ANZEIGEN sucht) -
+# zwei Listen, die dasselbe bedeuten, laufen sonst irgendwann
+# auseinander. Nur wenn das Modul fehlt, gilt die Ersatzliste.
+try:
+    from fe.art import (DOCS_BASE as _UA_DOCS,
+                        FREMD_ZUSATZ_WURZELN as _UA_ZUSATZ,
+                        DOCS_UNTERORDNER as _UA_UNTER)
+except Exception:                                        # noqa: BLE001
+    _UA_DOCS = "/media/fat/docs"
+    _UA_ZUSATZ = ("/media/fat/Artwork", "/media/fat/artwork",
+                  "/media/fat/boxart", "/media/fat/Boxart")
+    _UA_UNTER = ("Artwork", "Named_Boxarts", "Boxarts", "boxart",
+                 "Covers", "covers")
+
+
+def update_all_artwork(wurzeln=None, unterordner=None):
+    """(Systeme, Cover) der Boxarts, die update_all (Extra Content ->
+    Game Artwork DBs) oder ein Artpack schon auf die Karte gelegt hat.
+
+    Gezaehlt wird je Systemordner nur in den Boxart-Unterordnern
+    ("Artwork", "Named_Boxarts", ...), nie in "Screenshots" oder
+    "Titles" - die zaehlen nicht als Cover. Der leere Unterordner ""
+    aus fe/art.py bleibt hier bewusst weg: dort laege auch jedes
+    andere Bild eines Systemordners. os.scandir() liefert die Namen
+    ohne einen stat() je Datei (siehe fe/scan.py, Build 336)."""
+    if wurzeln is None:
+        wurzeln = (_UA_DOCS,) + tuple(_UA_ZUSATZ)
+    if unterordner is None:
+        unterordner = tuple(u for u in _UA_UNTER if u)
+    systeme, cover = set(), 0
+    for wurzel in wurzeln:
+        try:
+            ordner = sorted(e.name for e in os.scandir(wurzel)
+                            if e.is_dir() and not e.name.startswith("."))
+        except OSError:
+            continue
+        for sysname in ordner:
+            for unter in unterordner:
+                try:
+                    with os.scandir(os.path.join(wurzel, sysname, unter)) as it:
+                        n = sum(1 for e in it
+                                if e.name.rsplit(".", 1)[-1].lower()
+                                in ("jpg", "jpeg", "png"))
+                except OSError:
+                    continue
+                if n:
+                    systeme.add(sysname)
+                    cover += n
+    return len(systeme), cover
+
+
+def update_all_melden(wurzeln=None):
+    """Vor dem ersten Download nachsehen und SAGEN, was update_all schon
+    geliefert hat (Build 336). Liefert (Systeme, Cover)."""
+    print("Schaue zuerst nach Boxarts von update_all ...")
+    systeme, cover = update_all_artwork(wurzeln)
+    if cover:
+        print("  Gefunden: %d Cover in %d Systemen. Das Frontend zeigt sie "
+              "direkt an - fuer diese Spiele wird NICHTS geladen."
+              % (cover, systeme))
+        if _docs_cover is None:
+            print("  ACHTUNG: fe/art.py liess sich nicht laden - der Abgleich "
+                  "je Spiel ist so nicht moeglich. Bitte das Frontend "
+                  "aktualisieren.")
+    else:
+        print("  Keine gefunden. Tipp: update_all -> Einstellungen -> "
+              "Extra Content -> Game Artwork DBs laedt fertige Cover fuer "
+              "fast alle Systeme; danach muss hier kaum noch etwas geladen "
+              "werden.")
+    print("Geladen wird nur, was dann noch fehlt (thumbnails.libretro.com).")
+    return systeme, cover
+
+
 def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, gesamt):
-    """Ein System komplett abarbeiten: erst der Mirror (gruppiert nach
-    Cover-Quelle je Endung, siehe SMS/Game Gear), fuer alles ungeloeste
-    danach automatisch der Fallback - beides schreibt in denselben
-    out_dir, damit das Frontend (das nur den syskey-Ordner kennt,
-    keinen Unterschied zwischen den Quellen macht) beides gleich
-    findet."""
+    """Ein System komplett abarbeiten: erst nachsehen, was auf dem
+    Geraet schon liegt (update_all-Datenbank, eigene Cover), fuer den
+    Rest libretro (gruppiert nach Cover-Quelle je Endung, siehe SMS/Game
+    Gear). remote_dir ist seit Build 336 ohne Bedeutung (frueher der
+    Mirror-Ordner) und bleibt nur fuer die Aufrufform stehen."""
     if not roms:
         return
     out_dir = os.path.join(art_base, syskey)
@@ -1319,23 +952,41 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     # kommen. Faellt der Import aus (aeltere Installation, Modul
     # fehlt), bleibt es beim bisherigen Verhalten - der Download laeuft
     # dann eben wie vorher.
-    def _schon_da(name):
+    #
+    # GEAENDERT (Build 336, Nutzerwunsch: "bevor man boxarts nachlaedt
+    # sollte das frontend erst schauen automatisch ob schon jemand ueber
+    # update_all sich die boxarts ect geladen hat"): ein Cover aus der
+    # update_all-Datenbank wird jetzt AUCH im Modus "neu" nicht
+    # geladen. "neu" ersetzt unsere EIGENEN alten Cover - eines, das
+    # update_all schon geliefert hat, ist kein altes eigenes, und ein
+    # zweites Bild desselben Spiels waere nur belegter Platz.
+    def _eigenes_da(name):
         for endung in (".art", ".png", ".jpg", ".jpeg"):
             if os.path.exists(os.path.join(out_dir, name + endung)):
                 return True
-        if _docs_cover is not None:
-            try:
-                if _docs_cover(syskey, name):
-                    return True
-            except Exception:                            # noqa: BLE001
-                pass
         return False
 
-    todo = [(name, ext) for name, ext in roms
-            if FORCE_NEU or not _schon_da(name)]
+    def _update_all_da(name):
+        if _docs_cover is None:
+            return False
+        try:
+            return bool(_docs_cover(syskey, name))
+        except Exception:                                # noqa: BLE001
+            return False
+
+    todo = []
+    aus_update_all = 0
+    for name, ext in roms:
+        if _update_all_da(name):
+            aus_update_all += 1
+        elif FORCE_NEU or not _eigenes_da(name):
+            todo.append((name, ext))
     gesamt["roms"] += len(roms)
     gesamt["vorhanden"] += len(roms) - len(todo)
-    print("== %s: %d Eintraege, %d ohne Cover" % (syskey, len(roms), len(todo)))
+    gesamt["update_all"] = gesamt.get("update_all", 0) + aus_update_all
+    print("== %s: %d Eintraege, %d schon da (davon %d von update_all), "
+          "%d ohne Cover" % (syskey, len(roms), len(roms) - len(todo),
+                             aus_update_all, len(todo)))
     if not todo:
         return
 
@@ -1343,36 +994,21 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     for name, ext in todo:
         by_sysname.setdefault(ext_sysname_map.get(ext, syskey), []).append(name)
 
-    # DIE REIHENFOLGE DER QUELLEN (Build 123, Nutzerwunsch: "erst auf
-    # dem MiSTer schauen, dann auf einer Quelle die ich nachreiche, und
-    # dann erst ueber libretro"):
+    # DIE REIHENFOLGE DER QUELLEN (Build 336; vorher Build 123):
     #
-    #   0. auf dem Geraet selbst      - laeuft schon in _schon_da()
-    #                                   oben; was dort liegt, kommt gar
-    #                                   nicht erst in diese Liste
-    #   1. Mirror, png/-Baum          - das Original, genau das, was wir
-    #                                   seit Build 119 ablegen wollen
-    #   2. Mirror, art/-Baum          - fertig verkleinert; im
-    #                                   "art"-Modus die erste Wahl,
-    #                                   sonst das Netz darunter
-    #   3. libretro                   - unabhaengig vom Mirror
+    #   0. auf dem Geraet selbst      - update_all-Datenbank und eigene
+    #                                   Cover, laeuft schon oben; was
+    #                                   dort liegt, kommt gar nicht erst
+    #                                   in diese Liste
+    #   1. libretro                   - thumbnails.libretro.com, Rueckfall
+    #                                   GitHub
     #
-    # Im "art"-Modus (ORIGINAL_BEHALTEN=False, drittes Wort "art" auf
-    # der Kommandozeile) wird Stufe 1 UEBERSPRUNGEN - sie liefert ja
-    # gerade das Original, das dort niemand will.
-    still_missing = []
-    for sysname, names in by_sysname.items():
-        offen = names
-        if ORIGINAL_BEHALTEN:
-            offen = process_system_mirror_png(syskey, offen, sysname,
-                                              out_dir, gesamt)
-        still_missing.extend(
-            (n, sysname) for n in
-            process_system_mirror(syskey, offen, sysname, remote_dir, out_dir, gesamt))
+    # Die Mirror-Stufen dazwischen (dennsen86clips.de) sind entfernt -
+    # Nutzerwunsch, Build 336.
+    still_missing = [(n, sysname) for sysname, names in by_sysname.items()
+                     for n in names]
 
     if still_missing:
-        print("  %d nicht ueber den Mirror gefunden - Rueckfall auf Einzel-Download ..."
-              % len(still_missing))
         fb_by_sysname = {}
         for n, sn in still_missing:
             fb_by_sysname.setdefault(sn, []).append(n)
@@ -1411,19 +1047,13 @@ def main():
               "und verkleinern.")
 
     art_base   = ART_HD if profile == "hd" else ART_BASE
-    remote_dir = REMOTE_ART[profile]
+    remote_dir = None          # Build 336: kein Mirror mehr
     box        = PROFILES[profile]
-    print("Profil: %s -> %s (Mirror-Ordner '%s')" % (profile, art_base, remote_dir))
+    print("Profil: %s -> %s" % (profile, art_base))
+    update_all_melden()
 
-    try:
-        c = http.client.HTTPConnection(HTTP_HOST, 80, timeout=15)
-        c.request("HEAD", "/"); c.getresponse().read(); c.close()
-        print("Mirror erreichbar (%s)" % HTTP_HOST)
-    except Exception as e:
-        print("Mirror gerade nicht erreichbar (%s) - laeuft komplett ueber den "
-              "langsameren Fallback (thumbnails.libretro.com)." % e)
-
-    gesamt  = {"roms": 0, "neu": 0, "vorhanden": 0, "fehlend": 0}
+    gesamt  = {"roms": 0, "neu": 0, "vorhanden": 0, "fehlend": 0,
+               "update_all": 0}
     t_start = time.time()
 
     for syskey, (folders, ext_sysname_map) in SYSTEMS.items():
@@ -1441,8 +1071,9 @@ def main():
             print("== ARCADE: kein _Arcade-Ordner gefunden, uebersprungen")
 
     mins = (time.time() - t_start) / 60
-    print("\nFertig: %(roms)d ROMs, %(neu)d neu, %(vorhanden)d vorhanden, "
-          "%(fehlend)d ohne Cover" % gesamt)
+    print("\nFertig: %(roms)d ROMs, %(neu)d neu, %(vorhanden)d vorhanden "
+          "(davon %(update_all)d von update_all), %(fehlend)d ohne Cover"
+          % gesamt)
     print("Gesamtzeit: %.1f Minuten" % mins)
 
 if __name__ == "__main__":
