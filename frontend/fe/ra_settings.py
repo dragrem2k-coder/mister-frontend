@@ -161,13 +161,22 @@ def _bool_text(wert, vorlage=None):
     return "1" if wert else "0"
 
 
+# Build 339: siehe _zeilen_lesen().
+KODIERUNG = "latin-1"
+
+
 def _zeilen_lesen():
     """Die Datei als Liste von Zeilen OHNE Zeilenumbruch. Fehlt sie oder
     ist sie nicht lesbar, gibt es None - der Aufrufer unterscheidet
     "nicht eingerichtet" von "leer"."""
     try:
-        with open(RA_SETTINGS_FILE, "r", encoding="utf-8",
-                  errors="replace") as f:
+        # Build 339: latin-1 statt "utf-8, errors=replace". Mit
+        # "replace" wurde jedes Byte, das kein UTF-8 ist, beim
+        # Zurueckschreiben zu U+FFFD - in einer Datei mit Benutzername
+        # und Passwort. latin-1 gibt jedes Byte unveraendert zurueck
+        # (dieselbe Begruendung wie MISTER_INI_KODIERUNG in
+        # fe/settings.py); gesucht wird nur nach ASCII-Schluesseln.
+        with open(RA_SETTINGS_FILE, "r", encoding=KODIERUNG) as f:
             return f.read().split("\n")
     except OSError:
         return None
@@ -314,7 +323,7 @@ def _zeilen_schreiben(zeilen, schluessel, wert, sektion):
     if not text.endswith("\n"):
         text += "\n"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding=KODIERUNG) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())

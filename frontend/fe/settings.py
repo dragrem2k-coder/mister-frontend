@@ -371,6 +371,37 @@ video_mode=320,8,32,24,240,4,3,16,6048
 # Installationen wirkungslos, um die es hier eigentlich geht.
 CRT_MENU_OWNED_FLAG = "/media/fat/frontend/crt_menu_by_frontend"
 
+# BUILD 339: MiSTer.ini als latin-1 lesen und schreiben.
+#
+# DER FEHLER (Nutzer nach dem Update: "bleibt im welcome to mister
+# login: stehen"). Sein Log:
+#
+#     crt_menu_active()  return "[Menu]" in open(MISTER_INI).read()
+#     UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe4 in
+#     position 17907
+#
+# 0xe4 ist ein "ae" in Windows-/latin-1-Kodierung - irgendein Werkzeug
+# oder Editor hat einen Kommentar mit Umlaut so in seine MiSTer.ini
+# geschrieben. MiSTer selbst stoert das nicht, Python im UTF-8-Modus
+# schon: der Fehler ist kein OSError, also fing ihn kein except, und das
+# Frontend stuerzte beim Start ab.
+#
+# WARUM LATIN-1 UND NICHT "errors=replace": latin-1 ordnet JEDEM Byte
+# genau ein Zeichen zu - Lesen kann nie scheitern, und Lesen plus
+# Schreiben gibt die Datei Byte fuer Byte zurueck, auch eine in UTF-8.
+# Mit "replace" wuerde ein Umlaut beim Zurueckschreiben zu einem
+# Fragezeichen - die eine Stelle, die MiSTer.ini schreibt (der
+# [Menu]-Block), haette dann seine Datei veraendert. Gesucht wird in
+# der Datei nur nach ASCII ("[Menu]", "fb_size=", ...), und ASCII ist
+# in beiden Kodierungen dasselbe.
+MISTER_INI_KODIERUNG = "latin-1"
+
+
+def _mister_ini_lesen():
+    """Der Inhalt von MiSTer.ini als Text - wirft nur OSError."""
+    with open(MISTER_INI, encoding=MISTER_INI_KODIERUNG) as f:
+        return f.read()
+
 
 @_nach_aenderung
 def _mister_ini_schreiben(text):
@@ -386,19 +417,23 @@ def _mister_ini_schreiben(text):
     sicherung = MISTER_INI + ".dragend_backup"
     if not os.path.exists(sicherung):
         try:
-            with open(MISTER_INI) as f:
+            # Build 339: die Sicherung als BYTES - eine Kopie, die beim
+            # Lesen umkodiert wird, ist keine Sicherung.
+            with open(MISTER_INI, "rb") as f:
                 alt = f.read()
-            with open(sicherung, "w") as f:
+            with open(sicherung, "wb") as f:
                 f.write(alt)
         except OSError:
             pass          # kein Grund abzubrechen - nur eine Bequemlichkeit
     tmp = MISTER_INI + ".tmp"
     try:
-        with open(tmp, "w") as f:
+        # Build 339: dieselbe Kodierung wie beim Lesen (siehe
+        # MISTER_INI_KODIERUNG) - sonst kaeme ein Umlaut anders zurueck.
+        with open(tmp, "w", encoding=MISTER_INI_KODIERUNG) as f:
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        with open(tmp) as f:
+        with open(tmp, encoding=MISTER_INI_KODIERUNG) as f:
             if f.read() != text:
                 raise OSError("Rueck-Lesen der Temp-Datei stimmt nicht ueberein")
         os.replace(tmp, MISTER_INI)
@@ -434,7 +469,7 @@ def crt_menu_block_is_ours(ini=None):
     den dieses Frontend schreibt (siehe Merkmal 2 oben)."""
     if ini is None:
         try:
-            ini = open(MISTER_INI).read()
+            ini = _mister_ini_lesen()
         except OSError:
             return False
     teil = _crt_menu_block_text(ini)
@@ -466,7 +501,7 @@ def _mark_crt_menu_owned(an):
 
 def crt_menu_active():
     try:
-        return "[Menu]" in open(MISTER_INI).read()
+        return "[Menu]" in _mister_ini_lesen()
     except OSError:
         return False
 
@@ -475,7 +510,7 @@ def toggle_crt_menu():
     """[Menu]-Block in der MiSTer.ini setzen/entfernen.
     Rueckgabe: True wenn danach CRT-Modus aktiv ist."""
     try:
-        ini = open(MISTER_INI).read()
+        ini = _mister_ini_lesen()
     except OSError:
         return None
     teil = _crt_menu_block_text(ini)
@@ -522,7 +557,7 @@ def remove_crt_menu_block(force=False):
                None  = Datei nicht les-/schreibbar
     """
     try:
-        ini = open(MISTER_INI).read()
+        ini = _mister_ini_lesen()
     except OSError:
         return None
     teil = _crt_menu_block_text(ini)
@@ -552,7 +587,7 @@ def mister_ini_video_zustand():
     sie im Voraus.
     """
     try:
-        ini = open(MISTER_INI).read()
+        ini = _mister_ini_lesen()
     except OSError:
         return "MiSTer.ini nicht lesbar"
     teil = _crt_menu_block_text(ini)
@@ -1269,7 +1304,7 @@ def fb_size_value():
     (0 wenn nicht gesetzt oder nicht lesbar - das entspricht dem
     MiSTer-Standard)."""
     try:
-        ini = open(MISTER_INI).read()
+        ini = _mister_ini_lesen()
     except OSError:
         return 0
     _vor, mitte, _nach = _ini_split_section(ini, FB_SIZE_SECTION)
@@ -1291,7 +1326,7 @@ def set_fb_size(value):
     der neue Wert, oder None wenn die Datei nicht geschrieben werden
     konnte."""
     try:
-        ini = open(MISTER_INI).read()
+        ini = _mister_ini_lesen()
     except OSError:
         return None
     vor, mitte, nach = _ini_split_section(ini, FB_SIZE_SECTION)

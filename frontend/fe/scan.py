@@ -1113,7 +1113,9 @@ def _autostart_has_cifs_entry():
     bisher - kein Verhalten fuer den ganz ueberwiegenden Regelfall ohne
     NAS aendert sich dadurch)."""
     try:
-        with open(USER_STARTUP_FILE) as f:
+        # Build 339: errors="replace" - ein Kommentar mit Umlaut in
+        # latin-1 warf sonst UnicodeDecodeError (kein OSError) beim Start.
+        with open(USER_STARTUP_FILE, encoding="utf-8", errors="replace") as f:
             for line in f:
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):

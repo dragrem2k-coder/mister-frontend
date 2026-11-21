@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Repariert: ein Umlaut in der MiSTer.ini ließ das Frontend beim Start
+  abstürzen** — es blieb beim Login-Gruß „Welcome to MiSTer … login:"
+  stehen. Ursache war ein „ä" im Windows-Format in einem Kommentar. Der
+  MiSTer selbst verträgt das, das Frontend jetzt auch: MiSTer.ini wird
+  Byte für Byte gelesen und — an der einen Stelle, die sie ändert —
+  genauso zurückgeschrieben, die Sicherungskopie ist eine exakte Kopie.
+  Dasselbe gilt für `retroachievements.cfg`: dort wäre ein Sonderzeichen
+  im Passwort beim Umschalten einer RA-Einstellung beschädigt worden
+  (Build 339).
 ## v5.1 — die Computer mit Spielen, ein Pad, das zurückführt, und ein Start in unter zwei Sekunden
 
 - **Behoben: nach dem Umschalten im Systemmenü landete man ab und zu

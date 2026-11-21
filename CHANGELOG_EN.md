@@ -13,6 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Fixed: an umlaut in MiSTer.ini crashed the frontend at start** — it
+  stayed on the "Welcome to MiSTer … login:" greeting. The cause was an
+  "ä" in Windows encoding in a comment. MiSTer itself copes with that,
+  and now the frontend does too: MiSTer.ini is read byte for byte and —
+  at the one place that changes it — written back the same way, and the
+  backup is an exact copy. The same applies to `retroachievements.cfg`:
+  a special character in the password would have been damaged when an RA
+  setting was toggled (build 339).
 ## v5.1 — computers with games, a pad that takes you back, and a start in under two seconds
 
 - **Fixed: after toggling something in the system menu you sometimes

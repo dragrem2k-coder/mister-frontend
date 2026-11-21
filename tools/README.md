@@ -11419,3 +11419,47 @@ Neu `tools/test_neuaufbau_und_vorbereiten.py`. Angepasst `_harness.py`.
 
 * K: "Liste galerie/coverflow, Taste gedrueckt" - Aussparung 0 von 20.
 * P: laengster Happen Genesis 431,9 ms, MegaCD 336,8 ms.
+
+## Nachtrag Build 339 - Umlaute in MiSTer.ini
+
+**Stand:** 21.11.2026, `Dragend_Build_339.zip` (build_id
+`2026-11-21-339`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+### Der Absturz
+
+```
+File "fe/settings.py", line 469, in crt_menu_active
+    return "[Menu]" in open(MISTER_INI).read()
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe4 in position 17907
+```
+
+Der Nutzer hatte einen `[ao486]`-Block fuer seinen B&O-Fernseher
+eingetragen, mit dem Kommentar "bei aelterer Main-Version" - das "ae" in
+latin-1. `UnicodeDecodeError` ist ein `ValueError`; alle Leser fingen nur
+`OSError`. Das Frontend stuerzte im Konstruktor ab, die Textkonsole
+zeigte wieder den Login-Gruss.
+
+### Die Abhilfe
+
+* `fe/settings.py`: `_mister_ini_lesen()` mit `MISTER_INI_KODIERUNG =
+  "latin-1"` an allen sieben Lesestellen; `_mister_ini_schreiben()`
+  schreibt und liest zurueck in derselben Kodierung, die Sicherung ist
+  eine Byte-Kopie. latin-1 ordnet jedem Byte ein Zeichen zu: Lesen
+  scheitert nie, Lesen+Schreiben ist bitgenau, auch fuer UTF-8-Dateien.
+  `errors="replace"` waere falsch gewesen - beim Zurueckschreiben stuende
+  dann ein Ersatzzeichen in seiner Datei.
+* `fe/ra_settings.py`: derselbe Fehler in schlimmer - gelesen mit
+  `errors="replace"`, geschrieben als UTF-8. Ein Passwortzeichen ausserhalb
+  von UTF-8 waere beim Umschalten eines RA-Schalters zu U+FFFD geworden.
+  Jetzt latin-1 (`KODIERUNG`).
+* `fe/scan.py`: `_autostart_has_cifs_entry()` liest user-startup.sh mit
+  `errors="replace"` (nur lesend).
+
+### Pruefungen
+
+Neu `tools/test_umlaut_in_ini.py`: beide Kodierungen, alle Leser, Byte-
+Vergleich nach dem Schreiben, Sicherung, Passwort in latin-1 und UTF-8,
+cifs-Erkennung, Gegenprobe. Verfaelscht (Kodierung zurueck auf UTF-8 in
+settings und ra_settings, Sicherung wieder als Text, cifs ohne replace) -
+jedes Mal rot.
