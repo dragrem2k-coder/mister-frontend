@@ -536,6 +536,13 @@ def _games_signature():
                 continue
             sig.append(entry)
             per_syskey.setdefault("AO486", []).append(entry)
+        # Build 334: der Amiga-Knoten ist anders gebaut (keine
+        # AmigaVision-Liste mehr) - ein vorhandener Zwischenspeicher
+        # haette die alten Ordner weiter gezeigt. Nur AMIGA wird dadurch
+        # einmal neu gelesen, nicht alles.
+        entry = ("amiga_form", 334)
+        sig.append(entry)
+        per_syskey.setdefault("AMIGA", []).append(entry)
         _inst = _comp.amigavision_installation()
         if _inst:
             # Build 333: die vom Amiga geschriebene Liste der Startnamen

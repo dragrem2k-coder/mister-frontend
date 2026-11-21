@@ -5190,6 +5190,27 @@ def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
 
 
+def cover_bekannt(base_dir, syskey, rom_basename):
+    """Gibt es in base_dir ein Cover zu diesem Spiel - OHNE die Platte zu
+    fragen (Build 334, fuer den Attract-Modus: "nur spiele anzeigen die
+    auch ein cover haben").
+
+    _art_path_in() liefert immer einen Pfad; findet es nichts, ist es
+    der Rueckfall <base_dir>/<syskey>/<Name>.art. Jeder ANDERE Pfad ist
+    ein Treffer (Index, gamelist, fremde Datenbank, Basis-Spiel). Ist es
+    der Rueckfall, entscheidet der Index, ob es die Datei wirklich gibt
+    - der wurde einmal je System per os.listdir() gebaut. Damit kostet
+    ein ganzer Durchgang ueber 30.000 Spiele keinen einzigen stat()."""
+    if not syskey or not rom_basename:
+        return False
+    pfad = _art_path_in(base_dir, syskey, rom_basename)
+    if not pfad:
+        return False
+    if pfad != os.path.join(base_dir, syskey, rom_basename + ".art"):
+        return True
+    return rom_basename in _art_index(base_dir, syskey)
+
+
 def cover_datei(syskey, rom_basename, basen=None):
     """Der tatsaechlich VORHANDENE Cover-Pfad zu einem Spiel - oder
     None, wenn es keinen gibt. HD zuerst, dann der Standardordner.

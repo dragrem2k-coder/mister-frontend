@@ -770,6 +770,13 @@ TRANSLATIONS = {
     "hinweis_av_avs": {
         "en": "If the Amiga says AGS: is unknown, write AVS: instead. Then rescan the game list.",
         "de": "Kennt der Amiga AGS: nicht, AVS: statt AGS: schreiben. Danach die Spieleliste neu einlesen."},
+    # Build 334: "Amiga 500" fragt beim Betreten
+    "amiga_titel": {"en": "Amiga 500", "de": "Amiga 500"},
+    "amiga_av": {"en": "Start AmigaVision", "de": "AmigaVision starten"},
+    "amiga_adf": {"en": "ADF disks (game list)",
+                  "de": "ADF-Disketten (Spieleliste)"},
+    "amiga_av_fehlt": {"en": "AmigaVision could not be started",
+                       "de": "AmigaVision ließ sich nicht starten"},
     "check_adf_mit": {"en": "ADF disks start with settings: %s",
                       "de": "ADF-Disketten starten mit Einstellung: %s"},
     "check_dos_fehlt": {"en": "%d of them without game files (zip not unpacked?)",

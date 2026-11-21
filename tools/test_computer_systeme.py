@@ -213,21 +213,19 @@ try:
     schreiben(os.path.join(av, "listings", "games.txt"),
               "Turrican II\n\nLotus III\nTurrican II\n  \nSpeedball 2\n")
     schreiben(os.path.join(av, "listings", "demos.txt"), "State of the Art\n")
+    # Build 334: keine AmigaVision-Liste mehr im Baum (Nutzerwunsch
+    # "dann machen wir das anders") - die ADFs bleiben, wie sie sind.
     knoten = {"folders": {}, "items": [("Disk", "game", ("/d.adf", ".adf",
                                         "AMIGA", "r", (1, "f", 0)))]}
     C.knoten_ergaenzen("AMIGA", knoten, "_Computer/Minimig", basen=[basis])
-    spiele = knoten["folders"].get("AmigaVision", {}).get("items", [])
-    check("AmigaVision-Ordner mit der Liste, ohne Doppelte und Leerzeilen",
-          [e[0] for e in spiele] == ["Turrican II", "Lotus III",
-                                     "Speedball 2"],
-          [e[0] for e in spiele])
-    check("Eintrag startet als AmigaVision (Typ ags)",
-          spiele and spiele[0][2][4] == (1, C.TYP_AGS, 0)
-          and spiele[0][2][0] == os.path.join(av, "games", "Turrican II"))
-    check("Demos als eigener Ordner",
-          [e[0] for e in knoten["folders"].get("AmigaVision Demos", {})
-           .get("items", [])] == ["State of the Art"])
-    check("die ADF von vorher bleibt", knoten["items"][0][0] == "Disk")
+    check("mit ADFs: der Baum bleibt unveraendert (keine AmigaVision-"
+          "Ordner)", not knoten["folders"] and len(knoten["items"]) == 1
+          and knoten["items"][0][0] == "Disk", knoten)
+    nur_av = {"folders": {}, "items": []}
+    C.knoten_ergaenzen("AMIGA", nur_av, "r", basen=[basis])
+    check("ohne ADF, mit AmigaVision: ein Platzhalter haelt die Kategorie",
+          nur_av["items"] == [("AmigaVision", C.TYP_AV_EINTRAG, av)],
+          nur_av)
     leer = {"folders": {}, "items": []}
     C.knoten_ergaenzen("AMIGA", leer, "r", basen=[os.path.join(TMP, "x")])
     check("GEGENPROBE ohne AmigaVision: nichts dazu", leer == {
@@ -287,9 +285,12 @@ try:
         C.DOS_MGL_MUSTER = os.path.join(TMP, "_DOS*")
         cats = SC._scan_games_disk(only_syskeys={"AMIGA", "AO486"})
         nach = {k: n for _d, n, k in cats}
-        check("Amiga-Kategorie mit dem AmigaVision-Ordner",
-              "AmigaVision" in nach.get("AMIGA", {}).get("folders", {}),
-              list(nach.get("AMIGA", {}).get("folders", {})))
+        check("Amiga-Kategorie da (AmigaVision-Platzhalter, keine ADF)",
+              [e[1] for e in nach.get("AMIGA", {}).get("items", [])]
+              == [C.TYP_AV_EINTRAG],
+              nach.get("AMIGA"))
+        check("und sie heisst auf der Hauptseite \"Amiga 500\"",
+              [d for d, _n, k in cats if k == "AMIGA"] == ["Amiga 500"])
         check("DOS-Kategorie mit den MGLs oben",
               [e[0] for e in nach.get("AO486", {}).get("items", [])][:2]
               == ["Doom", "Doom 2"])
@@ -467,9 +468,8 @@ try:
           e["Commodore 64"])
     check("GEGENPROBE Amstrad: der PCW-Core zaehlt nicht",
           e["Amstrad CPC"][0][0] is False)
-    check("Amiga: AmigaVision, 3 Spiele, shared/ da",
-          (True, "check_av_liste", (3,)) in e["Amiga"]
-          and (True, "check_av_shared", ()) in e["Amiga"])
+    check("Amiga: AmigaVision gefunden",
+          (True, "check_amigavision", (av,)) in e["Amiga"], e["Amiga"])
     check("GEGENPROBE ao486: nur boot0.rom -> fehlt, kein Core",
           (False, "check_ao486_roms", ()) in e["DOS (ao486)"]
           and e["DOS (ao486)"][0][0] is False)

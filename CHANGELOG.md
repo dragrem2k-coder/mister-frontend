@@ -13,6 +13,18 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Geändert: „Amiga 500" statt AmigaVision-Spieleliste.** Auf der
+  Hauptseite steht die Kategorie „Amiga 500". Beim Betreten fragt sie,
+  wenn AmigaVision installiert ist: „AmigaVision starten" (startet
+  AmigaVision mit seiner eigenen MGL, das Spiel wählst du dort) oder
+  „ADF-Disketten (Spieleliste)". Ohne ADF startet AmigaVision gleich,
+  ohne AmigaVision geht es direkt in die ADF-Liste. Der Direktstart
+  einzelner AmigaVision-Spiele (Builds 330–333) entfällt — mit der
+  Ausgabe 2026.04.26 ließ er sich nicht zuverlässig machen (Build 334).
+- **Attract-Modus nur mit Cover.** Gezeigt werden nur noch Spiele, zu
+  denen ein Cover da ist — auf HDMI aus `art_hd/`, auf der Röhre aus
+  `art/` oder `art_hd/`, genau wie beim Bild selbst (Build 334).
+
 - **AmigaVision 2026.04.26: Direktstart über die Startnamen des Amiga.**
   Gemessen an deiner Karte: AmigaVision hat `ags_boot` gelesen, fand den
   Namen aber nicht — `games.txt` enthält in dieser Ausgabe nur

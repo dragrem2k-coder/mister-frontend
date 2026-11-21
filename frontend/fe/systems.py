@@ -285,7 +285,9 @@ OPTIONAL_GAME_SYSTEMS = [
     # Spiele kommen dort aus listings/games.txt (fe/computer.py,
     # knoten_ergaenzen()). Die Kategorie entsteht trotzdem nur, wenn der
     # Minimig-Core da ist.
-    ("Amiga",           "AMIGA",        ["Amiga"],          "_Computer/Minimig",
+    # Build 334: auf der Hauptseite "Amiga 500" (Nutzerwunsch); beim
+    # Betreten fragt das Frontend, ob AmigaVision oder die ADF-Liste.
+    ("Amiga 500",       "AMIGA",        ["Amiga"],          "_Computer/Minimig",
         {".adf": (1, "f", 0)},
         "/media/fat/_Computer/Minimig*.rbf"),
     # "Amstrad[_.]*" und nicht "Amstrad*": sonst zaehlte der PCW-Core

@@ -27,9 +27,9 @@ GEPRUEFT WIRD (alles mit nachgebauten Dateien):
      (USB vor NAS vor Karte, shared_folder aus MiSTer.ini, same_dir) -,
      mit den Bytes der Liste; der Check meldet eine nicht eingetragene
      AmigaVision.hdf.
- 10. (Build 333) Anzeigenamen ("1000 Miglia") werden erkannt, vor dem
-     Start steht der Shell-Befehl; liegt die Liste des Amiga auf MiSTer:
-     (games_canonical.txt), startet das Frontend mit den Startnamen.
+ 10. (Build 333) Start- und Anzeigenamen - nur noch fuer alte Eintraege.
+ 11. (Build 334) "Amiga 500": beim Betreten AmigaVision oder ADF; ohne
+     ADF gleich AmigaVision; ohne AmigaVision wie jedes System.
 
 Ausfuehren:
     python3 tools/test_amiga_start.py
@@ -457,9 +457,8 @@ try:
     am = dict(C.computer_check([basis], COMP))["Amiga"]
     check("Check: AmigaVision.hdf nicht eingetragen -> rot",
           (False, "check_av_hdf_fehlt", ()) in am, am)
-    check("Check: das Laufwerk MiSTer: wird genannt",
-          (None, "check_av_laufwerk",
-           (os.path.join(WURZEL, "games", "Amiga", "shared"),)) in am)
+    check("Build 334: die Zeile zum Laufwerk MiSTer: ist weg",
+          not [z for z in am if z[1] == "check_av_laufwerk"])
     schreiben(os.path.join(KONF, "Amiga.cfg"), gesichert)
     am = dict(C.computer_check([basis], COMP))["Amiga"]
     check("GEGENPROBE: eingetragen -> keine Warnung",
@@ -469,99 +468,140 @@ try:
 
     # -----------------------------------------------------------------------
     print()
-    print("Test 10: Anzeigenamen und Startnamen (Build 333)")
+    print("Test 10: Start- und Anzeigenamen (Build 333, fuer alte Eintraege)")
     # -----------------------------------------------------------------------
-    # NACHGEMESSEN an seiner Karte: ags_boot war nach dem Start verbraucht,
-    # games.txt enthielt "1000 Miglia" - AGS sucht "1000 Miglia (OCS)[en]".
+    # Seit Build 334 gibt es keine AmigaVision-Liste mehr im Frontend; die
+    # Namenslogik bleibt fuer Eintraege, die noch in "Zuletzt gespielt"
+    # oder den Favoriten stehen.
     check("Startname erkannt (Spiel)", C.ist_startname("1000 Miglia (OCS)[en]"))
     check("Startname erkannt (Demo)",
           C.ist_startname("State of the Art (Spaceballs)(OCS)"))
     check("GEGENPROBE: Anzeigename ist keiner",
-          not C.ist_startname("1000 Miglia")
-          and not C.ist_startname("3001 O'Connors Fight"))
+          not C.ist_startname("1000 Miglia"))
     check("Anzeige ohne Zusatz",
-          C.anzeigename("1000 Miglia (OCS)[en]") == "1000 Miglia"
-          and C.anzeigename("State of the Art (Spaceballs)(OCS)")
-          == "State of the Art" and C.anzeigename("Lemmings") == "Lemmings")
-
-    # seine Liste, Zeile fuer Zeile wie bei ihm (nur LF, kein Zusatz)
+          C.anzeigename("1000 Miglia (OCS)[en]") == "1000 Miglia")
     schreiben(os.path.join(av, "listings", "games.txt"),
-              b"1000 Miglia\n1000cc Turbo\n1869\n1943\n")
-    namen, herkunft, start = C.amigavision_namen(av, "games.txt")
+              b"1000 Miglia\n1000cc Turbo\n1869\n")
     check("seine Liste: nur Anzeigenamen erkannt",
-          start is False and namen[0] == "1000 Miglia"
-          and herkunft.endswith(os.path.join("listings", "games.txt")),
-          (start, herkunft))
-    h = C.starthinweis("AMIGA", ".ags", os.path.join(av, "games", "1869"))
-    check("vor dem Start: Hinweis mit den beiden Shell-Befehlen",
-          h and h[0] == "hinweis_av_titel"
-          and ("hinweis_av_befehl", ("Game", "games")) in h[1]
-          and ("hinweis_av_befehl", ("Demo", "demos")) in h[1], h)
-    check("der Befehl, wie er im Bild steht",
-          fm.t("hinweis_av_befehl", "Game", "games")
-          == 'list AGS:RunQuiet/Game lformat "%n" '
-             '>MiSTer:games_canonical.txt')
-    am = dict(C.computer_check([basis], COMP))["Amiga"]
-    check("Check: nur Anzeigenamen -> rot",
-          (False, "check_av_anzeigenamen", ()) in am, am)
-
-    # die Datei, die der Amiga auf MiSTer: schreibt (mit einer Zeile, die
-    # keine Startdatei ist, und einer .info)
+          C.amigavision_namen(av, "games.txt")[2] is False)
     shared = C.mister_laufwerk("Amiga")
     schreiben(os.path.join(shared, "games_canonical.txt"),
-              b"1000 Miglia (OCS)[en]\n1869 (AGA)[de]\n"
-              b"M\xfcllabfuhr (OCS)[de]\n42 files - 812 blocks used\n"
-              b"Readme.info\n")
+              b"1000 Miglia (OCS)[en]\nM\xfcllabfuhr (OCS)[de]\n"
+              b"42 files - 812 blocks used\nReadme.info\n")
     namen, herkunft, start = C.amigavision_namen(av, "games.txt")
     check("die Amiga-Liste geht vor, nur Startnamen",
-          start is True and herkunft == os.path.join(shared,
-                                                     "games_canonical.txt")
-          and namen == ["1000 Miglia (OCS)[en]", "1869 (AGA)[de]",
-                        "M\u00fcllabfuhr (OCS)[de]"], namen)
-    knoten = {"folders": {}, "items": []}
-    C.knoten_ergaenzen("AMIGA", knoten, "_Computer/Minimig", basen=[basis])
-    sp = knoten["folders"]["AmigaVision"]["items"]
-    check("im Baum: angezeigt ohne Zusatz, gestartet mit vollem Namen",
-          sp[0][0] == "1000 Miglia"
-          and os.path.basename(sp[0][2][0]) == "1000 Miglia (OCS)[en]",
-          sp[:1])
-    check("GEGENPROBE: mit Startnamen kein Hinweis",
-          C.starthinweis("AMIGA", ".ags", sp[1][2][0]) is None)
-    for f_ in ("ags_boot",):
-        p_ = os.path.join(shared, f_)
-        if os.path.exists(p_):
-            os.remove(p_)
-    C.mgl_inhalt("_Computer/Minimig", sp[2][2][0], 1, C.TYP_AGS, 0)
-    check("ags_boot traegt den Startnamen in den Bytes der Amiga-Liste",
+          start is True and namen == ["1000 Miglia (OCS)[en]",
+                                      "M\u00fcllabfuhr (OCS)[de]"], namen)
+    if os.path.exists(os.path.join(shared, "ags_boot")):
+        os.remove(os.path.join(shared, "ags_boot"))
+    C.mgl_inhalt("_Computer/Minimig",
+                 os.path.join(av, "games", "M\u00fcllabfuhr (OCS)[de]"), 1,
+                 C.TYP_AGS, 0)
+    check("alter Eintrag: ags_boot in den Bytes der Amiga-Liste",
           open(os.path.join(shared, "ags_boot"), "rb").read()
           == b"M\xfcllabfuhr (OCS)[de]\n")
+    os.remove(os.path.join(shared, "games_canonical.txt"))
+    schreiben(os.path.join(av, "listings", "games.txt"),
+              "Turrican\nLotus III\n")
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 11: \"Amiga 500\" - AmigaVision oder ADF (Build 334)")
+    # -----------------------------------------------------------------------
+    # NUTZERWUNSCH: "dann haette ich bitte nur auf der hauptseite denn
+    # eintrag Amiga 500 und wenn man dort drauf klickt die auswahl
+    # amigavision starten oder adf datein quasi roms starten wenn es mit
+    # installiert ist".
+    import fe.systems as SYS
+    check("die Kategorie heisst \"Amiga 500\"",
+          [e[0] for e in SYS.OPTIONAL_GAME_SYSTEMS if e[1] == "AMIGA"]
+          == ["Amiga 500"])
+    check("kein Shell-Hinweis mehr vor einem AmigaVision-Eintrag",
+          C.starthinweis("AMIGA", ".ags",
+                         os.path.join(av, "games", "1869")) is None)
     am = dict(C.computer_check([basis], COMP))["Amiga"]
-    check("Check: Startnamen gruen, mit Herkunft",
-          (True, "check_av_startnamen",
-           (os.path.join(shared, "games_canonical.txt"),)) in am)
-    import fe.scan as SC
+    check("der Check spricht nicht mehr von Start-/Anzeigenamen",
+          not [z for z in am if z[1] in ("check_av_anzeigenamen",
+                                          "check_av_startnamen",
+                                          "check_av_liste")])
+
+    mgl_pfad, eigen = C.amigavision_mgl()
+    check("AmigaVision startet mit AmigaVisions eigener MGL",
+          mgl_pfad == os.path.join(COMP, "Amiga.mgl") and eigen is True,
+          (mgl_pfad, eigen))
+    os.rename(os.path.join(COMP, "Amiga.mgl"), os.path.join(TMP, "weg.mgl"))
+    mgl_pfad, eigen = C.amigavision_mgl()
+    q = open(mgl_pfad).read()
+    check("ohne die MGL: selbst geschrieben, mit dem Setnamen der "
+          "AmigaVision-Einstellung",
+          eigen is False and mgl_pfad == L.MGL_TMP
+          and "<setname>Amiga</setname>" in q and "<file" not in q, q)
+    os.rename(os.path.join(TMP, "weg.mgl"), os.path.join(COMP, "Amiga.mgl"))
+
     import fe.paths
     _gb = fe.paths.GAMES_BASES
     try:
         fe.paths.GAMES_BASES = [basis]
-        check("der Fingerabdruck des Einlesens kennt die Amiga-Liste",
-              "agsstart:games.txt" in str(SC._games_signature()))
+        H.set_screen(1280, 720)
+        f = H.make_frontend(page=0)
+        gestartet, fragen = [], []
+        f.run_core = lambda mgl, label=None, syskey=None, ra=False: \
+            gestartet.append((mgl, label, syskey))
+        f.draw = lambda *a, **k: None
+        antwort = [None]
+
+        def _frage(titel, optionen, **k):
+            fragen.append((titel, list(optionen)))
+            return antwort[0]
+        f._wizard_choice = _frage
+        adf = {"folders": {}, "items": [("Spiel", "game", (
+            "/x/Spiel.adf", ".adf", "AMIGA", "_Computer/Minimig",
+            (1, "f", 0)))]}
+        antwort[0] = 1
+        check("mit ADF und AmigaVision: Frage, \"ADF\" oeffnet die Liste",
+              f._amiga_auswahl(adf) is True and not gestartet
+              and fragen and fragen[-1][1] == [fm.t("amiga_av"),
+                                               fm.t("amiga_adf")], fragen)
+        antwort[0] = 0
+        check("\"AmigaVision starten\" startet AmigaVisions MGL",
+              f._amiga_auswahl(adf) is False
+              and gestartet == [(os.path.join(COMP, "Amiga.mgl"),
+                                 "AmigaVision", "AMIGA")], gestartet)
+        del gestartet[:]
+        antwort[0] = None
+        check("GEGENPROBE ESC: nichts gestartet, Liste nicht geoeffnet",
+              f._amiga_auswahl(adf) is False and not gestartet)
+        del fragen[:]
+        platzhalter = {"folders": {}, "items": [
+            ("AmigaVision", C.TYP_AV_EINTRAG, av)]}
+        check("nur AmigaVision, keine ADF: gleich starten, ohne Frage",
+              f._amiga_auswahl(platzhalter) is False
+              and len(gestartet) == 1 and not fragen)
+        del gestartet[:]
+        fe.paths.GAMES_BASES = [os.path.join(TMP, "leer")]
+        check("GEGENPROBE ohne AmigaVision: wie jedes System, keine Frage",
+              f._amiga_auswahl(adf) is True and not fragen
+              and not gestartet)
+        fe.paths.GAMES_BASES = [basis]
+
+        # durch _enter_category() selbst
+        f.cats = [("Amiga 500", adf, "AMIGA")]
+        f.cat_i, f.page = 0, 0
+        antwort[0] = 1
+        f._enter_category()
+        check("Hauptseite -> \"ADF\": die Liste ist offen", f.page == 1)
+        f.page = 0
+        antwort[0] = 0
+        f._enter_category()
+        check("Hauptseite -> \"AmigaVision\": Seite bleibt, Core startet",
+              f.page == 0 and gestartet)
     finally:
         fe.paths.GAMES_BASES = _gb
-    os.remove(os.path.join(shared, "games_canonical.txt"))
-    # aeltere Ausgaben: games.txt selbst mit Startnamen
-    schreiben(os.path.join(av, "listings", "games.txt"),
-              b"Turrican (OCS)[en]\nLotus III (OCS)[en]\n")
-    check("aeltere Ausgabe: games.txt mit Startnamen -> kein Hinweis",
-          C.amigavision_namen(av, "games.txt")[2] is True
-          and C.starthinweis("AMIGA", ".ags", os.path.join(
-              av, "games", "Turrican (OCS)[en]")) is None)
-    for k in ("check_av_startnamen", "check_av_anzeigenamen",
-              "hinweis_av_titel", "hinweis_av_grund", "hinweis_av_shell",
-              "hinweis_av_avs"):
+    q = open(H.FRONTEND_PY, encoding="utf-8").read()
+    check("der Platzhalter ist in der Hauptschleife verdrahtet",
+          "elif kind == COMPUTER.TYP_AV_EINTRAG:" in q)
+    for k in ("amiga_titel", "amiga_av", "amiga_adf", "amiga_av_fehlt"):
         check("Text %s uebersetzt" % k, fm.t(k) != k)
-    schreiben(os.path.join(av, "listings", "games.txt"),
-              "Turrican\nLotus III\n")
 
     # -----------------------------------------------------------------------
     print()

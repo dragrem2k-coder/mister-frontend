@@ -1295,6 +1295,8 @@ from fe.input import (
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, metadaten_vorwaermen, ART, ART_BASE,
+    # Build 334: Attract-Modus nur mit Cover.
+    cover_bekannt,
     # Build 325: siehe stream_state() und _meta_im_hintergrund().
     meta_bereit, metadaten_ganz_vorwaermen,
     docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
@@ -3544,6 +3546,9 @@ class Frontend:
         name, node, sk = self.cats[self.cat_i]
         if not node["folders"] and not node["items"]:
             return
+        # Build 334: "Amiga 500" fragt zuerst - AmigaVision oder ADF.
+        if sk == "AMIGA" and not self._amiga_auswahl(node):
+            return
         # RA-Core-Auswahl: nur anzeigen, wenn fuer dieses System
         # tatsaechlich eine RA-faehige Core-Variante gefunden wurde
         # (siehe find_ra_core()) - sonst unveraendertes Verhalten wie
@@ -3592,6 +3597,67 @@ class Frontend:
             self.item_i = 0
             self.scroll = 0
         self.marquee_reset()
+
+    # ------------------------------------------------------------------
+    # BUILD 334: "AMIGA 500" - AMIGAVISION ODER ADF
+    # ------------------------------------------------------------------
+    # Nutzerwunsch nach Build 333: "dann haette ich bitte nur auf der
+    # hauptseite denn eintrag Amiga 500 und wenn man dort drauf klickt
+    # die auswahl amigavision starten oder adf datein quasi roms starten
+    # wenn es mit installiert ist".
+    @staticmethod
+    def _amiga_hat_adf(node):
+        """Liegt in der Kategorie mindestens etwas ausser dem
+        AmigaVision-Platzhalter (siehe knoten_ergaenzen())?"""
+        if node.get("folders"):
+            return True
+        return any(len(e) > 1 and e[1] != COMPUTER.TYP_AV_EINTRAG
+                   for e in node.get("items", ()))
+
+    def _amiga_auswahl(self, node):
+        """True = die ADF-Liste oeffnen, False = nicht (AmigaVision
+        wurde gestartet oder abgebrochen).
+
+        Ohne AmigaVision: sofort die Liste, wie bei jedem System. Mit
+        AmigaVision und ADFs: die Frage. Mit AmigaVision und ohne eine
+        einzige ADF: gleich AmigaVision - eine Auswahl mit einem
+        einzigen Punkt waere keine."""
+        try:
+            inst = COMPUTER.amigavision_installation()
+        except Exception as e:                           # noqa: BLE001
+            LOG("Amiga: AmigaVision nicht gesucht: %s" % e)
+            inst = None
+        hat_adf = self._amiga_hat_adf(node)
+        if not inst:
+            return hat_adf
+        if not hat_adf:
+            self._amigavision_starten()
+            return False
+        wahl = self._wizard_choice(t("amiga_titel"),
+                                   [t("amiga_av"), t("amiga_adf")],
+                                   hint_key="choice_hint_plain")
+        self._force_full_redraw = True
+        if wahl == 1:
+            return True
+        if wahl == 0:
+            self._amigavision_starten()
+        self.draw()
+        return False
+
+    def _amigavision_starten(self):
+        """AmigaVision als Ganzes starten - mit AmigaVisions eigener MGL
+        aus _Computer, sonst mit rbf und Setname aus deren
+        Einstellung (fe/computer.py, amigavision_mgl())."""
+        try:
+            mgl, eigen = COMPUTER.amigavision_mgl()
+        except Exception as e:                           # noqa: BLE001
+            LOG("AmigaVision: Start nicht moeglich: %s" % e)
+            self.draw(message=t("amiga_av_fehlt"))
+            return False
+        LOG("AmigaVision: starte %s%s" % (mgl, "" if eigen
+                                          else " (selbst geschrieben)"))
+        self.run_core(mgl, label="AmigaVision", syskey="AMIGA")
+        return True
 
     def _beobachtete_ordner(self):
         """Der Ordner, den der Nutzer GERADE ANSIEHT - als Zugabe fuer
@@ -4758,12 +4824,32 @@ class Frontend:
                 found.extend(walk(sub, syskey))
             return found
 
-        pool = []
+        alle = []
         for _name, node, syskey in self.cats:
             if syskey:
-                pool.extend(walk(node, syskey))
+                alle.extend(walk(node, syskey))
+        # Build 334, Nutzerwunsch: "das der attract modus nur spiele
+        # anzeigt die auch ein cover haben". Gezeigt wird dasselbe Bild,
+        # das draw_attract() holt (cover_quelle(): ab 720 Zeilen nur
+        # art_hd, darunter art und dann art_hd) - geprueft wird es hier
+        # nach genau dieser Regel, ueber die Indizes und ohne stat().
+        pool = [g for g in alle if self._hat_cover(g[1], g[0])]
+        LOG("Attract-Modus: %d von %d Spielen mit Cover"
+            % (len(pool), len(alle)))
         self._attract_pool = pool
         return pool
+
+    def _hat_cover(self, syskey, name):
+        """Hat dieses Spiel ein Cover, das draw_attract() zeigen wuerde?
+        Dieselbe Rangfolge wie cover_quelle(), aber ohne Plattenzugriff
+        (siehe cover_bekannt() in fe/art.py)."""
+        try:
+            if self.fb.height >= 720:
+                return cover_bekannt(ART_HD, syskey, name)
+            return (cover_bekannt(ART_BASE, syskey, name)
+                    or cover_bekannt(ART_HD, syskey, name))
+        except Exception:                                # noqa: BLE001
+            return False
 
     # NEUES FEATURE (Nutzerwunsch: "im Leerlauf/Attract-Modus nach und
     # nach die ganze Bibliothek im Hintergrund vorladen, damit wirklich
@@ -27019,6 +27105,12 @@ class Frontend:
                             self.marquee_reset()
                         elif kind == "core":
                             self.run_core(arg, label=label)
+                            continue
+                        elif kind == COMPUTER.TYP_AV_EINTRAG:
+                            # Build 334: der AmigaVision-Platzhalter.
+                            self._amigavision_starten()
+                            self._force_full_redraw = True
+                            self.draw()
                             continue
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg

@@ -65,6 +65,27 @@ AMIGAVISION_LISTEN = (("games.txt", "AmigaVision"),
 # Sonderfaelle erkennt (siehe mgl_inhalt()).
 TYP_AGS = "ags"          # AmigaVision-Eintrag
 TYP_MGL = "mgl"          # fertige MGL einer Sammlung (0MHz)
+TYP_AV_EINTRAG = "amigavision"   # Build 334: AmigaVision als Ganzes
+
+
+def amigavision_mgl():
+    """(Pfad der Start-MGL, ob sie AmigaVisions eigene ist) - Build 334.
+
+    Gestartet wird AmigaVisions eigene MGL aus _Computer, wenn sie da
+    ist (genau das, was das MiSTer-Menue unter Computer -> Amiga tut);
+    sonst eine selbst geschriebene mit rbf und Setname aus
+    amigavision_start()."""
+    rbf, el, _name, herkunft = amigavision_start()
+    if herkunft.lower().endswith(".mgl") and os.path.isfile(herkunft):
+        return herkunft, True
+    try:
+        from fe.launch import MGL_TMP
+    except Exception:                                    # noqa: BLE001
+        MGL_TMP = "/tmp/frontend_launch.mgl"
+    with open(MGL_TMP, "w") as f:
+        f.write('<mistergamedescription>\n\t<rbf>%s</rbf>\n\t%s\n'
+                '</mistergamedescription>\n' % (rbf, el))
+    return MGL_TMP, False
 
 # Build 331: wo MiSTer die Einstellungen der Cores ablegt, und die Wurzel,
 # gegen die er relative Pfade darin aufloest (file_io.cpp,
@@ -657,25 +678,20 @@ def knoten_ergaenzen(syskey, knoten, rbf, basen=None, dos_muster=None):
            stuende jedes Spiel zweimal da, einmal davon ohne CD).
     Andere Systeme: unveraendert. Gibt den Knoten zurueck."""
     if syskey == "AMIGA":
+        # Build 334, Nutzerwunsch nach Build 333 ("klappt leider nicht
+        # dann machen wir das anders"): keine AmigaVision-Spieleliste
+        # mehr. Die Kategorie heisst "Amiga 500" und fragt beim
+        # Betreten, ob AmigaVision gestartet oder die ADF-Liste
+        # geoeffnet werden soll (Frontend, _amiga_auswahl()). Gibt es
+        # keine einzige ADF, haelt ein Eintrag der Art "amigavision" die
+        # Kategorie am Leben - ohne ihn verschwaende sie von der
+        # Hauptseite.
         inst = amigavision_installation(basen)
         if inst:
-            kern = ags_kern()
-            for datei, ordnername in AMIGAVISION_LISTEN:
-                namen, herkunft, start = amigavision_namen(inst, datei, kern)
-                if not namen:
-                    continue
-                LOG("AmigaVision: %s aus %s (%s)" % (
-                    datei, herkunft,
-                    "Startnamen" if start else "nur Anzeigenamen"))
-                # Angezeigt wird ohne "(OCS)[en]", gestartet mit dem
-                # vollen Namen - der steht im Pfad.
-                items = [(anzeigename(n) if start else n, "game",
-                          (os.path.join(inst, "games", n), ".ags",
-                           syskey, rbf, (1, TYP_AGS, 0)))
-                         for n in namen]
-                knoten.setdefault("folders", {})[ordnername] = {
-                    "folders": {}, "items": items}
             LOG("AmigaVision: %s" % inst)
+            if not knoten.get("items") and not knoten.get("folders"):
+                knoten.setdefault("items", []).append(
+                    ("AmigaVision", TYP_AV_EINTRAG, inst))
     elif syskey == "AO486":
         mgls = dos_mgls(dos_muster)
         if mgls:
@@ -890,17 +906,6 @@ def starthinweis(syskey, endung, rom_path, lesen=None):
             return ("hinweis_cpc_titel", [("hinweis_cpc_cat", ())])
         if endung == ".cdt":
             return ("hinweis_cpc_titel", [("hinweis_cpc_tape", ())])
-    if syskey == "AMIGA" and endung == ".ags":
-        # Build 333: ein Anzeigename fuehrt nur ins AmigaVision-Menue -
-        # vorher sagen, warum und wie man es einmalig behebt.
-        name = os.path.basename(str(rom_path))
-        if not ist_startname(name):
-            return ("hinweis_av_titel",
-                    [("hinweis_av_grund", ()), ("hinweis_av_shell", ()),
-                     ("hinweis_av_befehl", ("Game", "games")),
-                     ("hinweis_av_befehl", ("Demo", "demos")),
-                     ("hinweis_av_avs", ())])
-        return None
     if syskey == "AO486" and endung == ".mgl":
         fehlt = dos_mgl_fehlend(rom_path)
         if fehlt:
@@ -958,11 +963,7 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
     inst = amigavision_installation(basen)
     zeilen = [(bool(mm_core), "check_core", (mm_core or "Minimig",))]
     if inst:
-        n = len(amigavision_liste(inst))
         zeilen.append((True, "check_amigavision", (inst,)))
-        zeilen.append((n > 0, "check_av_liste", (n,)))
-        zeilen.append((os.path.isdir(os.path.join(inst, "shared")),
-                       "check_av_shared", ()))
         # Build 331: was der Minimig beim Start tatsaechlich liest -
         # fehlt hier etwas, landet er beim Kickstart-Bild.
         _r, _el, name, herkunft = amigavision_start(core_ordner)
@@ -982,16 +983,9 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
             # aber AmigaVision.hdf nicht als Festplatte eingetragen.
             if not _ist_ags(cfg):
                 zeilen.append((False, "check_av_hdf_fehlt", ()))
-        # Build 333: Startnamen oder nur Anzeigenamen?
-        kern = "Amiga" if 'same_dir="1"' in _el.replace("'", '"') else name
-        _n, herkunft, start = amigavision_namen(inst, "games.txt", kern)
-        if start:
-            zeilen.append((True, "check_av_startnamen", (herkunft,)))
-        elif _n:
-            zeilen.append((False, "check_av_anzeigenamen", ()))
-        # Build 332: wohin ags_boot geht - der Ordner, den der Amiga als
-        # MiSTer: sieht (mister_laufwerk()).
-        zeilen.append((None, "check_av_laufwerk", (mister_laufwerk(kern),)))
+        # Build 334: die Zeilen zu Startnamen und dem Laufwerk MiSTer:
+        # sind weg - das Frontend startet AmigaVision seither als Ganzes,
+        # ags_boot wird nicht mehr gebraucht.
     else:
         zeilen.append((False, "check_amigavision_fehlt", ()))
     disk = amiga_diskette_start(core_ordner)

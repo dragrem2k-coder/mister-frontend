@@ -11175,3 +11175,43 @@ eines Anzeigenamens steht diese Anleitung auf dem Schirm, der Check warnt.
 `tools/test_amiga_start.py` Teil 10, mit seinen echten Zeilen.
 Verfaelscht: Amiga-Liste ignoriert, Filter weg, Hinweis weg, Anzeige
 mit Zusatz - jedes Mal rot.
+
+## Nachtrag Build 334 - Amiga 500 und Attract nur mit Cover
+
+**Stand:** 21.11.2026, `Dragend_Build_334.zip` (build_id
+`2026-11-21-334`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Seine Rueckmeldung zu Build 333: "klappt leider nicht dann machen wir das
+anders" - nur noch "Amiga 500" auf der Hauptseite, beim Klick die Wahl
+AmigaVision oder ADF. Dazu: Attract-Modus nur Spiele mit Cover.
+
+### Amiga 500
+
+* `fe/systems.py`: Anzeigename "Amiga 500".
+* `knoten_ergaenzen()`: keine AmigaVision-Ordner mehr. Ohne jede ADF ein
+  Platzhalter `("AmigaVision", "amigavision", inst)` - sonst fiele die
+  Kategorie von der Hauptseite (sie entsteht nur bei Inhalt).
+* Frontend: `_amiga_auswahl()` am Anfang von `_enter_category()`;
+  `_amigavision_starten()` -> `fe.computer.amigavision_mgl()`:
+  AmigaVisions eigene `_Computer/Amiga.mgl`, sonst selbst geschrieben.
+* Fingerabdruck: `("amiga_form", 334)` unter AMIGA - nur diese Kategorie
+  wird einmal neu gelesen, damit die alten AmigaVision-Ordner aus dem
+  Zwischenspeicher verschwinden. `SCAN_LOGIC_VERSION` bleibt (die haette
+  alles neu lesen lassen, und test_multidisc prueft den Wert woertlich).
+* Die Startnamen-Logik aus Build 333 bleibt fuer alte Eintraege in
+  "Zuletzt gespielt"/Favoriten; der Shell-Hinweis ist weg.
+
+### Attract nur mit Cover
+
+* neu `fe.art.cover_bekannt(base, syskey, name)`: `_art_path_in()` liefert
+  bei Fehlanzeige den Rueckfall `<base>/<syskey>/<Name>.art`; jeder andere
+  Pfad ist ein Treffer, beim Rueckfall entscheidet der Index. Kein stat()
+  je Spiel - geprueft im Test mit einem gezaehlten `os.path.exists`.
+* `_hat_cover()` folgt der Regel von `cover_quelle()` (ab 720 Zeilen nur
+  art_hd). Ein Pool ohne Cover-Spiel = kein Attract-Modus.
+
+### Pruefungen
+
+Neu `tools/test_attract_cover.py`, `tools/test_amiga_start.py` Teil 11.
+Verfaelscht: Filter weg, Index immer "ja", HD-Regel weg - jedes Mal rot.

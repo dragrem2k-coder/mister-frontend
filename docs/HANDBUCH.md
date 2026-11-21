@@ -976,6 +976,13 @@ Hintergrund, zeigt's von selbst eine Art Diashow der eigenen Sammlung.
 echte Spiele-Systeme (Zuletzt gespielt/Scripts/System bleiben außen
 vor).
 
+**Seit Build 334 nur Spiele mit Cover.** Der Attract-Modus zeigt nur
+noch Spiele, zu denen ein Cover da ist — nach derselben Regel wie das
+Bild selbst: auf HDMI (ab 720 Zeilen) zählt nur ein Cover in `art_hd/`,
+auf der Röhre eines in `art/` oder `art_hd/`. Gibt es gar keins, startet
+der Attract-Modus nicht. Wie viele Spiele in Frage kommen, steht im
+Protokoll („Attract-Modus: … von … Spielen mit Cover").
+
 ## 8e. Favoriten
 
 Eigene, bewusst kuratierte Auswahl - unabhängig von "Zuletzt
@@ -1711,54 +1718,20 @@ sobald ihr Core in `/media/fat/_Computer/` liegt. Gesucht wird wie
 | Computer | Ordner | Was gelesen wird | Was passiert beim Start |
 |---|---|---|---|
 | Commodore 64 | `games/C64/` | `.crt` `.prg` `.t64` `.tap` `.d64` `.g64` `.d81` | Module (z.B. die **OneLoad64**-Sammlung) und PRGs laufen von selbst los; aus einer `.t64` wird das Programm herausgeholt. Disketten werden in Laufwerk 8 eingelegt — vorher zeigt das Frontend, was zu tippen ist: `LOAD"*",8,1` und `RUN` |
-| Amiga | `games/Amiga/` | `.adf` und die **AmigaVision**-Spieleliste | Jedes Spiel aus `listings/games.txt` (und die Demos aus `demos.txt`) steht als eigener Eintrag im Ordner „AmigaVision" und **bootet direkt in dieses Spiel** |
+| Amiga 500 | `games/Amiga/` | `.adf` | Auf der Hauptseite heißt die Kategorie **„Amiga 500"**. Ist AmigaVision installiert, fragt sie beim Betreten: **„AmigaVision starten"** oder **„ADF-Disketten (Spieleliste)"**. Ohne eine einzige ADF startet AmigaVision gleich, ohne AmigaVision öffnet sich die ADF-Liste wie bei jedem System |
 | Amstrad CPC | `games/Amstrad/` | `.dsk` `.cdt` `.sna` | Snapshots laufen sofort. Bei einer Diskette liest das Frontend das Verzeichnis und zeigt z.B. `RUN"DISC`; beim Band `\|TAPE` und `RUN"` |
 | DOS (ao486) | `games/AO486/` und `/media/fat/_DOS Games/` | die **0MHz**-MGLs, dazu `.vhd` `.img` `.ima` `.vfd` | Eine 0MHz-MGL wird unverändert gestartet; ihre Abbilder erscheinen nicht noch ein zweites Mal. Eine eigene VHD wird mit dem CD-Abbild aus demselben Ordner und einem Reset gestartet |
 
-**Wie AmigaVision direkt startet:** das Frontend schreibt den Namen des
-Spiels in die Datei `ags_boot` auf dem Amiga-Laufwerk `MiSTer:` und
-startet den Minimig-Core mit den Einstellungen „Amiga", die AmigaVision
-angelegt hat. AmigaVision liest die Datei beim Start und springt direkt
-ins Spiel. Das ist die **einzige** Datei, die das Frontend dafür anfasst.
+**AmigaVision (seit Build 334).** „AmigaVision starten" startet
+AmigaVision als Ganzes — mit AmigaVisions eigener MGL aus `_Computer`
+(normalerweise `Amiga.mgl`), also genau so wie im MiSTer-Menü unter
+Computer. Das Spiel wählst du dann in AmigaVisions eigenem Menü.
 
-**AmigaVision 2026.04.26: Startnamen nachliefern (seit Build 333).**
-AmigaVision springt nur dann direkt in ein Spiel, wenn das Frontend den
-*Startnamen* übergibt, z.B. `1000 Miglia (OCS)[en]`. In der Ausgabe
-2026.04.26 stehen in `listings/games.txt` aber nur die Anzeigenamen
-(`1000 Miglia`) — dann öffnet AmigaVision sein eigenes Menü. Eine
-Zuordnung liegt der Ausgabe nicht bei, und erraten lässt sich der Zusatz
-nicht. Die Startnamen kennt nur der Amiga selbst, deshalb einmalig:
-
-1. Ein AmigaVision-Spiel aus dem Frontend starten (das Frontend zeigt
-   vorher genau diese Anleitung) und in AmigaVision zur **Workbench**
-   wechseln.
-2. Eine **Shell** öffnen und eingeben:
-
-   ```
-   list AGS:RunQuiet/Game lformat "%n" >MiSTer:games_canonical.txt
-   list AGS:RunQuiet/Demo lformat "%n" >MiSTer:demos_canonical.txt
-   ```
-
-   Meldet der Amiga, dass er `AGS:` nicht kennt, `AVS:` statt `AGS:`
-   schreiben.
-3. Zurück ins Frontend und unter System → Wartung die Spieleliste neu
-   einlesen.
-
-Die beiden Dateien landen im Ordner des Laufwerks `MiSTer:` (der
-Computer-Check zeigt ihn). Liegen sie dort, nimmt das Frontend sie statt
-`games.txt`: angezeigt wird weiter „1000 Miglia", gestartet mit dem
-vollen Namen. Der Computer-Check zeigt „Startnamen aus: …" oder warnt,
-solange nur Anzeigenamen da sind.
-
-**Seit Build 332** wird `MiSTer:` so bestimmt wie MiSTer selbst es tut:
-der Eintrag `shared_folder` in `MiSTer.ini`, sonst `<Heimatordner>/shared`
-— und der Heimatordner wird zuerst auf den USB-Laufwerken gesucht, dann
-auf dem Netzlaufwerk, zuletzt auf der Karte. Liegt also auf USB oder dem
-NAS ein Ordner `games/Amiga` (etwa mit ADFs), ist `MiSTer:` dort und
-nicht neben `AmigaVision.hdf`. Welcher Ordner es bei dir ist, zeigt der
-Computer-Check („Laufwerk MiSTer:"). Startet AmigaVision trotzdem in
-sein Menü, prüfe dort außerdem, ob `AmigaVision.hdf` als Festplatte
-eingetragen ist (F12 → Drives → Primary Master).
+Bis Build 333 stand jedes AmigaVision-Spiel einzeln in der Liste und
+sollte über die Datei `ags_boot` direkt starten. Mit der Ausgabe
+2026.04.26 klappt das nicht: deren `games.txt` enthält nur Anzeigenamen,
+AmigaVision braucht aber die vollen Startnamen. Deshalb der Weg über
+AmigaVisions eigenes Menü.
 
 **Der Hinweis vor dem Start** kommt nur bei Disketten und Bändern, die
 nicht von selbst losgehen. OK startet, ESC nicht. Zum Eintippen braucht
@@ -1770,10 +1743,10 @@ dort stehen Kickstart und Festplatte. Fehlt die Datei oder der
 Kickstart darin, bleibt er beim Kickstart-Bild stehen. Das Frontend
 schreibt den Setnamen deshalb nicht mehr fest hinein, sondern sieht nach:
 
-- **AmigaVision-Einträge** starten genau so wie AmigaVisions eigene MGL
-  in `_Computer` (normalerweise `Amiga.mgl` mit den Einstellungen
-  `config/Amiga.cfg`) — gesucht wird die MGL, deren Einstellung
-  `AmigaVision.hdf` einhängt.
+- **AmigaVision** startet mit AmigaVisions eigener MGL in `_Computer`
+  (normalerweise `Amiga.mgl` mit den Einstellungen `config/Amiga.cfg`).
+  Gibt es sie nicht, schreibt das Frontend eine mit dem Setnamen der
+  Einstellung, die `AmigaVision.hdf` einhängt.
 - **ADF-Disketten** starten mit deiner eigenen `config/Minimig.cfg`,
   wenn deren Kickstart da ist. Sonst mit der Einstellung „Amiga500"
   aus dem AmigaVision-Paket (Kickstart `games/Amiga500/1.3.rom`), und
@@ -1788,8 +1761,8 @@ Frontend vor dem Start „Spieldateien fehlen" mit dem fehlenden Pfad
 (OK startet trotzdem, ESC nicht).
 
 **Computer-Check** unter System → Wartung zeigt je Computer, was da ist
-und was fehlt: der Core, der Spieleordner, die AmigaVision-Installation
-mit Liste und `shared/`, **seit Build 331** auch die Einstellungsdatei,
+und was fehlt: der Core, der Spieleordner, die AmigaVision-Installation,
+**seit Build 331** auch die Einstellungsdatei,
 den Kickstart und die Festplatten, die der Minimig beim Start wirklich
 liest, und mit welcher Einstellung eine ADF startet; dazu die
 ao486-Boot-ROMs (`boot0.rom`, `boot1.rom` in `games/AO486/`), wie viele
