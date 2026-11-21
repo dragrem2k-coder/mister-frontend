@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **AmigaVision 2026.04.26: Direktstart über die Startnamen des Amiga.**
+  Gemessen an deiner Karte: AmigaVision hat `ags_boot` gelesen, fand den
+  Namen aber nicht — `games.txt` enthält in dieser Ausgabe nur
+  Anzeigenamen („1000 Miglia"), gestartet wird über „1000 Miglia
+  (OCS)[en]". Einmalig zwei Shell-Befehle auf dem Amiga schreiben die
+  echten Startnamen nach `MiSTer:`; liegen sie dort, startet das
+  Frontend damit. Solange nicht, zeigt es vor dem Start genau diese
+  Befehle, und der Computer-Check warnt (Build 333).
+
 - **Repariert: AmigaVision-Spiele landeten im AmigaVision-Menü statt im
   Spiel.** AmigaVision liest die Startanweisung `ags_boot` vom
   Amiga-Laufwerk `MiSTer:`. Welcher Ordner das ist, entscheidet MiSTer:

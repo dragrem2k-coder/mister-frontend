@@ -538,6 +538,18 @@ def _games_signature():
             per_syskey.setdefault("AO486", []).append(entry)
         _inst = _comp.amigavision_installation()
         if _inst:
+            # Build 333: die vom Amiga geschriebene Liste der Startnamen
+            # (MiSTer:games_canonical.txt) gehoert mit in den
+            # Fingerabdruck - sonst erschiene sie erst beim naechsten
+            # vollen Neueinlesen.
+            for _datei, _n in _comp.AMIGAVISION_LISTEN:
+                try:
+                    entry = ("agsstart:" + _datei, int(os.path.getmtime(
+                        _comp.startnamen_datei(_datei))))
+                except OSError:
+                    continue
+                sig.append(entry)
+                per_syskey.setdefault("AMIGA", []).append(entry)
             for _datei, _n in _comp.AMIGAVISION_LISTEN:
                 try:
                     entry = ("ags:" + _datei, int(os.path.getmtime(

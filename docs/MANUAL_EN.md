@@ -1467,6 +1467,34 @@ the Minimig core with the "Amiga" settings AmigaVision set up.
 AmigaVision reads the file at start-up and jumps straight into the
 game. That is the **only** file the frontend touches for this.
 
+**AmigaVision 2026.04.26: supplying the start names (since build
+333).** AmigaVision only jumps straight into a game if the frontend
+passes the *start name*, e.g. `1000 Miglia (OCS)[en]`. In the 2026.04.26
+release, `listings/games.txt` only contains display names
+(`1000 Miglia`) — then AmigaVision opens its own menu. The release ships
+no mapping, and the suffix cannot be guessed. Only the Amiga itself knows
+the start names, so once:
+
+1. Start an AmigaVision game from the frontend (the frontend shows
+   exactly these instructions first) and switch to the **Workbench** in
+   AmigaVision.
+2. Open a **Shell** and type:
+
+   ```
+   list AGS:RunQuiet/Game lformat "%n" >MiSTer:games_canonical.txt
+   list AGS:RunQuiet/Demo lformat "%n" >MiSTer:demos_canonical.txt
+   ```
+
+   If the Amiga says it does not know `AGS:`, write `AVS:` instead.
+3. Back in the frontend, rescan the game list under System →
+   Maintenance.
+
+Both files end up in the folder of the `MiSTer:` drive (the computer
+check shows it). Once they are there the frontend uses them instead of
+`games.txt`: the list still shows "1000 Miglia", but starts with the full
+name. The computer check shows "Start names from: …" or warns as long as
+there are only display names.
+
 **Since build 332** `MiSTer:` is determined the way MiSTer itself does
 it: the `shared_folder` entry in `MiSTer.ini`, otherwise
 `<home folder>/shared` — and the home folder is searched on the USB

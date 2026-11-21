@@ -217,10 +217,16 @@ def _rohzeile(installation, name):
     """Die Zeile aus listings/*.txt so, wie sie in der Datei steht -
     damit ein Name mit Umlaut in derselben Kodierung ankommt, in der
     AmigaVision seine Dateien benannt hat."""
+    pfade = []
     for datei, _ordner in AMIGAVISION_LISTEN:
         try:
-            with open(os.path.join(installation, "listings", datei),
-                      "rb") as f:
+            pfade.append(startnamen_datei(datei))
+        except Exception:                                # noqa: BLE001
+            pass
+        pfade.append(os.path.join(installation, "listings", datei))
+    for pfad in pfade:
+        try:
+            with open(pfad, "rb") as f:
                 for z in f.read().splitlines():
                     z = z.strip()
                     if _dekodieren(z) == name:
@@ -272,6 +278,105 @@ def ags_boot_schreiben(installation, name, setname="Amiga"):
     except OSError as e:
         LOG("AmigaVision: ags_boot nicht geschrieben: %s" % e)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Anzeigenamen und Startnamen (Build 333)
+# ---------------------------------------------------------------------------
+# NACHGEMESSEN an seiner Karte: ags_boot war nach dem Start weg - der
+# Amiga HAT die Datei gelesen (S/startup-sequence verschiebt sie nach T:)
+# -, und trotzdem kam das AmigaVision-Menue. Seine listings/games.txt:
+#
+#     1000 Miglia$
+#     1000cc Turbo$
+#     1869$
+#
+# S/ags-launch sucht aber "AGS:RunQuiet/Game/<Name>", und dort heissen die
+# Startdateien "Titel (Hardware)[Sprache]" (ags_make.py,
+# make_canonical_name()): "1000 Miglia (OCS)[en]". Die Ausgabe
+# AmigaVision 2026.04.26 schreibt in games.txt nur die Anzeigenamen
+# (AmigaVision-Issue #465, Degauss-Issue #97); eine Zuordnungsdatei liegt
+# nicht bei, und erraten laesst sich der Zusatz nicht (Hardware und
+# Sprache stehen nirgends ausserhalb der HDF).
+#
+# Die Startnamen kennt nur der Amiga selbst. Ein Befehl in seiner Shell
+# schreibt sie auf das Laufwerk MiSTer: (siehe Handbuch) - liegt diese
+# Datei dort, nimmt das Frontend sie statt games.txt.
+AV_STARTNAMEN = {"games.txt": "games_canonical.txt",
+                 "demos.txt": "demos_canonical.txt"}
+
+
+def ags_kern():
+    """Der Heimatordner-Name, unter dem der Amiga MiSTer: findet - der
+    Setname der AmigaVision-MGL, mit same_dir="1" "Amiga"."""
+    try:
+        _r, el, name, _h = amigavision_start()
+    except Exception:                                    # noqa: BLE001
+        return "Amiga"
+    if 'same_dir="1"' in el.replace("'", '"'):
+        return "Amiga"
+    return name or "Amiga"
+
+
+def ist_startname(name):
+    """Sieht der Name aus wie eine Startdatei von AmigaVision - endet er
+    auf "(...)" oder "(...)[...]"?"""
+    import re
+    return bool(re.search(r"\)(\[[^\[\]]*\])?$", name or ""))
+
+
+def _liste_mit_startnamen(namen):
+    """Mindestens die Haelfte der Eintraege traegt den Zusatz - dann ist
+    es eine Liste mit Startnamen (einzelne Titel ohne Zusatz gibt es
+    nicht, aber eine Toleranz schadet nicht)."""
+    if not namen:
+        return False
+    return sum(1 for n in namen if ist_startname(n)) * 2 >= len(namen)
+
+
+def anzeigename(name):
+    """'1000 Miglia (OCS)[en]' -> '1000 Miglia' - nur fuer die Anzeige."""
+    import re
+    kurz = re.sub(r"(\s*\([^()]*\))+(\[[^\[\]]*\])?$", "", name or "")
+    return kurz.strip() or name
+
+
+def startnamen_datei(datei, kern=None):
+    """Wo die vom Amiga geschriebene Liste der Startnamen liegt."""
+    return os.path.join(mister_laufwerk(kern or ags_kern()),
+                        AV_STARTNAMEN.get(datei, datei))
+
+
+def amigavision_namen(installation, datei="games.txt", kern=None):
+    """(Namen, Herkunft, Startnamen?) fuer eine AmigaVision-Liste.
+
+    Zuerst die Datei, die der Amiga selbst auf MiSTer: geschrieben hat
+    (games_canonical.txt) - sie enthaelt immer Startnamen. Sonst
+    listings/<datei>; ob die Startnamen enthaelt, wird nachgesehen."""
+    eigen = startnamen_datei(datei, kern)
+    # Nur Zeilen, die wie Startnamen aussehen: so bleibt eine Kopf- oder
+    # Summenzeile von LIST oder eine .info-Datei draussen, falls die
+    # Shell eine schreibt.
+    namen = [n for n in _namen_aus(eigen) if ist_startname(n)]
+    if namen:
+        return namen, eigen, True
+    pfad = os.path.join(installation, "listings", datei)
+    namen = amigavision_liste(installation, datei)
+    return namen, pfad, _liste_mit_startnamen(namen)
+
+
+def _namen_aus(pfad):
+    namen, gesehen = [], set()
+    try:
+        with open(pfad, "rb") as f:
+            for roh in f.read().splitlines():
+                n = _dekodieren(roh.strip())
+                if _kein_steuerzeichen(n) and n not in gesehen:
+                    gesehen.add(n)
+                    namen.append(n)
+    except OSError:
+        return []
+    return namen
 
 
 # ---------------------------------------------------------------------------
@@ -554,12 +659,19 @@ def knoten_ergaenzen(syskey, knoten, rbf, basen=None, dos_muster=None):
     if syskey == "AMIGA":
         inst = amigavision_installation(basen)
         if inst:
+            kern = ags_kern()
             for datei, ordnername in AMIGAVISION_LISTEN:
-                namen = amigavision_liste(inst, datei)
+                namen, herkunft, start = amigavision_namen(inst, datei, kern)
                 if not namen:
                     continue
-                items = [(n, "game", (os.path.join(inst, "games", n), ".ags",
-                                      syskey, rbf, (1, TYP_AGS, 0)))
+                LOG("AmigaVision: %s aus %s (%s)" % (
+                    datei, herkunft,
+                    "Startnamen" if start else "nur Anzeigenamen"))
+                # Angezeigt wird ohne "(OCS)[en]", gestartet mit dem
+                # vollen Namen - der steht im Pfad.
+                items = [(anzeigename(n) if start else n, "game",
+                          (os.path.join(inst, "games", n), ".ags",
+                           syskey, rbf, (1, TYP_AGS, 0)))
                          for n in namen]
                 knoten.setdefault("folders", {})[ordnername] = {
                     "folders": {}, "items": items}
@@ -778,6 +890,17 @@ def starthinweis(syskey, endung, rom_path, lesen=None):
             return ("hinweis_cpc_titel", [("hinweis_cpc_cat", ())])
         if endung == ".cdt":
             return ("hinweis_cpc_titel", [("hinweis_cpc_tape", ())])
+    if syskey == "AMIGA" and endung == ".ags":
+        # Build 333: ein Anzeigename fuehrt nur ins AmigaVision-Menue -
+        # vorher sagen, warum und wie man es einmalig behebt.
+        name = os.path.basename(str(rom_path))
+        if not ist_startname(name):
+            return ("hinweis_av_titel",
+                    [("hinweis_av_grund", ()), ("hinweis_av_shell", ()),
+                     ("hinweis_av_befehl", ("Game", "games")),
+                     ("hinweis_av_befehl", ("Demo", "demos")),
+                     ("hinweis_av_avs", ())])
+        return None
     if syskey == "AO486" and endung == ".mgl":
         fehlt = dos_mgl_fehlend(rom_path)
         if fehlt:
@@ -859,9 +982,16 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
             # aber AmigaVision.hdf nicht als Festplatte eingetragen.
             if not _ist_ags(cfg):
                 zeilen.append((False, "check_av_hdf_fehlt", ()))
+        # Build 333: Startnamen oder nur Anzeigenamen?
+        kern = "Amiga" if 'same_dir="1"' in _el.replace("'", '"') else name
+        _n, herkunft, start = amigavision_namen(inst, "games.txt", kern)
+        if start:
+            zeilen.append((True, "check_av_startnamen", (herkunft,)))
+        elif _n:
+            zeilen.append((False, "check_av_anzeigenamen", ()))
         # Build 332: wohin ags_boot geht - der Ordner, den der Amiga als
         # MiSTer: sieht (mister_laufwerk()).
-        zeilen.append((None, "check_av_laufwerk", (mister_laufwerk(name),)))
+        zeilen.append((None, "check_av_laufwerk", (mister_laufwerk(kern),)))
     else:
         zeilen.append((False, "check_amigavision_fehlt", ()))
     disk = amiga_diskette_start(core_ordner)

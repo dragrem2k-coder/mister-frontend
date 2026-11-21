@@ -11131,3 +11131,47 @@ Computer-Check zeigt jetzt, welcher Ordner es ist.
 `tools/test_amiga_start.py` Teil 9. Verfaelscht: alter Ort, USB nicht
 durchsucht, mehrzeiliger Kopf nicht erkannt, same_dir ignoriert -
 jedes Mal rot.
+
+## Nachtrag Build 333 - Anzeigenamen und Startnamen
+
+**Stand:** 21.11.2026, `Dragend_Build_333.zip` (build_id
+`2026-11-21-333`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+### Seine Messung (per SSH, auf meine Bitte)
+
+* `ls /media/usb0/games/Amiga/shared/`: `ags_current`,
+  `Amiga_vadjust.dat`, `Disk.info` - **kein ags_boot mehr**. Der Amiga
+  hat sie gelesen (`cpr MiSTer:ags_boot T:ags_boot MOVE`). Der Ort aus
+  Build 332 stimmt also; AmigaVision liegt nur auf usb0.
+* `games.txt`: `1000 Miglia$`, `1000cc Turbo$`, `1869$` - nur LF, und
+  **ohne** "(OCS)[en]".
+* `shared_folder=` leer.
+
+### Die Ursache
+
+`S/ags-launch` prueft `exists "AGS:RunQuiet/Game/<TITLE>"`; die Dateien
+dort heissen nach `make_canonical_name()` "Titel (Hardware)[Sprache]".
+Die Ausgabe 2026.04.26 schreibt Anzeigenamen in games.txt (AmigaVision
+#465, Degauss #97). Das aktuelle `generate_listings.py` im AmigaVision-
+Repository schreibt wieder Startnamen - eine neuere Ausgabe gibt es
+aber nicht (amiga.vision/news: neueste 2026.04.26).
+
+Verworfen: (a) Zusatz raten - Hardware und Sprache stehen nur in der HDF;
+(b) die HDF selbst lesen - PFS3 (`avs_fs.py`: `fs=PDS3`), ohne Testabbild
+nicht fehlerfrei zu bauen; (c) eine Tabelle wie Degauss - an genau eine
+Ausgabe gebunden und nicht nachpruefbar.
+
+### Was Build 333 aendert
+
+Der Amiga schreibt die Startnamen selbst: `list AGS:RunQuiet/Game lformat
+"%n" >MiSTer:games_canonical.txt` (und Demo). Liegen die Dateien auf
+MiSTer:, nimmt `amigavision_namen()` sie (nur Zeilen mit Zusatz - eine
+Summenzeile von LIST oder eine .info bleibt draussen). Vor dem Start
+eines Anzeigenamens steht diese Anleitung auf dem Schirm, der Check warnt.
+
+### Pruefungen
+
+`tools/test_amiga_start.py` Teil 10, mit seinen echten Zeilen.
+Verfaelscht: Amiga-Liste ignoriert, Filter weg, Hinweis weg, Anzeige
+mit Zusatz - jedes Mal rot.

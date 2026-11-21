@@ -751,6 +751,25 @@ TRANSLATIONS = {
         "de": "AmigaVision.hdf ist nicht als Festplatte eingetragen (F12 > Drives > Primary Master)"},
     "check_av_laufwerk": {"en": "MiSTer: drive (for direct start): %s",
                           "de": "Laufwerk MiSTer: (für den Direktstart): %s"},
+    # Build 333: Anzeigenamen statt Startnamen (AmigaVision 2026.04.26)
+    "check_av_startnamen": {"en": "Start names from: %s",
+                            "de": "Startnamen aus: %s"},
+    "check_av_anzeigenamen": {
+        "en": "games.txt only has display names - direct start opens the AmigaVision menu (see manual)",
+        "de": "games.txt hat nur Anzeigenamen - Direktstart öffnet das AmigaVision-Menü (siehe Handbuch)"},
+    "hinweis_av_titel": {"en": "AmigaVision - no direct start",
+                         "de": "AmigaVision - kein Direktstart"},
+    "hinweis_av_grund": {
+        "en": "Your AmigaVision list (version 2026.04.26) only contains display names, so AmigaVision will open its menu.",
+        "de": "Deine AmigaVision-Liste (Ausgabe 2026.04.26) enthält nur Anzeigenamen - AmigaVision öffnet deshalb sein Menü."},
+    "hinweis_av_shell": {
+        "en": "Fix once: in AmigaVision go to Workbench, open a Shell and type:",
+        "de": "Einmalig beheben: in AmigaVision zur Workbench, eine Shell öffnen und eingeben:"},
+    "hinweis_av_befehl": {"en": 'list AGS:RunQuiet/%s lformat "%%n" >MiSTer:%s_canonical.txt',
+                          "de": 'list AGS:RunQuiet/%s lformat "%%n" >MiSTer:%s_canonical.txt'},
+    "hinweis_av_avs": {
+        "en": "If the Amiga says AGS: is unknown, write AVS: instead. Then rescan the game list.",
+        "de": "Kennt der Amiga AGS: nicht, AVS: statt AGS: schreiben. Danach die Spieleliste neu einlesen."},
     "check_adf_mit": {"en": "ADF disks start with settings: %s",
                       "de": "ADF-Disketten starten mit Einstellung: %s"},
     "check_dos_fehlt": {"en": "%d of them without game files (zip not unpacked?)",

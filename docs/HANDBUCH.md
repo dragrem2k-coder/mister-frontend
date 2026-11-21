@@ -1721,6 +1721,35 @@ startet den Minimig-Core mit den Einstellungen „Amiga", die AmigaVision
 angelegt hat. AmigaVision liest die Datei beim Start und springt direkt
 ins Spiel. Das ist die **einzige** Datei, die das Frontend dafür anfasst.
 
+**AmigaVision 2026.04.26: Startnamen nachliefern (seit Build 333).**
+AmigaVision springt nur dann direkt in ein Spiel, wenn das Frontend den
+*Startnamen* übergibt, z.B. `1000 Miglia (OCS)[en]`. In der Ausgabe
+2026.04.26 stehen in `listings/games.txt` aber nur die Anzeigenamen
+(`1000 Miglia`) — dann öffnet AmigaVision sein eigenes Menü. Eine
+Zuordnung liegt der Ausgabe nicht bei, und erraten lässt sich der Zusatz
+nicht. Die Startnamen kennt nur der Amiga selbst, deshalb einmalig:
+
+1. Ein AmigaVision-Spiel aus dem Frontend starten (das Frontend zeigt
+   vorher genau diese Anleitung) und in AmigaVision zur **Workbench**
+   wechseln.
+2. Eine **Shell** öffnen und eingeben:
+
+   ```
+   list AGS:RunQuiet/Game lformat "%n" >MiSTer:games_canonical.txt
+   list AGS:RunQuiet/Demo lformat "%n" >MiSTer:demos_canonical.txt
+   ```
+
+   Meldet der Amiga, dass er `AGS:` nicht kennt, `AVS:` statt `AGS:`
+   schreiben.
+3. Zurück ins Frontend und unter System → Wartung die Spieleliste neu
+   einlesen.
+
+Die beiden Dateien landen im Ordner des Laufwerks `MiSTer:` (der
+Computer-Check zeigt ihn). Liegen sie dort, nimmt das Frontend sie statt
+`games.txt`: angezeigt wird weiter „1000 Miglia", gestartet mit dem
+vollen Namen. Der Computer-Check zeigt „Startnamen aus: …" oder warnt,
+solange nur Anzeigenamen da sind.
+
 **Seit Build 332** wird `MiSTer:` so bestimmt wie MiSTer selbst es tut:
 der Eintrag `shared_folder` in `MiSTer.ini`, sonst `<Heimatordner>/shared`
 — und der Heimatordner wird zuerst auf den USB-Laufwerken gesucht, dann
