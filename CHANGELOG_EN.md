@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: AmigaVision games landed in the AmigaVision menu instead of
+  the game.** AmigaVision reads the start instruction `ags_boot` from the
+  Amiga drive `MiSTer:`. MiSTer decides which folder that is:
+  `shared_folder` from `MiSTer.ini`, otherwise the `shared` folder in the
+  home folder — searched on USB first, then the NAS, the SD card last.
+  The frontend always wrote the file next to `AmigaVision.hdf`; with a
+  `games/Amiga` on USB or the NAS, the Amiga never saw it. Now the folder
+  is determined exactly like MiSTer does. The computer check shows it
+  and reports when `AmigaVision.hdf` is not set as hard disk (build 332).
+
 - **Fixed: Amiga games stopped at the Kickstart screen.** The Minimig
   reads Kickstart and hard disk from `config/<setname>.cfg`; without the
   matching file it starts with defaults and finds no Kickstart.

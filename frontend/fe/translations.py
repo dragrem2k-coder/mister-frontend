@@ -745,6 +745,12 @@ TRANSLATIONS = {
     "check_av_cfg": {"en": "Settings file: %s", "de": "Einstellungsdatei: %s"},
     "check_av_kick": {"en": "Kickstart: %s", "de": "Kickstart: %s"},
     "check_av_hdf": {"en": "Hard disk: %s", "de": "Festplatte: %s"},
+    # Build 332
+    "check_av_hdf_fehlt": {
+        "en": "AmigaVision.hdf is not set as hard disk (F12 > Drives > Primary Master)",
+        "de": "AmigaVision.hdf ist nicht als Festplatte eingetragen (F12 > Drives > Primary Master)"},
+    "check_av_laufwerk": {"en": "MiSTer: drive (for direct start): %s",
+                          "de": "Laufwerk MiSTer: (für den Direktstart): %s"},
     "check_adf_mit": {"en": "ADF disks start with settings: %s",
                       "de": "ADF-Disketten starten mit Einstellung: %s"},
     "check_dos_fehlt": {"en": "%d of them without game files (zip not unpacked?)",

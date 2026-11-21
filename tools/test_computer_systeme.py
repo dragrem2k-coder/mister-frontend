@@ -63,6 +63,16 @@ print(__doc__.strip().split("\n")[0])
 print()
 
 TMP = tempfile.mkdtemp(prefix="computer_")
+# Build 332: alles, was die Amiga-Wege auf der echten Karte suchen
+# wuerden (Laufwerke, Einstellungen, MiSTer.ini), zeigt in den Temp-Ordner.
+_ORTE = ("SD_WURZEL", "MEDIA", "MISTER_INI", "CONFIG_ORDNER",
+         "COMPUTER_ORDNER")
+_ORTE_ALT = {k: getattr(C, k) for k in _ORTE}
+C.SD_WURZEL = TMP
+C.MEDIA = os.path.join(TMP, "media")
+C.MISTER_INI = os.path.join(TMP, "MiSTer.ini")
+C.CONFIG_ORDNER = os.path.join(TMP, "config")
+C.COMPUTER_ORDNER = os.path.join(TMP, "_Computer")
 try:
     # -----------------------------------------------------------------------
     print("Test 1: die Systemtabelle")
@@ -112,9 +122,12 @@ try:
     schreiben(os.path.join(av2, "AmigaVision.hdf"))
     xml2 = C.mgl_inhalt("_Computer/Minimig",
                         os.path.join(av2, "games", "X"), 1, C.TYP_AGS, 0)
-    check("GEGENPROBE ohne shared/: nichts angelegt, Start ins Menue",
+    check("eine zweite Installation: ags_boot trotzdem ins Laufwerk "
+          "MiSTer: (Build 332), nicht daneben",
           not os.path.exists(os.path.join(av2, "shared"))
+          and open(boot, "rb").read() == b"X\n"
           and "<setname>Amiga</setname>" in xml2)
+    C.ags_boot_schreiben(av, "Turrican II")
     check("Steuerzeichen im Namen: kein ags_boot",
           C.ags_boot_schreiben(av, "a\nb") is False
           and open(boot, "rb").read() == b"Turrican II\n")
@@ -509,6 +522,8 @@ try:
     check("der Menuepunkt steht unter System", "computer_check" in kinds())
     check("und ist verdrahtet", 'elif kind == "computer_check":' in q)
 finally:
+    for _k, _v in _ORTE_ALT.items():
+        setattr(C, _k, _v)
     shutil.rmtree(TMP, ignore_errors=True)
 
 print()

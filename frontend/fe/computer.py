@@ -111,9 +111,9 @@ def amigavision_liste(installation, datei="games.txt"):
     namen = []
     gesehen = set()
     try:
-        with open(pfad, "r", encoding="utf-8", errors="replace") as f:
-            for zeile in f:
-                name = zeile.strip()
+        with open(pfad, "rb") as f:
+            for roh in f.read().splitlines():
+                name = _dekodieren(roh.strip())
                 if not _kein_steuerzeichen(name) or name in gesehen:
                     continue
                 gesehen.add(name)
@@ -123,20 +123,140 @@ def amigavision_liste(installation, datei="games.txt"):
     return namen
 
 
-def ags_boot_schreiben(installation, name):
-    """games/Amiga/shared/ags_boot = Name + Zeilenende - die Anweisung an
-    AmigaVision, direkt in dieses Spiel zu booten. Ueber eine .tmp-Datei;
-    der Ordner shared muss da sein (er gehoert zu AmigaVision und wird
-    nicht angelegt - fehlt er, stimmt mit der Installation etwas nicht).
-    True bei Erfolg."""
+# ---------------------------------------------------------------------------
+# Wohin ags_boot gehoert (Build 332)
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG nach Build 331: "wenn ich jetzt ueber das frontend ein
+# spiel starte lande ich erst in der amigavision frontend und suche mir
+# dort das spiel nochmal aus".
+#
+# AmigaVision liest die Datei nicht aus "seinem" Ordner, sondern vom
+# Amiga-Laufwerk MiSTer: (S/startup-sequence: "if exists MiSTer:ags_boot").
+# Welcher Ordner das ist, entscheidet Main (minimig_share.cpp): der Wert
+# shared_folder aus MiSTer.ini, sonst <Heimatordner>/shared - und der
+# Heimatordner wird gesucht (file_io.cpp, findPrefixDir): zuerst auf den
+# USB-Laufwerken, dann im Netzlaufwerk, dann cifs, zuletzt auf der Karte.
+# Liegt auf USB oder dem NAS ein Ordner games/Amiga (etwa mit ADFs), ist
+# MiSTer: DORT - und eine ags_boot neben AmigaVision.hdf auf der Karte
+# sieht der Amiga nie. Bis Build 331 wurde genau dorthin geschrieben.
+MISTER_INI = "/media/fat/MiSTer.ini"
+MEDIA = "/media"
+
+
+def heimatordner(kern="Amiga", wurzel=None, media=None):
+    """Der Heimatordner eines Cores, gesucht wie Main es tut
+    (findPrefixDir mit no_prefix_check): je USB-Laufwerk 0-5 erst
+    <kern>, dann games/<kern>; dann /media/network, dann cifs, dann die
+    Karte. Gibt es keinen, nimmt Main games/<kern> auf der Karte."""
+    wurzel = wurzel or SD_WURZEL
+    media = media or MEDIA
+    kandidaten = []
+    for i in range(6):
+        u = os.path.join(media, "usb%d" % i)
+        kandidaten += [os.path.join(u, kern), os.path.join(u, "games", kern)]
+    n = os.path.join(media, "network")
+    kandidaten += [os.path.join(n, kern), os.path.join(n, "games", kern)]
+    c = os.path.join(wurzel, "cifs")
+    kandidaten += [os.path.join(c, kern), os.path.join(c, "games", kern)]
+    kandidaten += [os.path.join(wurzel, kern),
+                   os.path.join(wurzel, "games", kern)]
+    for k in kandidaten:
+        if os.path.isdir(k):
+            return k
+    return os.path.join(wurzel, "games", kern)
+
+
+def _ini_wert(schluessel, kern, ini=None):
+    """Ein Wert aus MiSTer.ini fuer diesen Core: erst der allgemeine
+    Abschnitt [MiSTer], dann jeder Abschnitt, dessen Namensliste den Core
+    nennt - auch die mehrzeilige Form, die AmigaVision selbst benutzt
+    ("[Amiga" / "+Amiga500" / ... / "]"). Der spaetere gewinnt, wie bei
+    MiSTer. None, wenn nirgends gesetzt."""
+    try:
+        with open(ini or MISTER_INI, "r", encoding="utf-8",
+                  errors="replace") as f:
+            zeilen = f.read().splitlines()
+    except OSError:
+        return None
+    wert, aktiv, kopf = None, True, None
+    for roh in zeilen:
+        z = roh.split(";", 1)[0].strip()
+        if kopf is not None:
+            kopf += z
+            if "]" in z:
+                namen = kopf.strip("[]").replace(" ", "").split("+")
+                aktiv = any(n.lower() in ("mister", kern.lower())
+                            for n in namen if n)
+                kopf = None
+            continue
+        if z.startswith("["):
+            if "]" in z:
+                namen = z.strip("[]").replace(" ", "").split("+")
+                aktiv = any(n.lower() in ("mister", kern.lower())
+                            for n in namen if n)
+            else:
+                kopf = z
+            continue
+        if aktiv and "=" in z:
+            k, v = z.split("=", 1)
+            if k.strip().lower() == schluessel.lower():
+                wert = v.strip()
+    return wert
+
+
+def mister_laufwerk(kern="Amiga", wurzel=None, media=None, ini=None):
+    """Der Ordner, den der Amiga als MiSTer: sieht (minimig_share.cpp)."""
+    heim = heimatordner(kern, wurzel, media)
+    eigen = _ini_wert("shared_folder", kern, ini)
+    if eigen:
+        return eigen if eigen.startswith("/") else os.path.join(heim, eigen)
+    return os.path.join(heim, "shared")
+
+
+def _rohzeile(installation, name):
+    """Die Zeile aus listings/*.txt so, wie sie in der Datei steht -
+    damit ein Name mit Umlaut in derselben Kodierung ankommt, in der
+    AmigaVision seine Dateien benannt hat."""
+    for datei, _ordner in AMIGAVISION_LISTEN:
+        try:
+            with open(os.path.join(installation, "listings", datei),
+                      "rb") as f:
+                for z in f.read().splitlines():
+                    z = z.strip()
+                    if _dekodieren(z) == name:
+                        return z
+        except OSError:
+            continue
+    return name.encode("utf-8")
+
+
+def _dekodieren(roh):
+    try:
+        return roh.decode("utf-8")
+    except UnicodeDecodeError:
+        return roh.decode("latin-1")
+
+
+def ags_boot_schreiben(installation, name, setname="Amiga"):
+    """MiSTer:ags_boot = Name + Zeilenende - die Anweisung an AmigaVision,
+    direkt in dieses Spiel zu booten (S/ags-launch sucht danach
+    AGS:RunQuiet/Game/<Name>). Ueber eine .tmp-Datei.
+
+    Seit Build 332 in den Ordner, den der Amiga als MiSTer: sieht
+    (mister_laufwerk()), nicht mehr pauschal neben AmigaVision.hdf. Fehlt
+    er, wird er angelegt - Main legt ihn beim Start ohnehin an
+    (FileCreatePath in minimig_share.cpp). True bei Erfolg."""
     if not _kein_steuerzeichen(name):
         return False
-    shared = os.path.join(installation, "shared")
-    if not os.path.isdir(shared):
-        LOG("AmigaVision: %s fehlt - kann nicht direkt starten" % shared)
+    shared = mister_laufwerk(setname)
+    try:
+        os.makedirs(shared, exist_ok=True)
+    except OSError as e:
+        LOG("AmigaVision: %s nicht anlegbar: %s" % (shared, e))
         return False
     ziel = os.path.join(shared, "ags_boot")
-    inhalt = (name + "\n").encode("utf-8")
+    LOG("AmigaVision: ags_boot -> %s" % ziel)
+    inhalt = _rohzeile(installation, name) + b"\n"
     try:
         with open(ziel, "rb") as f:
             if f.read(len(inhalt) + 1) == inhalt:
@@ -502,11 +622,15 @@ def mgl_inhalt(rbf, rom_path, delay, ftype, index, setname=None,
     if ftype == TYP_AGS:
         inst = os.path.dirname(os.path.dirname(rom_path))
         name = os.path.basename(rom_path)
-        if not ags_boot_schreiben(inst, name):
-            LOG("AmigaVision: starte ohne ags_boot ins Menue")
         # Build 331: genau so starten wie AmigaVisions eigene MGL - mit
         # deren rbf und deren Setname (siehe amigavision_start()).
         ags_rbf, el, setname_ags, herkunft = amigavision_start()
+        # Build 332: der Heimatordner haengt am Setnamen - ausser mit
+        # same_dir="1", dann bleibt es der des Minimig, also "Amiga".
+        kern = "Amiga" if 'same_dir="1"' in el.replace("'", '"') \
+            else setname_ags
+        if not ags_boot_schreiben(inst, name, kern):
+            LOG("AmigaVision: starte ohne ags_boot ins Menue")
         LOG("AmigaVision: %s mit Setname %s (aus %s)"
             % (name, setname_ags, herkunft or "Vorgabe"))
         return ('<mistergamedescription>\n'
@@ -731,6 +855,13 @@ def computer_check(basen=None, core_ordner=None, dos_muster=None):
             for h in cfg["hdf"][:2]:
                 zeilen.append((os.path.isfile(mister_pfad(h)),
                                "check_av_hdf", (h,)))
+            # Build 332: genau sein Fall - die Einstellungsdatei war da,
+            # aber AmigaVision.hdf nicht als Festplatte eingetragen.
+            if not _ist_ags(cfg):
+                zeilen.append((False, "check_av_hdf_fehlt", ()))
+        # Build 332: wohin ags_boot geht - der Ordner, den der Amiga als
+        # MiSTer: sieht (mister_laufwerk()).
+        zeilen.append((None, "check_av_laufwerk", (mister_laufwerk(name),)))
     else:
         zeilen.append((False, "check_amigavision_fehlt", ()))
     disk = amiga_diskette_start(core_ordner)

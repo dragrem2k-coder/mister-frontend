@@ -1716,11 +1716,20 @@ sobald ihr Core in `/media/fat/_Computer/` liegt. Gesucht wird wie
 | DOS (ao486) | `games/AO486/` und `/media/fat/_DOS Games/` | die **0MHz**-MGLs, dazu `.vhd` `.img` `.ima` `.vfd` | Eine 0MHz-MGL wird unverändert gestartet; ihre Abbilder erscheinen nicht noch ein zweites Mal. Eine eigene VHD wird mit dem CD-Abbild aus demselben Ordner und einem Reset gestartet |
 
 **Wie AmigaVision direkt startet:** das Frontend schreibt den Namen des
-Spiels in `games/Amiga/shared/ags_boot` — derselbe Weg, den Zaparoo
-geht — und startet den Minimig-Core mit den Einstellungen „Amiga", die
-AmigaVision angelegt hat. Das ist die **einzige** Datei, die das
-Frontend dort anfasst. Fehlt der Ordner `shared/`, bootet AmigaVision
-in sein eigenes Menü.
+Spiels in die Datei `ags_boot` auf dem Amiga-Laufwerk `MiSTer:` und
+startet den Minimig-Core mit den Einstellungen „Amiga", die AmigaVision
+angelegt hat. AmigaVision liest die Datei beim Start und springt direkt
+ins Spiel. Das ist die **einzige** Datei, die das Frontend dafür anfasst.
+
+**Seit Build 332** wird `MiSTer:` so bestimmt wie MiSTer selbst es tut:
+der Eintrag `shared_folder` in `MiSTer.ini`, sonst `<Heimatordner>/shared`
+— und der Heimatordner wird zuerst auf den USB-Laufwerken gesucht, dann
+auf dem Netzlaufwerk, zuletzt auf der Karte. Liegt also auf USB oder dem
+NAS ein Ordner `games/Amiga` (etwa mit ADFs), ist `MiSTer:` dort und
+nicht neben `AmigaVision.hdf`. Welcher Ordner es bei dir ist, zeigt der
+Computer-Check („Laufwerk MiSTer:"). Startet AmigaVision trotzdem in
+sein Menü, prüfe dort außerdem, ob `AmigaVision.hdf` als Festplatte
+eingetragen ist (F12 → Drives → Primary Master).
 
 **Der Hinweis vor dem Start** kommt nur bei Disketten und Bändern, die
 nicht von selbst losgehen. OK startet, ESC nicht. Zum Eintippen braucht

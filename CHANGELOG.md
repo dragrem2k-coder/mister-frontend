@@ -13,6 +13,17 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Repariert: AmigaVision-Spiele landeten im AmigaVision-Menü statt im
+  Spiel.** AmigaVision liest die Startanweisung `ags_boot` vom
+  Amiga-Laufwerk `MiSTer:`. Welcher Ordner das ist, entscheidet MiSTer:
+  `shared_folder` aus `MiSTer.ini`, sonst der Ordner `shared` im
+  Heimatordner — und der wird zuerst auf USB, dann auf dem NAS, zuletzt
+  auf der Karte gesucht. Das Frontend schrieb die Datei bisher immer
+  neben `AmigaVision.hdf`; liegt auf USB oder dem NAS ein `games/Amiga`,
+  sah der Amiga sie nie. Jetzt wird der Ordner genauso bestimmt wie von
+  MiSTer. Der Computer-Check zeigt ihn an und meldet, wenn
+  `AmigaVision.hdf` nicht als Festplatte eingetragen ist (Build 332).
+
 - **Repariert: Amiga-Spiele blieben beim Kickstart-Bild stehen.** Der
   Minimig liest Kickstart und Festplatte aus `config/<Setname>.cfg`; fehlt
   die passende Datei, startet er mit Vorgaben und findet keinen

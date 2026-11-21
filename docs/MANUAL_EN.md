@@ -1462,10 +1462,21 @@ on the NAS.
 | DOS (ao486) | `games/AO486/` and `/media/fat/_DOS Games/` | the **0MHz** MGLs, plus `.vhd` `.img` `.ima` `.vfd` | A 0MHz MGL is started unchanged; its images do not appear a second time. Your own VHD is started with the CD image from the same folder and a reset |
 
 **How AmigaVision starts directly:** the frontend writes the game's
-name into `games/Amiga/shared/ags_boot` — the same way Zaparoo does —
-and starts the Minimig core with the "Amiga" settings AmigaVision set
-up. That is the **only** file the frontend touches there. If the
-`shared/` folder is missing, AmigaVision boots into its own menu.
+name into the file `ags_boot` on the Amiga drive `MiSTer:` and starts
+the Minimig core with the "Amiga" settings AmigaVision set up.
+AmigaVision reads the file at start-up and jumps straight into the
+game. That is the **only** file the frontend touches for this.
+
+**Since build 332** `MiSTer:` is determined the way MiSTer itself does
+it: the `shared_folder` entry in `MiSTer.ini`, otherwise
+`<home folder>/shared` — and the home folder is searched on the USB
+drives first, then on the network drive, the SD card last. So if a
+`games/Amiga` folder exists on USB or the NAS (with ADFs, say),
+`MiSTer:` is there and not next to `AmigaVision.hdf`. The computer check
+shows which folder it is on your system ("MiSTer: drive"). If
+AmigaVision still starts into its menu, also check there that
+`AmigaVision.hdf` is set as the hard disk (F12 → Drives → Primary
+Master).
 
 **The hint before the start** only appears for disks and tapes that do
 not start by themselves. OK starts, ESC does not. Typing needs a

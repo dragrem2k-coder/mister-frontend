@@ -11081,3 +11081,53 @@ Bytecode nehmen - der Test war danach rot, obwohl die Datei stimmte.
 * Am Geraet nicht ausprobiert.
 * Die Bildquellen sind nicht nachpruefbar (siehe
   `docs/LOGOS_NACHLIEFERN.md`, "Bildquellen").
+
+## Nachtrag Build 332 - ags_boot am richtigen Ort
+
+**Stand:** 21.11.2026, `Dragend_Build_332.zip` (build_id
+`2026-11-21-332`). Bench-Fassung bleibt 24. C-Bibliothek unveraendert
+(Fassung 8).
+
+Seine Antwort auf die Rueckfrage: die beiden Festplatten waren in der
+Amiga-Einstellung nicht ausgewaehlt (das erklaert das Kickstart-Bild).
+Danach: "wenn ich jetzt ueber das frontend ein spiel starte lande ich
+erst in der amigavision frontend und suche mir dort das spiel nochmal
+aus".
+
+### Die Ursache, nachgelesen
+
+* AmigaVision `S/startup-sequence`: `if exists MiSTer:ags_boot` ->
+  `cpr ... T:ags_boot MOVE` -> `S/ags-launch` sucht
+  `AGS:RunQuiet/Game/<Name>`. Die Datei muss also auf dem Laufwerk
+  `MiSTer:` liegen.
+* Main `support/minimig/minimig_share.cpp`: `MiSTer:` ist
+  `cfg.shared_folder` (MiSTer.ini), sonst `HomeDir()/shared`.
+* Main `file_io.cpp`, `findPrefixDir()`: der Heimatordner wird zuerst
+  auf `/media/usb0-5` gesucht (`<kern>`, dann `games/<kern>`), dann
+  `/media/network`, dann `/media/fat/cifs`, zuletzt die Karte.
+
+Builds 330/331 schrieben `ags_boot` immer neben `AmigaVision.hdf`. Er
+hat Spiele auch auf USB und dem NAS - liegt dort ein `games/Amiga`, ist
+`MiSTer:` dort. Sicher weiss ich das fuer seine Karte nicht; der
+Computer-Check zeigt jetzt, welcher Ordner es ist.
+
+### Was Build 332 aendert
+
+* `heimatordner()`, `_ini_wert()` (auch der mehrzeilige Kopf
+  `[Amiga` / `+Amiga500` / ... `]`, den AmigaVision selbst in die
+  MiSTer.ini schreiben laesst), `mister_laufwerk()`.
+* `ags_boot_schreiben(inst, name, kern)` schreibt nach
+  `mister_laufwerk(kern)`; `same_dir="1"` haelt `kern` bei "Amiga".
+* Die Bytes kommen aus der Listenzeile selbst (Amiga-Dateinamen sind
+  Latin-1).
+* Computer-Check: "Laufwerk MiSTer:" und "AmigaVision.hdf ist nicht als
+  Festplatte eingetragen" - sein erster Fall.
+* `test_computer_systeme.py` schrieb bisher nach `/media/fat/...`, sobald
+  `ags_boot` nicht mehr neben der Installation landet - jetzt zeigen
+  MEDIA, MISTER_INI, CONFIG und SD_WURZEL im Test in den Temp-Ordner.
+
+### Pruefungen
+
+`tools/test_amiga_start.py` Teil 9. Verfaelscht: alter Ort, USB nicht
+durchsucht, mehrzeiliger Kopf nicht erkannt, same_dir ignoriert -
+jedes Mal rot.

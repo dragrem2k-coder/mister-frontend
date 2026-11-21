@@ -23,6 +23,10 @@ GEPRUEFT WIRD (alles mit nachgebauten Dateien):
   7. Der Computer-Check zeigt Einstellungsdatei, Kickstart, Festplatte.
   8. Die Bilder: vier Abzeichen 320x420 und vier Fotos 420x320 auf
      C_PANEL.
+  9. (Build 332) ags_boot landet im Laufwerk MiSTer: - gesucht wie Main
+     (USB vor NAS vor Karte, shared_folder aus MiSTer.ini, same_dir) -,
+     mit den Bytes der Liste; der Check meldet eine nicht eingetragene
+     AmigaVision.hdf.
 
 Ausfuehren:
     python3 tools/test_amiga_start.py
@@ -86,12 +90,15 @@ print(__doc__.strip().split("\n")[0])
 print()
 
 TMP = tempfile.mkdtemp(prefix="amiga_")
-_alt = (C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP)
+_alt = (C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP,
+        C.MEDIA, C.MISTER_INI)
 try:
     WURZEL = os.path.join(TMP, "fat")
     KONF = os.path.join(WURZEL, "config")
     COMP = os.path.join(WURZEL, "_Computer")
     C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER = KONF, WURZEL, COMP
+    MEDIA = os.path.join(TMP, "media")
+    C.MEDIA, C.MISTER_INI = MEDIA, os.path.join(WURZEL, "MiSTer.ini")
     L.MGL_TMP = os.path.join(TMP, "start.mgl")
 
     # -----------------------------------------------------------------------
@@ -347,6 +354,118 @@ try:
 
     # -----------------------------------------------------------------------
     print()
+    print("Test 9: ags_boot landet im Laufwerk MiSTer: (Build 332)")
+    # -----------------------------------------------------------------------
+    # NUTZERMELDUNG: "wenn ich jetzt ueber das frontend ein spiel starte
+    # lande ich erst in der amigavision frontend und suche mir dort das
+    # spiel nochmal aus" - ags_boot lag nicht dort, wo der Amiga sucht.
+    check("ohne USB/NAS: Heimatordner games/Amiga auf der Karte",
+          C.heimatordner("Amiga") == os.path.join(WURZEL, "games", "Amiga"))
+    usb = os.path.join(MEDIA, "usb1", "games", "Amiga")
+    os.makedirs(usb)
+    check("ein USB-Laufwerk mit games/Amiga geht vor (wie in Main)",
+          C.heimatordner("Amiga") == usb, C.heimatordner("Amiga"))
+    os.makedirs(os.path.join(MEDIA, "usb0", "Amiga"))
+    check("usb0 vor usb1, und dort <kern> vor games/<kern>",
+          C.heimatordner("Amiga") == os.path.join(MEDIA, "usb0", "Amiga"))
+    shutil.rmtree(os.path.join(MEDIA, "usb0"))
+    cifs = os.path.join(WURZEL, "cifs", "games", "Amiga")
+    os.makedirs(cifs)
+    check("GEGENPROBE: USB geht auch vor dem NAS (cifs)",
+          C.heimatordner("Amiga") == usb)
+    shutil.rmtree(os.path.join(MEDIA, "usb1"))
+    check("ohne USB: das NAS vor der Karte",
+          C.heimatordner("Amiga") == cifs)
+
+    # der Fall selbst: AmigaVision auf der Karte, games/Amiga auf dem NAS
+    for f_ in os.listdir(os.path.join(av, "shared")):
+        os.remove(os.path.join(av, "shared", f_))
+    xml = C.mgl_inhalt("_Computer/Minimig",
+                       os.path.join(av, "games", "Lotus"), 1, C.TYP_AGS, 0)
+    check("ags_boot im MiSTer:-Laufwerk auf dem NAS",
+          open(os.path.join(cifs, "shared", "ags_boot")).read() == "Lotus\n")
+    check("GEGENPROBE: NICHT mehr neben AmigaVision.hdf (dort sieht der "
+          "Amiga sie nie)",
+          not os.path.exists(os.path.join(av, "shared", "ags_boot")))
+    shutil.rmtree(os.path.join(WURZEL, "cifs"))
+
+    # MiSTer.ini: shared_folder - auch im mehrzeiligen AmigaVision-Kopf
+    schreiben(C.MISTER_INI, "[MiSTer]\nvideo_mode=8\n"
+              "[SNES]\nshared_folder=/falsch\n"
+              "[Amiga\n+Amiga500\n+AmigaCD32]\n"
+              "shared_folder=/media/usb0/teilen ; Kommentar\n")
+    check("shared_folder aus dem mehrzeiligen [Amiga+...]-Kopf",
+          C.mister_laufwerk("Amiga") == "/media/usb0/teilen",
+          C.mister_laufwerk("Amiga"))
+    check("GEGENPROBE: der [SNES]-Abschnitt gilt nicht fuer Amiga",
+          C._ini_wert("shared_folder", "Amiga500") == "/media/usb0/teilen"
+          and C._ini_wert("shared_folder", "NES") is None)
+    schreiben(C.MISTER_INI, "[MiSTer]\nshared_folder=geteilt\n")
+    check("relativer Wert: unter dem Heimatordner",
+          C.mister_laufwerk("Amiga")
+          == os.path.join(WURZEL, "games", "Amiga", "geteilt"))
+    os.remove(C.MISTER_INI)
+    check("ohne Eintrag: <Heimatordner>/shared",
+          C.mister_laufwerk("Amiga")
+          == os.path.join(WURZEL, "games", "Amiga", "shared"))
+
+    # same_dir="1": Heimatordner bleibt der des Minimig
+    schreiben(os.path.join(COMP, "Amiga.mgl"),
+              '<mistergamedescription><rbf>_computer/minimig</rbf>'
+              '<setname same_dir="1">AGSX</setname>'
+              '</mistergamedescription>')
+    schreiben(os.path.join(KONF, "AGSX.cfg"),
+              cfg("games/Amiga/AmigaVision.rom",
+                  ["games/Amiga/AmigaVision.hdf"]))
+    os.makedirs(os.path.join(WURZEL, "games", "AGSX"))
+    C.mgl_inhalt("_Computer/Minimig", os.path.join(av, "games", "Elite"), 1,
+                 C.TYP_AGS, 0)
+    check("same_dir=\"1\": ags_boot in games/Amiga/shared",
+          open(os.path.join(av, "shared", "ags_boot")).read() == "Elite\n")
+    check("GEGENPROBE: nicht in games/AGSX",
+          not os.path.exists(os.path.join(WURZEL, "games", "AGSX", "shared")))
+    schreiben(os.path.join(COMP, "Amiga.mgl"),
+              '<mistergamedescription><rbf>_computer/minimig</rbf>'
+              '<setname>AGSX</setname></mistergamedescription>')
+    C.mgl_inhalt("_Computer/Minimig", os.path.join(av, "games", "Elite"), 1,
+                 C.TYP_AGS, 0)
+    check("ohne same_dir: der Heimatordner heisst wie der Setname",
+          open(os.path.join(WURZEL, "games", "AGSX", "shared",
+                            "ags_boot")).read() == "Elite\n")
+    schreiben(os.path.join(COMP, "Amiga.mgl"),
+              mgl("_computer/minimig", "Amiga"))
+    os.remove(os.path.join(KONF, "AGSX.cfg"))
+
+    # ein Name mit Umlaut in Latin-1, wie Amiga-Dateinamen
+    schreiben(os.path.join(av, "listings", "games.txt"),
+              b"M\xfcllabfuhr\nLotus III\n")
+    namen = C.amigavision_liste(av)
+    check("Latin-1-Liste lesbar", namen == ["M\u00fcllabfuhr", "Lotus III"],
+          namen)
+    C.ags_boot_schreiben(av, "M\u00fcllabfuhr")
+    check("ags_boot mit genau den Bytes der Liste",
+          open(os.path.join(av, "shared", "ags_boot"), "rb").read()
+          == b"M\xfcllabfuhr\n")
+
+    # der Computer-Check: Festplatte nicht eingetragen
+    gesichert = open(os.path.join(KONF, "Amiga.cfg"), "rb").read()
+    schreiben(os.path.join(KONF, "Amiga.cfg"),
+              cfg("games/Amiga/AmigaVision.rom"))
+    am = dict(C.computer_check([basis], COMP))["Amiga"]
+    check("Check: AmigaVision.hdf nicht eingetragen -> rot",
+          (False, "check_av_hdf_fehlt", ()) in am, am)
+    check("Check: das Laufwerk MiSTer: wird genannt",
+          (None, "check_av_laufwerk",
+           (os.path.join(WURZEL, "games", "Amiga", "shared"),)) in am)
+    schreiben(os.path.join(KONF, "Amiga.cfg"), gesichert)
+    am = dict(C.computer_check([basis], COMP))["Amiga"]
+    check("GEGENPROBE: eingetragen -> keine Warnung",
+          not [z for z in am if z[1] == "check_av_hdf_fehlt"])
+    for k in ("check_av_hdf_fehlt", "check_av_laufwerk"):
+        check("Text %s uebersetzt" % k, fm.t(k) != k)
+
+    # -----------------------------------------------------------------------
+    print()
     print("Test 8: die Bilder")
     # -----------------------------------------------------------------------
     FE = os.path.dirname(H.FRONTEND_PY)
@@ -375,7 +494,8 @@ try:
             check("GEGENPROBE %s/%s.art: in der Mitte steht etwas"
                   % (ordner, k), tuple(mitte) != (44, 32, 28))
 finally:
-    C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP = _alt
+    (C.CONFIG_ORDNER, C.SD_WURZEL, C.COMPUTER_ORDNER, L.MGL_TMP,
+     C.MEDIA, C.MISTER_INI) = _alt
     shutil.rmtree(TMP, ignore_errors=True)
 
 print()
