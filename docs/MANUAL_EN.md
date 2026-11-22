@@ -899,6 +899,14 @@ startup for a network connection and for the contents of the ROM folders
 to stop changing before it scans. For SD card/USB (most users) just leave
 the option off - there it would only cause unnecessary delay.
 
+**The first scan over the NAS (since build 341).** Over the network every
+access costs a round trip to the NAS. The frontend therefore scans several
+systems at once (six once a network share is mounted, otherwise two) and
+remembers the table of contents of every zip: a zip is opened only once
+and then only again when it has changed. The log (`/tmp/frontend.log`) has
+one line per system, `Einlesen: <system> - N Eintraege, X ms`, which shows
+where the time goes.
+
 ## 8g. Themes/color schemes
 
 In the System menu: "Color scheme" cycles through three color schemes in

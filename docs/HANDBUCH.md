@@ -1082,6 +1082,14 @@ ROM-Ordner nicht mehr ändert, bevor gescannt wird. Für SD-Karte/USB
 (die meisten Nutzer) lass die Option einfach aus - sie würde dort nur
 unnötig verzögern.
 
+**Das erste Einlesen über das NAS (seit Build 341).** Über das Netz kostet
+jeder Zugriff eine Rückfrage beim NAS. Das Frontend liest deshalb mehrere
+Systeme gleichzeitig ein (sechs, sobald eine Netzfreigabe eingehängt ist,
+sonst zwei) und merkt sich das Inhaltsverzeichnis jedes Zips: ein Zip wird
+nur einmal geöffnet und danach erst wieder, wenn es sich geändert hat. Im
+Log (`/tmp/frontend.log`) steht je System eine Zeile `Einlesen: <System> -
+N Einträge, X ms` - damit ist zu sehen, wo die Zeit bleibt.
+
 ## 8g. Themes/Farbschemata
 
 Im System-Menü: "Farbschema" schaltet der Reihe nach zwischen drei

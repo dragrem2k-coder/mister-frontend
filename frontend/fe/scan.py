@@ -1814,6 +1814,95 @@ def _node_count(node):
         n += _node_count(sub)
     return n
 
+# BUILD 341: DAS INHALTSVERZEICHNIS JEDES ZIPS NUR EINMAL LESEN.
+#
+# Ein Zip zu oeffnen heisst: Datei oeffnen, ans Ende springen, das
+# Inhaltsverzeichnis lesen, schliessen - auf der Karte billig, ueber ein
+# NAS mehrere Rueckfragen je Zip. Bei einer gezippten Sammlung mit
+# Tausenden Archiven war das bei jedem Neu-Einlesen der groesste Posten.
+# Jetzt steht je Zip (Pfad -> Groesse, Aenderungszeit, Namen) in einer
+# Datei; passen Groesse und Zeit, wird das Archiv gar nicht geoeffnet -
+# es kostet nur noch EINE Abfrage (os.stat). Beim allerersten Einlesen
+# muss jedes Zip einmal gelesen werden, das geht nicht anders.
+ZIP_INDEX_FILE = "/media/fat/frontend/zip_index_cache.pkl"
+_zip_index = None
+_zip_index_neu = False
+_zip_index_gesehen = set()
+_zip_index_sperre = threading.Lock()
+
+
+def _zip_index_laden():
+    global _zip_index
+    if _zip_index is None:
+        with _zip_index_sperre:
+            if _zip_index is None:
+                try:
+                    with open(ZIP_INDEX_FILE, "rb") as f:
+                        daten = pickle.load(f)
+                    _zip_index = daten if isinstance(daten, dict) else {}
+                except Exception:                        # noqa: BLE001
+                    _zip_index = {}
+    return _zip_index
+
+
+def _zip_namen(zip_pfad):
+    """Die Namen im Archiv (Liste) - aus dem Zwischenspeicher, wenn
+    Groesse und Aenderungszeit noch stimmen, sonst gelesen. None, wenn
+    das Archiv nicht lesbar ist."""
+    global _zip_index_neu
+    try:
+        st = os.stat(zip_pfad)
+        merkmal = (st.st_size, st.st_mtime_ns)
+    except OSError:
+        return None
+    index = _zip_index_laden()
+    _zip_index_gesehen.add(zip_pfad)
+    alt = index.get(zip_pfad)
+    if alt is not None and alt[0] == merkmal:
+        return list(alt[1])
+    try:
+        import zipfile
+        with zipfile.ZipFile(zip_pfad) as archiv:
+            namen = archiv.namelist()
+    except Exception:                                    # noqa: BLE001
+        return None
+    index[zip_pfad] = (merkmal, tuple(namen))
+    _zip_index_neu = True
+    return namen
+
+
+def zip_index_speichern(alle_gesehen=False):
+    """Den Zip-Zwischenspeicher schreiben, wenn sich etwas geaendert hat.
+    alle_gesehen=True (ein vollstaendiges Einlesen): Archive, die dabei
+    nicht vorkamen, fliegen raus - sonst wuechse die Datei mit jedem
+    geloeschten Zip."""
+    global _zip_index_neu
+    index = _zip_index
+    if index is None:
+        return False
+    with _zip_index_sperre:
+        if alle_gesehen:
+            weg = [k for k in index if k not in _zip_index_gesehen]
+            for k in weg:
+                del index[k]
+            if weg:
+                _zip_index_neu = True
+        _zip_index_gesehen.clear()
+        if not _zip_index_neu:
+            return False
+        try:
+            os.makedirs(os.path.dirname(ZIP_INDEX_FILE), exist_ok=True)
+            tmp = ZIP_INDEX_FILE + ".tmp"
+            with open(tmp, "wb") as f:
+                pickle.dump(index, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(tmp, ZIP_INDEX_FILE)
+            _zip_index_neu = False
+            return True
+        except OSError as e:
+            LOG("Zip-Zwischenspeicher nicht geschrieben: %s" % e)
+            return False
+
+
 def _zip_baum(zip_pfad, syskey, rbf, extmap, filter_an):
     """Ein ZIP-Archiv als Baumknoten - genau so, als waere es ein
     Ordner. Unterordner im Archiv werden zu Unterordnern.
@@ -1844,11 +1933,8 @@ def _zip_baum(zip_pfad, syskey, rbf, extmap, filter_an):
       auch.
     """
     node = _empty_node()
-    try:
-        import zipfile
-        with zipfile.ZipFile(zip_pfad) as archiv:
-            eintraege = archiv.namelist()
-    except Exception:                                    # noqa: BLE001
+    eintraege = _zip_namen(zip_pfad)
+    if eintraege is None:
         # Kaputt, kein echtes Archiv, zu gross, mitten im Kopieren -
         # alles derselbe Fall: es gibt hier nichts zu sehen.
         return node
@@ -2066,7 +2152,6 @@ def _scan_games_disk(progress_cb=None, only_syskeys=None):
     only_syskeys=None (Vorgabe) unveraendertes Verhalten: alle Systeme
     werden gescannt, wie bisher."""
     cats = []
-    total_sys = len(GAME_SYSTEMS) + len(OPTIONAL_GAME_SYSTEMS)
     # Unterordner, die ein ANDERER Eintrag (egal ob GAME_SYSTEMS oder
     # OPTIONAL_GAME_SYSTEMS) exklusiv fuer sich beansprucht (z.B.
     # "ZELDA_MSU" oder "SMW_HACKS" unter "SNES"), muessen aus der
@@ -2089,14 +2174,26 @@ def _scan_games_disk(progress_cb=None, only_syskeys=None):
             if "/" in f:
                 top, sub = f.split("/", 1)
                 claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
-    for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
-        if only_syskeys is not None and syskey not in only_syskeys:
-            continue
-        if progress_cb:
-            try:
-                progress_cb(sys_idx, total_sys, disp)
-            except Exception:
-                pass
+    # BUILD 341: JE SYSTEM EIN AUFTRAG, MEHRERE GLEICHZEITIG.
+    #
+    # Rueckmeldung eines NAS-Nutzers: die erste Einrichtung dauert sehr
+    # lange. Das Einlesen lief System fuer System, Ordner fuer Ordner, und
+    # jeder Zugriff wartete auf die Antwort des NAS, bevor der naechste
+    # losging - auf der Karte Mikrosekunden, ueber das Netz Millisekunden
+    # je Zugriff. Die Zeit war fast reines WARTEN, und Warten laesst sich
+    # ueberlappen: waehrend ein Faden auf das NAS wartet, gibt Python die
+    # GIL frei, und der naechste fragt schon.
+    #
+    # WAS GLEICH BLEIBT: die Reihenfolge der Kategorien (die Ergebnisse
+    # werden nach Auftragsnummer zusammengesetzt, nicht nach Fertigwerden)
+    # und JEDES Zeichnen - progress_cb laeuft nur hier im aufrufenden
+    # Faden, nie in einem Arbeitsfaden. Ein Fehler in einem System kostet
+    # nur dieses System.
+    def _system_einlesen(disp, syskey, folders, rbf, extmap, core_check=None,
+                         optional=False):
+        t0 = time.monotonic()
+        if optional and optional_core_file(core_check) is None:
+            return None
         sys_node = _empty_node()
         seen_roots = set()
         for base in fe.paths.GAMES_BASES:
@@ -2110,52 +2207,102 @@ def _scan_games_disk(progress_cb=None, only_syskeys=None):
                 seen_roots.add(real)
                 sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
                 _merge_node(sys_node, sub_node)
-            for excluded in claimed_subfolders.get(folder, ()):
-                sys_node["folders"].pop(excluded, None)
+            if not optional:
+                for excluded in claimed_subfolders.get(folder, ()):
+                    sys_node["folders"].pop(excluded, None)
+        if optional:
+            # Build 330: die Sammlungen der Computer (AmigaVision-Listen,
+            # 0MHz-MGLs) - siehe fe/computer.py. Ein Fehler dort darf das
+            # Einlesen der anderen Systeme nicht kosten.
+            # ("import fe.computer" hier drin machte "fe" in der ganzen
+            # Funktion lokal - deshalb der Umweg ueber "as".)
+            try:
+                import fe.computer as _computer
+                _computer.knoten_ergaenzen(syskey, sys_node, rbf)
+            except Exception as e:                       # noqa: BLE001
+                LOG("Computer: %s nicht ergaenzt: %s" % (syskey, e))
         if sys_node["folders"] or sys_node["items"]:
-            cats.append((disp, sys_node, syskey))
+            # Build 341: je System eine Zeile - damit ist am Log eines
+            # Nutzers zu sehen, WO die Zeit bleibt, statt es zu vermuten.
+            LOG("Einlesen: %s - %d Eintraege, %.0f ms"
+                % (syskey, _node_count(sys_node),
+                   (time.monotonic() - t0) * 1000.0))
+            return (disp, sys_node, syskey)
+        return None
 
+    auftraege = []
+    for disp, syskey, folders, rbf, extmap in GAME_SYSTEMS:
+        if only_syskeys is not None and syskey not in only_syskeys:
+            continue
+        auftraege.append((disp, (disp, syskey, folders, rbf, extmap)))
     # OPTIONALE Systeme (Nutzerwunsch: SNES_Tracker-Core "wie ein
     # eigenes System behandeln, falls installiert - falls NICHT
-    # installiert darf das auch nicht mit angezeigt werden"): exakt
-    # dieselbe Scan-Logik wie oben, aber zusaetzlich VORAB die
-    # core_check_path-Datei pruefen - fehlt sie, wird gar nicht erst
-    # gescannt, das System taucht dann so auf, als gaebe es den
-    # Eintrag nicht (kein leerer/ausgegrauter Platzhalter).
-    for opt_idx, (disp, syskey, folders, rbf, extmap, core_check_path) \
-            in enumerate(OPTIONAL_GAME_SYSTEMS):
+    # installiert darf das auch nicht mit angezeigt werden"): dieselbe
+    # Scan-Logik, aber VORAB die core_check_path-Datei pruefen - fehlt
+    # sie, wird gar nicht erst gescannt.
+    for disp, syskey, folders, rbf, extmap, core_check_path \
+            in OPTIONAL_GAME_SYSTEMS:
         if only_syskeys is not None and syskey not in only_syskeys:
             continue
-        if progress_cb:
+        auftraege.append((disp, (disp, syskey, folders, rbf, extmap,
+                                 core_check_path, True)))
+
+    ergebnisse = [None] * len(auftraege)
+    faeden = max(1, min(_scan_faeden(), len(auftraege) or 1))
+    t_alle = time.monotonic()
+    if faeden == 1:
+        for nr, (disp, args) in enumerate(auftraege):
+            if progress_cb:
+                try:
+                    progress_cb(nr, len(auftraege), disp)
+                except Exception:                        # noqa: BLE001
+                    pass
             try:
-                progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
-            except Exception:
-                pass
-        if optional_core_file(core_check_path) is None:
-            continue
-        sys_node = _empty_node()
-        seen_roots = set()
-        for base in fe.paths.GAMES_BASES:
-            if not os.path.isdir(base):
-                continue
-            for folder in folders:
-                root = os.path.join(base, folder)
-                real = os.path.realpath(root)
-                if not os.path.isdir(root) or real in seen_roots:
-                    continue
-                seen_roots.add(real)
-                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
-                _merge_node(sys_node, sub_node)
-        # Build 330: die Sammlungen der Computer (AmigaVision-Listen,
-        # 0MHz-MGLs) - siehe fe/computer.py. Ein Fehler dort darf das
-        # Einlesen der anderen Systeme nicht kosten.
-        # ("import fe.computer" hier drin machte "fe" in der ganzen
-        # Funktion lokal - deshalb der Umweg ueber "as".)
-        try:
-            import fe.computer as _computer
-            _computer.knoten_ergaenzen(syskey, sys_node, rbf)
-        except Exception as e:                           # noqa: BLE001
-            LOG("Computer: %s nicht ergaenzt: %s" % (syskey, e))
-        if sys_node["folders"] or sys_node["items"]:
-            cats.append((disp, sys_node, syskey))
+                ergebnisse[nr] = _system_einlesen(*args)
+            except Exception:                            # noqa: BLE001
+                LOG("Einlesen: %s fehlgeschlagen:\n%s"
+                    % (disp, traceback.format_exc()))
+    else:
+        import concurrent.futures as _cf
+        with _cf.ThreadPoolExecutor(max_workers=faeden,
+                                    thread_name_prefix="einlesen") as pool:
+            laufend = {pool.submit(_system_einlesen, *args): (nr, disp)
+                       for nr, (disp, args) in enumerate(auftraege)}
+            fertig = 0
+            for zukunft in _cf.as_completed(laufend):
+                nr, disp = laufend[zukunft]
+                try:
+                    ergebnisse[nr] = zukunft.result()
+                except Exception:                        # noqa: BLE001
+                    LOG("Einlesen: %s fehlgeschlagen:\n%s"
+                        % (disp, traceback.format_exc()))
+                if progress_cb:
+                    try:
+                        progress_cb(fertig, len(auftraege), disp)
+                    except Exception:                    # noqa: BLE001
+                        pass
+                fertig += 1
+    cats.extend(e for e in ergebnisse if e is not None)
+    # Build 341: was an Zips neu gelesen wurde, fuer das naechste Mal
+    # merken. Aufraeumen nur nach einem VOLLSTAENDIGEN Einlesen - bei
+    # einem Teil-Einlesen (only_syskeys) waeren die anderen Systeme
+    # sonst "nicht gesehen".
+    zip_index_speichern(alle_gesehen=only_syskeys is None)
+    LOG("Einlesen: %d Systeme in %.0f ms (%d Faeden)"
+        % (len(cats), (time.monotonic() - t_alle) * 1000.0, faeden))
     return cats
+
+
+# Build 341: wieviele Systeme gleichzeitig eingelesen werden. Ueber das
+# Netz bringt Ueberlappen am meisten (fast nur Warten); auf der Karte
+# weniger, weil dort auch gerechnet wird und der MiSTer zwei Kerne hat.
+SCAN_FAEDEN_NETZ = 6
+SCAN_FAEDEN_LOKAL = 2
+
+
+def _scan_faeden():
+    """6 Faeden, wenn eine Netzfreigabe eingehaengt ist, sonst 2."""
+    try:
+        return SCAN_FAEDEN_NETZ if _has_network_mount() else SCAN_FAEDEN_LOKAL
+    except Exception:                                    # noqa: BLE001
+        return 1

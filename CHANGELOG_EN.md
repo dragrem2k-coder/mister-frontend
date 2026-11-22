@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Faster: the first scan over a NAS.** Over the network every access
+  waits for an answer from the NAS, and the frontend used to read one
+  system after the other. It now reads several systems at once (six as
+  soon as a network share is mounted), and for zipped ROMs it remembers
+  the table of contents — a zip is opened only once and then only again
+  when it has changed. The log shows how long each system took
+  (build 341).
 - **Tidied up: two names no longer appear anywhere.** A contributor has
   been removed completely — boot logo, credits entry and every mention in
   the docs, changelogs and program. If you had chosen their logo as the

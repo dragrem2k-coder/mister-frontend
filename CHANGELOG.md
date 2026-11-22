@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Schneller: das erste Einlesen über ein NAS.** Über das Netz wartet
+  jeder Zugriff auf eine Antwort des NAS, und das Frontend hat bisher
+  System für System nacheinander gelesen. Jetzt liest es mehrere Systeme
+  gleichzeitig (sechs, sobald eine Netzfreigabe eingehängt ist), und von
+  gezippten ROMs merkt es sich das Inhaltsverzeichnis — ein Zip wird nur
+  noch einmal geöffnet und danach erst wieder, wenn es sich geändert
+  hat. Im Log steht je System, wie lange es gedauert hat (Build 341).
 - **Aufgeräumt: zwei Namen kommen nirgends mehr vor.** Ein Mitwirkender
   ist komplett entfernt — Bootlogo, Eintrag bei den Mitwirkenden und alle
   Nennungen in Doku, Changelogs und Programm. Wer sein Logo als Bootlogo

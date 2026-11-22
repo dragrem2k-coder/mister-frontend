@@ -11513,3 +11513,44 @@ Neu `tools/test_namen_entfernt.py`: alle Textdateien, Dateinamen, PDFs
 gespielt-Liste mit Gegenprobe, altes Hauptseiten-Kuerzel.
 `tools/test_bootlogo_wahl.py` neu gefasst (zwei Logos, vier Stufen, alte
 Wahl -> Vorgabe).
+
+## Nachtrag Build 341 - das erste Einlesen ueber ein NAS
+
+**Stand:** 21.11.2026, `Dragend_Build_341.zip` (build_id
+`2026-11-21-341`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Rueckmeldung eines NAS-Nutzers ueber den Nutzer: die erste Einrichtung
+dauert sehr lange. Keine Messung von ihm - die Ursachen sind aus dem
+Code gelesen, und die neue Logzeile soll beim naechsten Mal zeigen, wo
+die Zeit bleibt.
+
+### Gleichzeitig statt nacheinander
+
+`_scan_games_disk()`: je System ein Auftrag (`_system_einlesen()`),
+`ThreadPoolExecutor` mit `SCAN_FAEDEN_NETZ` = 6 bei eingehaengter
+Netzfreigabe, sonst `SCAN_FAEDEN_LOKAL` = 2. Die Zeit ueber das Netz ist
+fast reines Warten; waehrend ein Faden in `os.scandir()` oder beim Zip
+wartet, ist die GIL frei. Ergebnisse nach Auftragsnummer (die Reihenfolge
+der Kategorien bleibt), `progress_cb` nur im aufrufenden Faden (Zeichnen
+nie aus einem Arbeitsfaden), Fehler kosten nur ihr System. Mit 20 ms
+kuenstlicher Wartezeit je Ordner im Test: 978 ms gegen 247 ms.
+
+### Zips einmal
+
+`_zip_namen()`: je Zip (Pfad -> (Groesse, mtime_ns), Namen) in
+`zip_index_cache.pkl`. Passt das Merkmal, wird das Archiv nicht geoeffnet
+- eine Abfrage (`os.stat`) statt Oeffnen, Ende suchen, Verzeichnis lesen.
+`zip_index_speichern()` nach jedem Einlesen; nur nach einem
+vollstaendigen fliegt Ungesehenes raus.
+
+### Log
+
+`Einlesen: <SYS> - N Eintraege, X ms` je System, dazu
+`Einlesen: N Systeme in X ms (F Faeden)`.
+
+### Pruefungen
+
+Neu `tools/test_nas_einlesen.py`. Verfaelscht (Zip-Treffer aus, Ergebnis
+nach Fertigwerden einsortiert, nur ein Faden, Faedenzahl ohne Netzpruefung)
+- jedes Mal rot.
