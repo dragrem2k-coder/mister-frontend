@@ -223,12 +223,19 @@ check("und in de UND en vorhanden", not _halb, "halb: %r" % (_halb,))
 # Genau ein Platzhalter dort, wo einer eingesetzt wird - und KEINER
 # bei den Beschriftungen. Ein uebriges %s waere auf dem Fernseher ein
 # Absturz mitten im Zeichnen.
-for _k in ("info_spieler_kurz",):
+# Build 346: "info_wertung_wert" ("91% Spielspass") hat ebenfalls genau
+# einen - und sein Prozentzeichen ist verdoppelt (%%), sonst waere es
+# selbst ein Platzhalter.
+_EIN_PLATZHALTER = ("info_spieler_kurz", "info_wertung_wert")
+for _k in _EIN_PLATZHALTER:
     for _spr in ("de", "en"):
         check("%s/%s hat genau einen Platzhalter" % (_k, _spr),
               len(re.findall(r"%[sd]", TR.TRANSLATIONS[_k][_spr])) == 1)
+check("info_wertung_wert ergibt eine Zahl mit Prozentzeichen",
+      all((TR.TRANSLATIONS["info_wertung_wert"][_spr] % 91).startswith("91%")
+          for _spr in ("de", "en")))
 _mit_platzhalter = [k for k in _benutzt
-                    if k != "info_spieler_kurz"
+                    if k not in _EIN_PLATZHALTER
                     and any(re.search(r"%[sd]", TR.TRANSLATIONS[k][sp] or "")
                             for sp in ("de", "en"))]
 check("und sonst keiner einen", not _mit_platzhalter,

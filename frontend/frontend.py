@@ -1266,6 +1266,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # 8x8-Bitmap-Font komplett ausgelagert)
 # ----------------------------------------------------------------------------
 import fe.masken as MASKEN
+import fe.wertungen as WT   # Build 346: eigene Wertungen
 import fe.schriften as SCHRIFTEN
 import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
@@ -3319,6 +3320,11 @@ class Frontend:
         # passiert im Bildschirm (draw_zufallszock_screen()), nicht ueber Navigation.
         # Anlegen des Menuepunkts ist billig; der (nur beim ersten Oeffnen /
         # nach ROM-Aenderung) teure Katalogbau laeuft erst in draw_zufallszock_screen().
+        # Build 346: das Testarchiv - nur bei EIN und mit mindestens
+        # einer Wertung, die sich starten laesst.
+        _archiv = self._testarchiv_knoten()
+        if _archiv is not None:
+            self.cats.append((t("testarchiv_cat"), _archiv, None))
         self.cats.append((t("zufallszock_title"), _wrap_flat(
             [(t("sys_zufallszock_action"), "zufallszock_draw", None)]), None))
         self.cats.append(("System", system_items(
@@ -4113,6 +4119,10 @@ class Frontend:
                 eintraege.append(
                     (t("ctx_done_aus") if done else t("ctx_done_an"),
                      "completed"))
+            if markiert is not None and WT.an() and WT.bewertbar(
+                    kind, markiert[2] if len(markiert) > 2 else None):
+                # Build 346: nur bei EIN, und nur bei einem Spiel.
+                eintraege.append((t("ctx_bewerten"), "bewerten"))
             if markiert is not None:
                 eintraege.append((t("ctx_verstecken"), "verstecken"))
             eintraege.append((t("ctx_suche"), "search"))
@@ -4232,6 +4242,23 @@ class Frontend:
         _spieler = str(meta.get("players") or "").strip()
         if _spieler:
             fakten.append((t("info_spieler"), _spieler))
+        # Build 346: die eigene Wertung - nur bei EIN und nur, wenn es
+        # eine gibt.
+        _wsk = WT.ARCADE if WT.ist_automat(markiert[1], arg) else syskey
+        _wert = WT.wertung(_wsk, label)
+        _stempel = None
+        if _wert:
+            fakten.append((t("info_wertung"), t(
+                "info_wertung_wert", WT.runden(_wert.get("spass")) or 0)))
+            _teile = ["%s %d%%" % (self._wertung_name(k), _wert[k])
+                      for k in WT.ALLE_PROZENTE[1:] if k in _wert]
+            for _k in ("schwierigkeit", "spieler"):
+                if _wert.get(_k):
+                    _teile.append(self._wertung_beschriftung(_k, _wert[_k]))
+            if _teile:
+                fakten.append((t("info_wertung_teile"), "  ".join(_teile)))
+            if WT.stempel_an():
+                _stempel = WT.stempel(_wert, sekunden)
         if sekunden > 0 or starts > 0:
             fakten.append((t("info_spielzeit"),
                            _format_seconds_short(sekunden)))
@@ -4250,6 +4277,8 @@ class Frontend:
             _marken.append(t("info_durchgespielt"))
         if anleitung:
             _marken.append(t("info_anleitung"))
+        if _stempel:
+            _marken.append(self._wertung_stempel_name(_stempel))
         if _marken:
             fakten.append((t("info_marken"), "  ".join(_marken)))
 
@@ -4673,6 +4702,427 @@ class Frontend:
             raus = basis
         self._anzeige_cache = (schluessel, raus)
         return raus
+
+    # ------------------------------------------------------------------
+    # BUILD 346: EIGENE WERTUNGEN IM HEFT-STIL (fe/wertungen.py)
+    #
+    # Nutzerwunsch: Spielspass in Prozent wie frueher im Heft, dazu
+    # Grafik/Sound je nach Geraet, ein Stempel ab 85 %, ein Testarchiv
+    # je System, eine kurze Frage beim Zurueckkommen - und alles
+    # abschaltbar. Bei AUS fragt keine dieser Stellen die Datei.
+    # ------------------------------------------------------------------
+    def _wertung_syskey(self, eintrag, kat_syskey=None):
+        """Das System, unter dem ein Eintrag bewertet wird - Arcade-
+        Spiele (.mra) haben keinen syskey und stehen unter ARCADE."""
+        kind = eintrag[1]
+        arg = eintrag[2] if len(eintrag) > 2 else None
+        if WT.ist_automat(kind, arg):
+            return WT.ARCADE
+        return self._item_syskey(eintrag, kat_syskey)
+
+    WERTUNG_SCHALTER = {
+        "wertungen": WT.toggle_an,
+        "wertung_fragen": WT.toggle_fragen,
+        "wertung_fragen_ab": WT.cycle_fragen_ab,
+        "wertung_liste": WT.toggle_in_listen,
+        "wertung_kategorien": WT.toggle_nur_spielspass,
+        "wertung_stempel": WT.toggle_stempel,
+    }
+    # Feste Ampelfarben - die Balken sollen in jedem Farbschema sagen,
+    # was sie sagen.
+    WERTUNG_FARBEN = {"rot": (200, 64, 56), "gelb": (214, 176, 48),
+                      "gruen": (72, 176, 96)}
+
+    def _wertung_systemname(self, syskey):
+        if syskey == WT.ARCADE:
+            return "Arcade"
+        if not syskey:
+            return "?"
+        try:
+            return system_display_name(syskey) or syskey
+        except Exception:                                # noqa: BLE001
+            return syskey
+
+    def _wertung_zeit(self, label):
+        try:
+            z = (getattr(self, "_playtime_cache", None) or load_playtime()
+                 or {}).get(label) or {}
+        except Exception:                                # noqa: BLE001
+            z = {}
+        return int(z.get("seconds") or 0), int(z.get("launches") or 0)
+
+    def _wertung_praefix(self, name, kind, syskey):
+        """'91% ' vor dem Namen - nur mit Wertung, nur bei EIN."""
+        if not WT.in_listen() or kind not in ("game", "core"):
+            return ""
+        if kind == "core":
+            syskey = WT.ARCADE
+        try:
+            w = WT.spielspass(syskey, name)
+        except Exception:                                # noqa: BLE001
+            return ""
+        return "" if w is None else "%d%% " % w
+
+    def _testarchiv_knoten(self):
+        if not WT.an():
+            return None
+        try:
+            return WT.testarchiv(self._wertung_systemname,
+                                 t("testarchiv_hits"))
+        except Exception:                                # noqa: BLE001
+            LOG("Testarchiv:\n" + traceback.format_exc())
+            return None
+
+    def _sync_testarchiv_category(self):
+        """Das Testarchiv in self.cats aktuell halten - wie
+        _sync_favorites_category(), ohne build_categories(). Steht vor
+        dem Zufalls-Zock; die eigene Reihenfolge der Hauptseite gilt
+        danach wieder."""
+        if not self.cats:
+            return
+        current_ref = (self.cats[self.cat_i][0], self.cats[self.cat_i][2])
+        name = t("testarchiv_cat")
+        self.cats = [c for c in self.cats
+                     if not (c[0] == name and c[2] is None)]
+        knoten = self._testarchiv_knoten()
+        if knoten is not None:
+            pos = len(self.cats)
+            for i, c in enumerate(self.cats):
+                if c[2] is None and c[0] in (t("zufallszock_title"),
+                                              "System"):
+                    pos = i
+                    break
+            self.cats.insert(pos, (name, knoten, None))
+        self._hauptseite_anwenden()
+        for i, c in enumerate(self.cats):
+            if (c[0], c[2]) == current_ref:
+                self.cat_i = i
+                break
+        else:
+            self.cat_i = min(self.cat_i, len(self.cats) - 1)
+            if self.page == 1:
+                self.page = 0
+                self.nav_path = []
+                self._nav_position_stack = []
+            return
+        if self.page == 1 and knoten is not None and current_ref[0] == name:
+            # Steht man in einem Ordner, den es nicht mehr gibt (die
+            # letzte Wertung eines Systems geloescht), zurueck bis zum
+            # letzten, den es noch gibt.
+            node, gueltig = knoten, 0
+            for teil in list(self.nav_path):
+                sub = node.get("folders", {}).get(teil)
+                if sub is None:
+                    break
+                node, gueltig = sub, gueltig + 1
+            if gueltig < len(self.nav_path):
+                self.nav_path = self.nav_path[:gueltig]
+                stapel = getattr(self, "_nav_position_stack", None)
+                if stapel is not None:
+                    self._nav_position_stack = stapel[:gueltig]
+                self.item_i = 0
+        if self.page == 1:
+            display = self._display_items()
+            if self.item_i >= len(display):
+                self.item_i = max(0, len(display) - 1)
+
+    def _wertung_eintrag_suchen(self, label, syskey, path):
+        """(kind, arg) des gerade gespielten Spiels - fuer das
+        Testarchiv, das es danach starten koennen muss. (None, None) fuer
+        alles, was kein Spiel aus der Liste ist (AmigaVision als Ganzes,
+        das Gimmick)."""
+        if isinstance(path, str) and path.lower().endswith(".mra"):
+            return "core", path
+        try:
+            for l_, k_, a_ in load_recent()[:5]:
+                if l_ == label and a_ and len(a_) > 2 and a_[2] == syskey:
+                    return k_, a_
+        except Exception:                                # noqa: BLE001
+            pass
+        return None, None
+
+    def _wertung_nach_spiel(self, label, syskey, path, sekunden):
+        """Nach der Rueckkehr: die Leiste, wenn gefragt werden soll.
+        Ein Fehler hier darf die Rueckkehr nie aufhalten."""
+        try:
+            if not label or not WT.fragen():
+                return False
+            if (sekunden or 0) < WT.fragen_ab_minuten() * 60:
+                return False
+            kind, arg = self._wertung_eintrag_suchen(label, syskey, path)
+            if kind is None:
+                return False
+            sk = WT.ARCADE if kind == "core" else syskey
+            if WT.wertung(sk, label):
+                return False
+            return self._wertung_leiste(label, kind, arg, sk, sekunden)
+        except Exception:                                # noqa: BLE001
+            LOG("Wertung nach dem Spiel:\n" + traceback.format_exc())
+            self._force_full_redraw = True
+            return False
+
+    def _wertung_leiste_zeichnen(self, label, sekunden, wert):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        st = WT.stempel({"spass": wert}) if WT.stempel_an() else None
+        teil = "%s < %d%% >" % (t("wertung_spass"), wert)
+        if st:
+            teil += "  " + t("wertung_stempel_" + st)
+        # Passt die Bedienung nicht neben den Wert (Roehre), bekommt sie
+        # eine eigene dritte Zeile - ohne sie wuesste niemand, dass A
+        # speichert.
+        hint = None
+        for _h in (t("wertung_leiste_hinweis"),
+                   t("wertung_leiste_hinweis_kurz")):
+            if len(teil) + len(_h) + 2 <= maxc:
+                hint = _h
+                break
+        dritte = None if hint else t("wertung_leiste_hinweis_kurz")
+        band_h = (3 if dritte else 2) * 12 * s + 8 * s
+        y0 = H - oy - band_h
+        fb.rect(0, y0, W, H - y0, C_PANEL)
+        fb.rect(0, y0, W, max(2, s), C_ACCENT)
+        zeit = _format_seconds_short(int(sekunden or 0))
+        frage = t("wertung_leiste_frage")
+        name = display_name(label or "")
+        platz = maxc - len(frage) - len(zeit) - 6
+        oben = "%s  %s" % (name[:max(4, platz)], zeit)
+        fb.text(ox, y0 + 5 * s, oben[:maxc], s, C_TEXT, C_PANEL)
+        if len(oben) + len(frage) + 2 <= maxc:
+            fb.text(W - ox - len(frage) * 8 * s, y0 + 5 * s, frage, s,
+                    C_TITLE, C_PANEL)
+        farbe = self.WERTUNG_FARBEN.get(WT.farbstufe(wert), C_TITLE)
+        fb.text(ox, y0 + 17 * s, teil[:maxc], s, farbe, C_PANEL)
+        if hint:
+            fb.text(W - ox - len(hint) * 8 * s, y0 + 17 * s, hint, s,
+                    C_DIM, C_PANEL)
+        else:
+            fb.text(ox, y0 + 29 * s, dritte[:maxc], s, C_DIM, C_PANEL)
+        fb.flip()
+
+    def _wertung_leiste(self, label, kind, arg, syskey, sekunden):
+        """Die Rueckkehr-Leiste: unten ein Band ueber dem fertigen Bild.
+        Links/Rechts aendern den Spielspass in 5er-Schritten, A
+        speichert, B (oder nichts, WT.LEISTE_SEKUNDEN lang) heisst
+        "spaeter", Select oeffnet den ganzen Kasten. Jede andere Taste
+        schliesst die Leiste und wirkt danach ganz normal."""
+        sek, starts = self._wertung_zeit(label)
+        wert = WT.vorschlag(max(sek, int(sekunden or 0)), starts)
+        ende = time.monotonic() + WT.LEISTE_SEKUNDEN
+        ergebnis = None
+        while True:
+            self._wertung_leiste_zeichnen(label, sekunden, wert)
+            rest = ende - time.monotonic()
+            if rest <= 0:
+                break
+            akt = self.inp.read_action(timeout=rest)
+            if akt is None:
+                break
+            if akt in ("left", "right"):
+                wert = WT.runden(wert + (WT.SCHRITT if akt == "right"
+                                         else -WT.SCHRITT))
+                ende = time.monotonic() + WT.LEISTE_SEKUNDEN
+                continue
+            if akt == "ok":
+                if WT.speichern(syskey, label, {"spass": wert}, kind=kind,
+                                arg=arg):
+                    ergebnis = "gespeichert"
+                break
+            if akt == "select":
+                ergebnis = self.wertungskasten(label, kind, arg, syskey,
+                                               spass=wert)
+                break
+            if akt not in ("back", "exit"):
+                self._vorgemerkte_aktion = akt
+            break
+        self._wertung_fertig(ergebnis, syskey, label)
+        return ergebnis is not None
+
+    def _wertung_fertig(self, ergebnis, syskey, label):
+        """Nach Kasten oder Leiste: Liste und Testarchiv auffrischen,
+        sagen, was passiert ist."""
+        self._force_full_redraw = True
+        if ergebnis is None:
+            self.draw()
+            return
+        self._anzeige_geaendert()
+        self._sync_testarchiv_category()
+        if ergebnis == "geloescht":
+            self.draw(message=t("wertung_geloescht"))
+            return
+        e = WT.wertung(syskey, label) or {}
+        wert = WT.runden(e.get("spass")) or 0
+        st = (WT.stempel(e, self._wertung_zeit(label)[0])
+              if WT.stempel_an() else None)
+        if st:
+            self.draw(message=t("wertung_gespeichert_stempel", wert,
+                                t("wertung_stempel_" + st)))
+        else:
+            self.draw(message=t("wertung_gespeichert", wert))
+
+    def _wertung_bearbeiten(self):
+        """Aus dem Kontextmenue: der Kasten fuer das markierte Spiel."""
+        items = self._display_items()
+        eintrag = items[self.item_i] if items else None
+        if not eintrag or not WT.an():
+            return
+        arg = eintrag[2] if len(eintrag) > 2 else None
+        if not WT.bewertbar(eintrag[1], arg):
+            return
+        kat_syskey = self.cats[self.cat_i][2] if self.cats else None
+        sk = self._wertung_syskey(eintrag, kat_syskey)
+        erg = self.wertungskasten(eintrag[0], eintrag[1], arg, sk)
+        self._wertung_fertig(erg, sk, eintrag[0])
+
+    def _wertung_zeilen(self, syskey, vorhanden):
+        kats = list(WT.kategorien(syskey))
+        zeilen = kats + (["schwierigkeit", "spieler"] if kats else [])
+        zeilen.append("spass")
+        if vorhanden:
+            zeilen.append("loeschen")
+        return zeilen
+
+    def wertungskasten(self, label, kind, arg, syskey, spass=None):
+        """Der Wertungskasten. 'gespeichert', 'geloescht' oder None
+        (abgebrochen)."""
+        alt = WT.wertung(syskey, label) or {}
+        sek, starts = self._wertung_zeit(label)
+        werte = dict((k, WT.runden(alt.get(k))) for k in WT.ALLE_PROZENTE)
+        werte["schwierigkeit"] = alt.get("schwierigkeit")
+        werte["spieler"] = alt.get("spieler")
+        if spass is not None:
+            werte["spass"] = WT.runden(spass)
+        if werte["spass"] is None:
+            werte["spass"] = WT.vorschlag(sek, starts)
+        zeilen = self._wertung_zeilen(syskey, bool(alt))
+        i = zeilen.index("spass")
+        while True:
+            self._wertungskasten_zeichnen(label, syskey, zeilen, i, werte,
+                                          sek)
+            akt = self.inp.read_action(timeout=None)
+            if akt in ("back", "exit"):
+                return None
+            z = zeilen[i]
+            if akt == "up":
+                i = (i - 1) % len(zeilen)
+            elif akt == "down":
+                i = (i + 1) % len(zeilen)
+            elif akt in ("left", "right"):
+                werte[z] = self._wertung_wert_aendern(z, werte.get(z),
+                                                      akt == "right")
+            elif akt == "select" and z not in ("spass", "loeschen"):
+                werte[z] = None
+            elif akt == "ok":
+                if z == "loeschen":
+                    return "geloescht" if WT.loeschen(syskey, label) \
+                        else None
+                if WT.speichern(syskey, label, werte, kind=kind, arg=arg):
+                    return "gespeichert"
+                return None
+
+    @staticmethod
+    def _wertung_wert_aendern(zeile, wert, hoch):
+        if zeile in WT.ALLE_PROZENTE:
+            if wert is None:
+                return 50
+            return WT.runden(wert + (WT.SCHRITT if hoch else -WT.SCHRITT))
+        reihe = {"schwierigkeit": WT.SCHWIERIGKEITEN,
+                 "spieler": WT.SPIELER}.get(zeile)
+        if not reihe:
+            return wert
+        stufen = (None,) + tuple(reihe)
+        i = stufen.index(wert) if wert in stufen else 0
+        return stufen[(i + (1 if hoch else -1)) % len(stufen)]
+
+    @staticmethod
+    def _wertung_name(zeile):
+        """Die Beschriftung einer Zeile des Kastens."""
+        return t("wertung_" + zeile)
+
+    @staticmethod
+    def _wertung_stempel_name(stempel):
+        return t("wertung_stempel_" + stempel)
+
+    def _wertung_beschriftung(self, zeile, wert):
+        if zeile in WT.ALLE_PROZENTE:
+            return "  -" if wert is None else "%3d%%" % wert
+        if wert is None:
+            return t("wertung_leer")
+        if zeile == "schwierigkeit":
+            return t("wertung_" + wert)
+        if zeile == "spieler":
+            return t("wertung_spieler_" + wert)
+        return str(wert)
+
+    def _wertungskasten_zeichnen(self, label, syskey, zeilen, i, werte, sek):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        akzent = accent_for(syskey) if syskey != WT.ARCADE else C_ACCENT
+        fb.clear(C_BG)
+        titel = t("wertung_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 6 * s
+        fb.text(ox, y, display_name(label or "")[:maxc], s, C_TEXT, C_BG)
+        y += 12 * s
+        fb.text(ox, y, self._wertung_systemname(syskey)[:maxc], s, akzent,
+                C_BG)
+        y += 16 * s
+        namen = {z: (t("wertung_loeschen") if z == "loeschen"
+                     else t("wertung_" + z)) for z in zeilen}
+        lw = min(maxc // 2, max(len(n) for n in namen.values()) + 1)
+        wert_x = ox + lw * 8 * s
+        text_w = 5 * 8 * s                     # " 100%"
+        bar_w = W - ox - wert_x - text_w - 2 * s
+        zeile_h = 14 * s
+        spur = fb._darken(C_TEXT, 0.25)
+        for j, z in enumerate(zeilen):
+            if z in ("spass", "loeschen"):
+                fb.rect(ox, y - 3 * s, W - 2 * ox, max(1, s // 2 or 1), spur)
+                y += 3 * s
+            sel = j == i
+            bg = C_PANEL if sel else C_BG
+            if sel:
+                fb.rect(ox - 2 * s, y - 3 * s, W - 2 * ox + 4 * s,
+                        8 * s + 6 * s, C_PANEL)
+            farbe_name = C_TITLE if z == "spass" else C_TEXT
+            fb.text(ox, y, namen[z][:lw if z != "loeschen" else maxc], s,
+                    farbe_name, bg)
+            if z != "loeschen":
+                w = werte.get(z)
+                txt = self._wertung_beschriftung(z, w)
+                if z in WT.ALLE_PROZENTE:
+                    if bar_w >= 16 * s:
+                        fb.rect(wert_x, y + 2 * s, bar_w, 4 * s, spur)
+                        if w:
+                            fb.rect(wert_x, y + 2 * s,
+                                    max(1, bar_w * w // 100), 4 * s,
+                                    self.WERTUNG_FARBEN.get(
+                                        WT.farbstufe(w), C_ACCENT))
+                    fb.text(W - ox - len(txt) * 8 * s, y, txt, s,
+                            C_TITLE if z == "spass" else C_TEXT, bg)
+                else:
+                    fb.text(wert_x, y, txt[:max(1, maxc - lw)], s, C_TEXT,
+                            bg)
+            y += zeile_h
+        if WT.stempel_an():
+            st = WT.stempel({"spass": werte.get("spass")}, sek)
+            if st:
+                stp = "* %s *" % t("wertung_stempel_" + st)
+                fb.text(max(ox, W - ox - len(stp) * 8 * s), y + 2 * s,
+                        stp[:maxc], s, C_ACCENT, C_BG)
+        # Der volle Hinweis - _hinweis_unten() bricht ihn auf der Roehre
+        # auf bis zu drei Zeilen um; die Zeilen oben lassen den Platz.
+        self._hinweis_unten(t("wertung_hinweis"), s - 1 if s > 1 else 1)
+        fb.flip()
 
     def _anzeige_geaendert(self):
         """Den Zaehler hochdrehen, an dem der Merker in
@@ -13178,8 +13628,10 @@ class Frontend:
         RA-Auszeichnung - "M " gemeistert (alle Erfolge), "B " beendet
         (RA: durchgespielt). EINE Stelle fuer Zeile und Laufschrift."""
         if kind != "game":
-            return ""
-        prefix = ""
+            # Build 346: Arcade-Spiele (.mra) tragen nur ihre Wertung.
+            return self._wertung_praefix(name, kind, syskey) \
+                if kind == "core" else ""
+        prefix = self._wertung_praefix(name, kind, syskey)
         if name in self._favorites_set:
             prefix += "* "
         if name in getattr(self, "_completed_set", ()):
@@ -18250,6 +18702,9 @@ class Frontend:
                 self._ra_bilanz_zeigen(bilanz, label)
             except Exception:                            # noqa: BLE001
                 LOG("RA-Sitzungsbilanz:\n" + traceback.format_exc())
+        # Build 346: "Wie war's?" - ganz zuletzt, ueber dem fertigen Bild.
+        # Bei AUS (Vorgabe) kehrt das in der ersten Zeile zurueck.
+        self._wertung_nach_spiel(label, syskey, path, played_seconds)
 
     def run_script(self, path, args=None):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
@@ -20238,7 +20693,7 @@ class Frontend:
         # Die Umschaltung bleibt vollstaendig erhalten - unter
         # System -> Optionen -> Anzeige & Sound, dort wo sie hingehoert:
         # bei jemandem, der das Frontend bereits laufen sieht.
-        total = 7
+        total = 8   # Build 346: + Wertungen
 
         # Schritt 1: Sprache
         lang_options = ["Deutsch", "English"]
@@ -20297,17 +20752,29 @@ class Frontend:
         if do_gameinfo == 0:
             self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Gameinfo_Download.sh"))
 
-        # Schritt 6: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
-        self._wizard_scanning_step(
-            t("wizard_step_title", 6, total, t("wizard_step_scan")))
+        # Schritt 6 (Build 346): eigene Wertungen - einmal fragen. Bei
+        # einem Update kommt diese Frage nicht; dort bleibt es AUS, bis
+        # man es selbst einschaltet.
+        do_wertungen = self._wizard_choice(
+            t("wizard_step_title", 6, total, t("wizard_step_wertungen")),
+            [t("wizard_wertungen_ja"), t("wizard_wertungen_nein")],
+            initial=0,
+            lines=[t("wizard_wertungen_1"), t("wizard_wertungen_2")])
+        if do_wertungen is None:
+            return
+        WT.an_setzen(do_wertungen == 0)
 
-        # Schritt 7: Esc-Ausstieg-Hinweis (reiner Hinweis, ESC hier
+        # Schritt 7: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
+        self._wizard_scanning_step(
+            t("wizard_step_title", 7, total, t("wizard_step_scan")))
+
+        # Schritt 8: Esc-Ausstieg-Hinweis (reiner Hinweis, ESC hier
         # bedeutet "verstanden, weiter" statt "abbrechen" - skippable=
         # True, aber run_setup_wizard() behandelt False identisch zu
         # True, da es hier nichts zu ueberspringen gibt ausser dem
         # Lesen selbst).
         self._wizard_info(
-            t("wizard_step_title", 7, total, t("wizard_step_esc_hint")),
+            t("wizard_step_title", 8, total, t("wizard_step_esc_hint")),
             [t("wizard_esc_hint_1"), t("wizard_esc_hint_2")], skippable=True)
 
         mark_setup_wizard_done()
@@ -27574,6 +28041,17 @@ class Frontend:
                         self._zufall_nur_favoriten = True
                         self._vorgemerkte_aktion = "random"
                         continue
+                    # Build 346: der Wertungskasten - wie der Steckbrief nur
+                    # hier, es gibt keine freie Taste dafuer.
+                    if gewaehlt == "bewerten":
+                        try:
+                            self._wertung_bearbeiten()
+                        except Exception:                # noqa: BLE001
+                            LOG("Wertungskasten CRASH:\n"
+                                + traceback.format_exc())
+                            self._force_full_redraw = True
+                            self.draw()
+                        continue
                     # Alles Uebrige ist eine vorhandene Aktion: einmal
                     # vormerken, und die Schleife behandelt sie in der
                     # naechsten Runde wie einen Tastendruck.
@@ -28339,6 +28817,15 @@ class Frontend:
                         elif kind == "favoriten_zuerst":
                             toggle_favoriten_zuerst()
                             self._anzeige_geaendert()
+                            self._refresh_system_category()
+                        elif kind in self.WERTUNG_SCHALTER:
+                            # Build 346: die eigenen Wertungen. Alles,
+                            # was davon sichtbar ist (Vorzeichen in der
+                            # Liste, das Testarchiv), haengt an diesen
+                            # Schaltern - also beides auffrischen.
+                            self.WERTUNG_SCHALTER[kind]()
+                            self._anzeige_geaendert()
+                            self._sync_testarchiv_category()
                             self._refresh_system_category()
                         elif kind == "multidisc":
                             # Der Schalter steckt im Fingerabdruck -

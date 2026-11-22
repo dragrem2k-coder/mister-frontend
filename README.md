@@ -138,6 +138,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Jahresrückblick** | Statistik für das laufende Kalenderjahr |
 | **Spielzeit-Tracker** | Wie lange, wie oft, wann zuletzt — pro Spiel und pro System |
 | **Top-10-Listen** | Nach Spielzeit, Startzahl, Systemen |
+| **Eigene Wertungen** | Wie früher im Heft: Spielspaß in Prozent, auf Wunsch Grafik, Sound/Musik, Steuerung je nach Gerät, Stempel „Dragend-Hit“ ab 85 %. Kurze Frage nach dem Spielen (A speichert, B später), Testarchiv je System. **Abschaltbar — und nach einem Update erst einmal aus** |
 | **RetroAchievements** | Fortschritt, Erfolgs-Vitrine (F6), Popup bei neuen Erfolgen |
 | **Durchgespielt & eigene Erfolge** | Auch für Spiele ohne RA-Unterstützung |
 | **Easter Eggs & Frontend-Level** | Versteckte Erfolge, Jubiläums-Hinweise, saisonale Dekorationen |

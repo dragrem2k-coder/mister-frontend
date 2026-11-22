@@ -173,6 +173,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8z. Cores: Fassung wählen und aktualisieren
    - 8i. Spielzeit-Tracker
    - 8j. Top-10-Listen
+   - 8j-2. Eigene Wertungen im Heft-Stil
    - 8k. RetroAchievements-Fortschritt
    - 8l. Standard- oder RA-Core wählen
    - 8m. Durchgespielt-Status + eigene Erfolge
@@ -1636,6 +1637,65 @@ Im System-Menü: "Top 10: meistgespielt" und "Top 10: meistgestartet"
 zeigen eine Vollbild-Übersicht der 10 Spiele mit der längsten
 Gesamtspielzeit bzw. den meisten Starts. Rein informativ - eine
 beliebige Taste kehrt zurück ins Menü.
+
+## 8j-2. Eigene Wertungen im Heft-Stil (Build 346)
+
+Spiele bewerten wie früher im Heft: **Spielspaß in Prozent** als
+Hauptzahl, auf Wunsch dazu Grafik, Sound und Co. Alles ist
+**abschaltbar** – und nach einem Update erst einmal **aus**.
+
+**Einschalten:** System → Statistiken & Erfolge → `Wertungen: AUS`
+drücken. Bei einer neuen Installation fragt der Einrichtungs-Assistent
+einmal danach. Steht der Schalter auf AUS, ist von allem hier nichts zu
+sehen: keine Frage nach dem Spielen, keine Prozente in der Liste, kein
+Testarchiv, kein Menüpunkt „Bewerten…“, und die Wertungsdatei wird gar
+nicht gelesen. Schon vergebene Wertungen bleiben dabei erhalten.
+
+**Nach dem Spielen:** Wer mindestens 5 Minuten gespielt hat (einstellbar:
+5, 10 oder 20) und das Spiel noch nicht bewertet hat, sieht unten eine
+schmale Leiste: *Wie war's? Spielspaß < 75% >*. Links/Rechts ändern in
+5er-Schritten, **A** speichert, **B** heißt „später“, **Select** öffnet
+den ganzen Wertungskasten. Nach 6 Sekunden ohne Taste verschwindet die
+Leiste; jede andere Taste schließt sie und wirkt danach ganz normal.
+Vorbelegt ist ein Vorschlag aus deiner Spielzeit (ab 10 Stunden 85 %,
+ab 3 Stunden oder 10 Starts 80 %, ab 1 Stunde oder 5 Starts 75 %,
+sonst 70 %) – ein Druck auf A bestätigt ihn.
+
+**Der Wertungskasten:** Kontextmenü (X am Pad, F1) → `Bewerten…`.
+Hoch/Runter wählt die Zeile, Links/Rechts ändert, Select leert eine
+Zeile, A speichert, B bricht ab. Die Kategorien richten sich nach dem
+Gerät:
+
+| Gerät | Kategorien |
+|---|---|
+| Konsole | Grafik, Sound, Steuerung |
+| Computer (C64, Amiga, CPC, PC) | Grafik, Musik, Soundeffekte |
+| Arcade | Grafik, Sound, Nur noch ein Credit |
+
+Dazu Schwierigkeit (leicht/mittel/knackig/unfair) und Spieler (1, 1-2,
+2 gleichzeitig). **Spielspaß ist kein Durchschnitt**, sondern dein
+Gesamturteil. Wer nur den Spielspaß vergeben will, stellt
+`Wertungs-Kategorien: nur Spielspaß` ein. Hat ein Spiel schon eine
+Wertung, steht unten `Wertung löschen`.
+
+**Stempel:** ab 85 % **DRAGEND-HIT**, ab 90 % und mehr als 10 Stunden
+Spielzeit **DRAGEND-KLASSIKER**, unter 30 % **GURKE**. Zu sehen im
+Kasten, im Steckbrief und in der Meldung nach dem Speichern;
+abschaltbar mit `Wertungs-Stempel`.
+
+**Wo die Wertung steht:** vor dem Namen in der Liste („91% Turrican
+II“, abschaltbar mit `Wertung in Listen`) und im Steckbrief (Wertung,
+Einzelwerte, Stempel).
+
+**Das Testarchiv:** eine eigene Kategorie auf der Hauptseite, sobald es
+eine Wertung gibt – ein Ordner „Alle Hits“ (ab 85 %, über alle Systeme)
+und je System ein Ordner, darin sortiert nach Spielspaß. Die Spiele starten von dort wie aus
+jeder Liste.
+
+**Die Datei:** `/media/fat/frontend/bewertungen.json`, ein Eintrag je
+Spiel (System und Name), mit Datum und den bisherigen Werten. Sie wird
+über eine Zwischendatei geschrieben; eine beschädigte Datei wird als
+`bewertungen.json.kaputt` beiseitegelegt statt überschrieben.
 
 ## 8k. RetroAchievements-Fortschritt
 
@@ -3203,6 +3263,12 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Mein Trophäenraum | `trophy_room` |
 | Jahresrückblick | `year_review` |
 | Spieltagebuch | `diary` |
+| Wertungen: AN/AUS | `wertungen` |
+| Nach dem Spielen fragen: AN/AUS | `wertung_fragen` |
+| Fragen ab: 5/10/20 Minuten Spielzeit | `wertung_fragen_ab` |
+| Wertung in Listen: AN/AUS | `wertung_liste` |
+| Wertungs-Kategorien: alle / nur Spielspaß | `wertung_kategorien` |
+| Wertungs-Stempel: AN/AUS | `wertung_stempel` |
 
 ### Anzeige & Sound
 

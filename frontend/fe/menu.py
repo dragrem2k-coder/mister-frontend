@@ -55,6 +55,7 @@ import fe.mister_system as MSYS
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
 # Build 329: das Gimmick unter Wartung.
 import fe.gimmick as GIMMICK
+import fe.wertungen as WT
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
 # sprechende Aliasname statt eines blanken "vorhanden".
@@ -433,6 +434,26 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     def folder(*items):
         return {"folders": {}, "items": list(items)}
 
+    def _wertung_items():
+        """Build 346: die eigenen Wertungen. Bei AUS steht nur der
+        Hauptschalter da - wer keine Lust darauf hat, sieht auch keine
+        fuenf Unterschalter."""
+        if not WT.an():
+            return [(t("sys_wertungen_aus"), "wertungen", None)]
+        return [
+            (t("sys_wertungen_an"), "wertungen", None),
+            (t("sys_wertung_fragen_an") if WT.fragen()
+             else t("sys_wertung_fragen_aus"), "wertung_fragen", None),
+            (t("sys_wertung_fragen_ab", WT.fragen_ab_minuten()),
+             "wertung_fragen_ab", None),
+            (t("sys_wertung_liste_an") if WT.in_listen()
+             else t("sys_wertung_liste_aus"), "wertung_liste", None),
+            (t("sys_wertung_kat_spass") if WT.nur_spielspass()
+             else t("sys_wertung_kat_alle"), "wertung_kategorien", None),
+            (t("sys_wertung_stempel_an") if WT.stempel_an()
+             else t("sys_wertung_stempel_aus"), "wertung_stempel", None),
+        ]
+
     ra_items = [(ra_label, "ra_status", None)]
     if ra_user:
         ra_items.append((ra_toggle_label, "ra_toggle", None))
@@ -545,6 +566,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_trophy_action"), "trophy_room", None),
             (t("sys_year_review_action"), "year_review", None),
             (t("sys_diary_action"), "diary", None),
+            *_wertung_items()
         ),
         t("sys_group_display"): folder(*display_items),
         t("sys_group_behavior"): folder(

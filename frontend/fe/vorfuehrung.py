@@ -122,7 +122,10 @@ GRUPPEN = (
       "core_neu", "core_uebersicht", "zaparoo", "computer_check",
       "invade_a_load", "ra_status", "ra_settings", "ra_settings_missing",
       "ra_toggle", "ra_profil", "top10_time", "top10_launches",
-      "milestones", "trophy_room", "year_review", "diary"),
+      "milestones", "trophy_room", "year_review", "diary",
+      # Build 346: die eigenen Wertungen
+      "wertungen", "wertung_fragen", "wertung_fragen_ab", "wertung_liste",
+      "wertung_kategorien", "wertung_stempel"),
      ("fremdquellen", "rom_filter", "multidisc")),
     ("performance", ("Performance", "Performance"),
      ("Was das Frontend schneller macht - Miniaturen, Auflösung, Scrollen.",

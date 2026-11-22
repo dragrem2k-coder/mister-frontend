@@ -13,6 +13,22 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Eigene Wertungen im Heft-Stil.** Spielspaß in Prozent als
+  Hauptzahl – kein Durchschnitt, sondern dein Urteil –, auf Wunsch dazu
+  Grafik, Sound und Steuerung (Konsole), Grafik, Musik und Soundeffekte
+  (Computer) oder Grafik, Sound und „Nur noch ein Credit“ (Arcade),
+  Schwierigkeit und Spielerzahl. Stempel: ab 85 % „Dragend-Hit“, ab
+  90 % mit mehr als 10 Stunden „Dragend-Klassiker“, unter 30 % „Gurke“.
+  Nach mindestens 5 Minuten (einstellbar) fragt eine schmale Leiste
+  „Wie war's?“ – vorbelegt mit einem Vorschlag aus deiner Spielzeit,
+  A speichert, B heißt später, Select öffnet den ganzen Kasten, nach
+  6 Sekunden geht sie von selbst. Bewerten jederzeit über das
+  Kontextmenü, die Wertung steht vor dem Namen in der Liste und im
+  Steckbrief, das neue **Testarchiv** sammelt alles je System und alle
+  Hits. Alles unter System → Statistiken & Erfolge **abschaltbar**;
+  nach einem Update ist es aus, bei einer neuen Installation fragt der
+  Assistent. Die Wertungen liegen in `/media/fat/frontend/bewertungen.json`.
+
 - **Die Vorführung: Dragend in sechs Kapiteln.** `--show` und `--demo`
   sind jetzt eine Präsentation: Willkommen, Deine Spielesammlung,
   Gestaltung und Einstellungen, Wie schnell ist Dragend?, Dein Dragend,

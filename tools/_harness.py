@@ -93,6 +93,20 @@ import fe.settings as _SE                                # noqa: E402
 _SE.ANSICHTEN_BENUTZT_FILE = os.path.join(
     _tempfile.mkdtemp(prefix="harness_ansichten_"), "ansichten_benutzt")
 
+# BUILD 346: die eigenen Wertungen in einen eigenen Ordner - die
+# Pruefstaende sollen weder eine echte Wertungsdatei lesen noch einen
+# Schalter, der auf diesem Rechner zufaellig gesetzt ist. Vorgabe wie
+# auf der Karte nach einem Update: AUS.
+import fe.wertungen as _WT                              # noqa: E402
+_WT_ORDNER = _tempfile.mkdtemp(prefix="harness_wertungen_")
+_WT.DATEI = os.path.join(_WT_ORDNER, "bewertungen.json")
+for _n in ("AN_FLAG", "FRAGEN_AUS_FLAG", "FRAGEN_AB_FILE", "LISTE_AUS_FLAG",
+           "NUR_SPASS_FLAG", "STEMPEL_AUS_FLAG"):
+    setattr(_WT, _n, os.path.join(_WT_ORDNER,
+                                  os.path.basename(getattr(_WT, _n))))
+_WT.schalter_neu_lesen()
+_WT.vergessen()
+
 # BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
 # Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,
 # setzt WEIHNACHT.ERZWUNGEN = True (tools/test_weihnachten.py).

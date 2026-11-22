@@ -169,6 +169,7 @@ history to read up on (`CHANGELOG.md`).
    - 8q. Autostart on/off
    - 8i. Playtime tracker
    - 8j. Top 10 lists
+   - 8j-2. Your own ratings, magazine style
    - 8k. RetroAchievements progress
    - 8l. Choosing a standard or RA core
    - 8m. Completed status + your own achievements
@@ -1386,6 +1387,60 @@ In the System menu: "Top 10: most played" and "Top 10: most launched"
 show a full-screen overview of the 10 games with the longest total
 playtime or the most launches. Purely informational - any key returns to
 the menu.
+
+## 8j-2. Your own ratings, magazine style (Build 346)
+
+Rate games like an old games magazine: **fun in percent** as the main
+number, plus graphics, sound and so on if you like. Everything can be
+**switched off** – and after an update it starts **off**.
+
+**Switching it on:** System → Statistics & achievements → press
+`Ratings: OFF`. A new installation asks once in the setup assistant.
+While it is OFF, nothing of this shows: no question after playing, no
+percentages in the list, no test archive, no "Rate..." menu entry, and
+the ratings file is not even read. Ratings you gave are kept.
+
+**After playing:** if you played for at least 5 minutes (adjustable: 5,
+10 or 20) and the game has no rating yet, a slim bar appears at the
+bottom: *How was it? Fun < 75% >*. Left/Right change it in steps of 5,
+**A** saves, **B** means "later", **Select** opens the full rating box.
+The bar goes away after 6 seconds without a key; any other key closes
+it and then works as usual. The value is pre-filled from your play time
+(85% from 10 hours, 80% from 3 hours or 10 starts, 75% from 1 hour or 5
+starts, otherwise 70%) – one press of A confirms it.
+
+**The rating box:** context menu (X on the pad, F1) → `Rate...`.
+Up/Down picks the row, Left/Right changes it, Select empties a row, A
+saves, B cancels. The categories depend on the device:
+
+| Device | Categories |
+|---|---|
+| Console | Graphics, Sound, Controls |
+| Computer (C64, Amiga, CPC, PC) | Graphics, Music, Sound effects |
+| Arcade | Graphics, Sound, One more credit |
+
+Plus difficulty (easy/medium/tough/unfair) and players (1, 1-2, 2 at
+once). **Fun is not an average** but your overall verdict. To rate fun
+only, set `Rating categories: fun only`. A game that already has a
+rating shows `Delete rating` at the bottom.
+
+**Stamps:** from 85% **DRAGEND HIT**, from 90% and more than 10 hours
+of play **DRAGEND CLASSIC**, below 30% **LEMON**. Shown in the box, on
+the game info page and in the message after saving; switch them off
+with `Rating stamps`.
+
+**Where the rating shows:** before the name in the list ("91% Turrican
+II", switch off with `Rating in lists`) and on the game info page
+(rating, single values, stamp).
+
+**The test archive:** its own category on the main page as soon as there
+is a rating – a folder "All hits" (85% and up, across all systems) and
+one folder per system, each sorted by fun. Games start from there like from any list.
+
+**The file:** `/media/fat/frontend/bewertungen.json`, one entry per game
+(system and name), with date and earlier values. It is written via a
+temporary file; a damaged file is moved aside as
+`bewertungen.json.kaputt` instead of being overwritten.
 
 ## 8k. RetroAchievements progress
 
@@ -2799,6 +2854,12 @@ conversely nobody ends up in a menu that cannot do anything).
 | My trophy room | `trophy_room` |
 | Year in review | `year_review` |
 | Game diary | `diary` |
+| Ratings: ON/OFF | `wertungen` |
+| Ask after playing: ON/OFF | `wertung_fragen` |
+| Ask after: 5/10/20 minutes of play | `wertung_fragen_ab` |
+| Rating in lists: ON/OFF | `wertung_liste` |
+| Rating categories: all / fun only | `wertung_kategorien` |
+| Rating stamps: ON/OFF | `wertung_stempel` |
 
 ### Display & Sound
 

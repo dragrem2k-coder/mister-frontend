@@ -110,7 +110,19 @@ _quelle = _FE[_FE.index("    def kontextmenue(self):"):]
 _quelle = _quelle[:_quelle.index("\n    def ", 10)]
 _quelle = "\n".join(z[4:] if z.startswith("    ") else z
                     for z in _quelle.split("\n"))
-_um = {"t": TR.t}
+# Build 346: der Punkt "Bewerten..." haengt am Hauptschalter der
+# Wertungen - hier als Attrappe, die Vorgabe ist AUS.
+_WT_AN = [False]
+
+
+class _WT(object):
+    an = staticmethod(lambda: _WT_AN[0])
+    bewertbar = staticmethod(
+        lambda kind, arg: kind == "game" or (
+            kind == "core" and str(arg).lower().endswith(".mra")))
+
+
+_um = {"t": TR.t, "WT": _WT}
 exec(compile(_quelle, "<kontextmenue>", "exec"), _um)
 
 
@@ -161,6 +173,20 @@ a = Attrappe(1, [SPIEL])
 a.kontextmenue()
 check("bei einem Spiel steht 'Als Favorit merken' drin",
       TR.t("ctx_fav_an") in a.gezeigt, str(a.gezeigt))
+check("Wertungen AUS (Vorgabe): kein 'Bewerten...'",
+      TR.t("ctx_bewerten") not in a.gezeigt, str(a.gezeigt))
+_WT_AN[0] = True
+a_w = Attrappe(1, [SPIEL])
+a_w.kontextmenue()
+a_o = Attrappe(1, [ORDNER])
+a_o.kontextmenue()
+a_m = Attrappe(1, [("Pac-Man", "core", "/media/fat/_Arcade/Pac-Man.mra")])
+a_m.kontextmenue()
+check("Wertungen AN: 'Bewerten...' bei Spiel und Arcade, nicht beim Ordner",
+      TR.t("ctx_bewerten") in a_w.gezeigt
+      and TR.t("ctx_bewerten") in a_m.gezeigt
+      and TR.t("ctx_bewerten") not in a_o.gezeigt)
+_WT_AN[0] = False
 # BUILD 310: die Core-Wahl je Spiel, und sie folgt derselben Regel wie
 # die Anleitung darueber - ein Punkt, der einen leeren Bildschirm
 # oeffnet, ist einer zu viel.
@@ -272,7 +298,8 @@ namen = set(re.findall(r'eintraege\.append\(\s*\([^,]+,\s*"([a-z_]+)"\)',
 namen |= set(re.findall(r'"([a-z_]+)"\)\)', _quelle))
 namen = {n for n in namen if not n.startswith("ctx_")}
 EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung",
-          "core_spiel", "spiel_info"}
+          "core_spiel", "spiel_info", "bewerten"}
+# "bewerten" (Build 346): der Wertungskasten, ebenfalls nur hier.
 # "core_spiel" (Build 310) und "spiel_info" (Build 311) stehen aus
 # demselben Grund hier wie "anleitung": es gibt keine freie Taste
 # mehr, beide leben ausschliesslich im Kontextmenue und haben dort
@@ -296,7 +323,7 @@ for n in sorted(namen - EIGENE):
           n in behandelt, "sonst passiert beim Auswaehlen nichts")
 for n in sorted(EIGENE):
     check("'%s' hat einen eigenen Zweig" % n,
-          ('"%s"' % n) in _FE.split('elif act == "back_fe":')[1][:2000])
+          ('"%s"' % n) in _FE.split('elif act == "back_fe":')[1][:3200])
 
 # ---------------------------------------------------------------------------
 print()

@@ -11933,3 +11933,84 @@ ueber die Ansichten steht jetzt in `fe/vorfuehrung.py` (genau eine, ueber
 `BENCH.ansicht_einstellen()`); `fe/show.py` ruft `tempo_messen()`.
 Die Messung setzt die Sprungweite der echten Eingabe
 (`_sprung_je_akt`) nach dem Ablesen zurueck.
+
+## Nachtrag Build 346 - eigene Wertungen im Heft-Stil
+
+**Stand:** 22.11.2026, `Dragend_Build_346.zip` (build_id
+`2026-11-22-346`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: Spiele bewerten wie frueher im Heft - Spielspass in
+Prozent, Kategorien je Geraet, Stempel, Schnelleingabe mit Vorschlag,
+Testarchiv je System. Und: "Das ganze muss aber an und abschaltbar
+sein".
+
+### fe/wertungen.py (neu)
+
+- **Schalter** als Flag-Dateien unter `/media/fat/frontend`:
+  `wertungen_an` (Hauptschalter, fehlt = AUS = Vorgabe nach einem
+  Update), `wertung_fragen_aus`, `wertung_fragen_ab` (5/10/20 Minuten),
+  `wertung_liste_aus`, `wertung_nur_spielspass`, `wertung_stempel_aus`.
+  Gelesen einmal, gemerkt bis zum eigenen Umschalten.
+- **Datei** `/media/fat/frontend/bewertungen.json`, Schluessel
+  `System|Name` (Arcade: `ARCADE|Name`). Geschrieben ueber `.tmp` und
+  `os.replace()`; eine unlesbare Datei wird vor dem naechsten Schreiben
+  als `.kaputt` beiseitegelegt. Je Eintrag: Spielspass, die
+  Kategorien, Schwierigkeit, Spieler, Datum, kind/arg zum Starten,
+  Verlauf (ein Punkt je geaendertem Spielspass, hoechstens 20). Bei
+  AUS liest keine Abfrage die Datei.
+- **Kategorien je Geraet:** Konsole Grafik/Sound/Steuerung, Computer
+  (Kernordner `_Computer`) Grafik/Musik/Soundeffekte, Arcade (`.mra`)
+  Grafik/Sound/"Nur noch ein Credit". Spielspass ist kein Durchschnitt.
+- **Stempel:** Hit ab 85, Klassiker ab 90 und 10 Stunden, Gurke unter
+  30. **Vorschlag:** 85 ab 10 h, 80 ab 3 h oder 10 Starts, 75 ab 1 h
+  oder 5 Starts, sonst 70.
+- **Testarchiv:** ein Ordner "Alle Hits" und einer je System, Namen
+  OHNE Zahl (wer darin steht und weiter bewertet, landet nicht in einem
+  umbenannten Ordner), darin nach Spielspass sortiert (die Liste
+  sortiert nur Ordner nach Namen). Nur Eintraege mit kind/arg.
+
+### Frontend
+
+- **Rueckkehr-Leiste** ganz am Ende von `run_core()`, nach der
+  RA-Bilanz: nur bei EIN und "fragen", ab der Mindestspielzeit, nur
+  unbewertet und nur fuer ein Spiel aus der Liste (kind/arg aus
+  `load_recent()` bzw. dem `.mra`-Pfad - Gimmick und AmigaVision als
+  Ganzes werden nicht gefragt). Links/Rechts in 5er-Schritten, A
+  speichert, B oder 6 s ohne Taste = spaeter, Select oeffnet den
+  Kasten, jede andere Taste geht ueber `_vorgemerkte_aktion` an die
+  Hauptschleife. Passt die Bedienung nicht neben den Wert (Roehre),
+  bekommt sie eine dritte Zeile. Fehler werden nur geloggt.
+- **Wertungskasten** ueber Kontextmenue `Bewerten...` (nur bei EIN,
+  nur bei Spiel oder `.mra`): Hoch/Runter, Links/Rechts, Select leert,
+  A speichert, B bricht ab, "Wertung loeschen" bei vorhandener Wertung.
+  Feste Ampelfarben fuer die Balken.
+- **Liste:** `_zeilen_praefix()` setzt "91% " vor den Namen (abschaltbar).
+- **Steckbrief:** Wertung, Einzelwerte, Stempel unter "Markiert".
+- **Kategorie Testarchiv** vor dem Zufalls-Zock;
+  `_sync_testarchiv_category()` nach jedem Speichern/Umschalten
+  (Auswahl bleibt, verschwundener Ordner -> zurueck zum letzten
+  vorhandenen, bei AUS verschwindet sie).
+- **Systemmenue** Statistiken & Erfolge: bei AUS nur der Hauptschalter,
+  bei EIN alle sechs (`WERTUNG_SCHALTER`). Die Vorfuehrung ordnet sie
+  der Spielebibliothek zu.
+- **Einrichtung:** neuer Schritt 6 "Wertungen" (Ja/Nein), jetzt 8
+  Schritte.
+
+### Pruefungen
+
+`tools/test_wertungen.py` neu: AUS ist Vorgabe und dann ist nichts da
+(Datei nie gelesen), Schalter und Menue, Kategorien/Stempel/Vorschlag,
+Datei (tmp, Verlauf, Loeschen, kaputt), Testarchiv, Vorzeichen und
+Kategorie im Frontend, Leiste (Schwelle, schon bewertet, A, B, andere
+Taste, ohne Taste, Select, Gimmick, Arcade, Fehler), Kasten (Zeilen,
+Aendern, Leeren, Speichern, Abbrechen, Loeschen, Grenzen, zwei
+Aufloesungen), Kontextmenue, Steckbrief, Einbau in run_core und
+Einrichtung, Uebersetzungen. `tools/_harness.py` lenkt die Wertungen
+in einen Temp-Ordner (AUS). `tools/test_kontextmenue.py`: Punkt
+"Bewerten..." nur bei EIN und nur bei Spielen; "bewerten" hat einen
+eigenen Zweig. `tools/test_spiel_info.py`: "info_wertung_wert" darf
+genau einen Platzhalter haben (das Prozentzeichen ist verdoppelt). Der
+Steckbrief holt die Beschriftungen ueber `_wertung_name()` und
+`_wertung_stempel_name()`, damit der Schluessel-Abgleich des Tests
+keine halben Namen findet.

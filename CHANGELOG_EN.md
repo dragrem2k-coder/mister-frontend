@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Your own ratings, magazine style.** Fun in percent as the main
+  number – not an average but your verdict –, plus graphics, sound and
+  controls (console), graphics, music and sound effects (computer) or
+  graphics, sound and "one more credit" (arcade), difficulty and number
+  of players if you like. Stamps: "Dragend hit" from 85%, "Dragend
+  classic" from 90% with more than 10 hours, "Lemon" below 30%. After
+  at least 5 minutes (adjustable) a slim bar asks "How was it?" –
+  pre-filled from your play time, A saves, B means later, Select opens
+  the full box, it goes away by itself after 6 seconds. Rate any time
+  from the context menu; the rating shows before the name in the list
+  and on the game info page, and the new **test archive** collects
+  everything per system plus all hits. All of it can be **switched
+  off** under System → Statistics & achievements; after an update it is
+  off, a new installation asks in the assistant. Ratings are stored in
+  `/media/fat/frontend/bewertungen.json`.
+
 - **The presentation: Dragend in six chapters.** `--show` and `--demo`
   are now one presentation: Welcome, Your game collection, Design and
   settings, How fast is Dragend?, Your Dragend, The result. Presentation

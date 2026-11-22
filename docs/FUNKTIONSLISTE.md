@@ -58,7 +58,7 @@ Frontend liest diese Datei, legt sie aber nie an und
 aendert darin hoechstens die eine Zeile, um die es
 gerade geht.
 
-### Statistiken & Erfolge (6 Eintraege)
+### Statistiken & Erfolge (7 Eintraege)
 
 - `Top 10: meistgespielt`
 - `Top 10: meistgestartet`
@@ -66,6 +66,7 @@ gerade geht.
 - `Mein Trophäenraum`
 - `Jahresrückblick`
 - `Spieltagebuch`
+- `Wertungen: AUS`
 
 ### Anzeige & Sound (35 Eintraege)
 
@@ -182,6 +183,7 @@ ein Ordner oder eine Kategorie.
 - Als Favorit merken
 - Nicht mehr durchgespielt
 - Als durchgespielt merken
+- Bewerten...
 - Diesen Eintrag ausblenden
 - Suchen
 - Filter
@@ -417,6 +419,7 @@ Quelltext selbst beschrieben ist.
 - **vorfuehrung** - Die Vorfuehrung: Dragend in sechs Kapiteln (Build 345)
 - **weihnacht_bilder** - Bilder der Weihnachts-Deko (Build 342) - ERZEUGT, nicht von Hand bearbeiten
 - **weihnachten** - Die Weihnachts-Deko (Build 342)
+- **wertungen** - Eigene Wertungen im Heft-Stil (Build 346)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
 - **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
 
