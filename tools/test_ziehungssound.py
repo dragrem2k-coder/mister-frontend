@@ -204,7 +204,7 @@ def _phase(dauer_ms, eingaben=None, sfx_an=True, spaet=False):
         log["sound"].append(name)
         log["griffe"].append(griff)
 
-    echt_laden = f._wot_cover_sichern
+    echt_laden = f._zufallszock_cover_sichern
 
     def _laden(picks, cache, cell_w, covers_h, s):
         log["geladen"].append(len(picks))
@@ -212,7 +212,7 @@ def _phase(dauer_ms, eingaben=None, sfx_an=True, spaet=False):
             cache[(p[0], os.path.splitext(os.path.basename(p[4]))[0])] = None
 
     f._play_ducked_sfx = _sound
-    f._wot_cover_sichern = _laden
+    f._zufallszock_cover_sichern = _laden
     import fe.settings as _S
     echt_load = fm.load_ziehung_spannung
     fm.load_ziehung_spannung = lambda: dauer_ms
@@ -221,10 +221,10 @@ def _phase(dauer_ms, eingaben=None, sfx_an=True, spaet=False):
     cache = {}
     t0 = time.perf_counter()
     try:
-        f._wot_ziehung_zeigen(f.fb, 100, 50, 1700, 3, 300, 60, 3, 90,
+        f._zufallszock_ziehung_zeigen(f.fb, 100, 50, 1700, 3, 300, 60, 3, 90,
                               PLAYABLE, PICKS, cache, 400, 500)
     finally:
-        f._wot_cover_sichern = echt_laden
+        f._zufallszock_cover_sichern = echt_laden
         fm.load_ziehung_spannung = echt_load
         fm.sfx_enabled_flag = echt_sfx
     log["dauer"] = time.perf_counter() - t0
@@ -362,11 +362,11 @@ print("Test 4: das Laden steht an EINER Stelle")
 _q = io.open(os.path.join(_REPO, "frontend", "frontend.py"),
              encoding="utf-8").read()
 check("es gibt genau eine Funktion dafuer",
-      _q.count("def _wot_cover_sichern") == 1)
+      _q.count("def _zufallszock_cover_sichern") == 1)
 # Drei Aufrufstellen: die abgeschaltete Phase, die laufende Phase und
 # die Zeichenschleife. Alle drei fuellen denselben Zwischenspeicher.
 check("Phase und Zeichenschleife rufen dieselbe Funktion",
-      _q.count("self._wot_cover_sichern(") == 3,
+      _q.count("self._zufallszock_cover_sichern(") == 3,
       "sonst wartet man zweimal: erst die Spannung, dann das Laden")
 check("in der Zeichenschleife steht kein eigener get_scaled mehr",
       "cover_cache[ckey] = art" not in _q,
@@ -408,7 +408,7 @@ check("die Taste schaltet weiter",
       'elif kind == "ziehung_spannung":' in _q
       and "cycle_ziehung_spannung()" in _q)
 import fe.translations as TR                                 # noqa: E402
-for _k in ("sys_ziehung_spannung", "sys_ziehung_aus", "wot_drawing"):
+for _k in ("sys_ziehung_spannung", "sys_ziehung_aus", "zufallszock_drawing"):
     _e = TR.TRANSLATIONS.get(_k)
     check("Uebersetzung %s in beiden Sprachen" % _k,
           bool(_e) and bool(_e.get("de")) and bool(_e.get("en")),

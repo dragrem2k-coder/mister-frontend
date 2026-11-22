@@ -135,7 +135,7 @@ print("Test 4: jedes Logo gehoert zu einem Systemschluessel")
 schluessel = set(k for _n, k, *_r in alle_systeme())
 # Die Sonderkategorien haben eigene, in fe/art.py vergebene Schluessel.
 SONDER = {"RECENT", "CONTINUE", "FAVORITES", "COLLECTIONS", "RA_HUNTER",
-          "WOT", "SYSTEM", "ARCADE", "COMPUTER", "SMW_HACKS",
+          "ZUFALLSZOCK", "SYSTEM", "ARCADE", "COMPUTER", "SMW_HACKS",
           "SNES_ALTTP_TRACKER"}
 for key in NEU_IN_BUILD_80:
     check("%s ist ein bekannter Systemschluessel" % key,

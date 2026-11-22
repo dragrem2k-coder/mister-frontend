@@ -15,7 +15,7 @@ unveraendert im Block darunter."""
 # ----------------------------------------------------------------------------
 # stream_server.py  -  Web-Overlay + Config-Backend fuer OBS
 # ----------------------------------------------------------------------------
-# Zweck: Waehrend Dennsen am CRT im Frontend navigiert, zeigt ein
+# Zweck: Waehrend am CRT im Frontend navigiert wird, zeigt ein
 # Browser-Overlay (OBS Browser Source) in Echtzeit, was gerade
 # ausgewaehlt ist - Cover, Titel, System, Now-Playing. Das umgeht die
 # Scaler-Grenze komplett: die "Menue-Ansicht" fuer den Stream kommt
@@ -28,7 +28,7 @@ unveraendert im Block darunter."""
 #
 # Endpunkte:
 #   GET  /            -> Overlay-Seite (fuer OBS Browser Source)
-#   GET  /admin       -> Backend/Konfiguration (fuer Dennsen)
+#   GET  /admin       -> Backend/Konfiguration (fuer den Streamer)
 #   GET  /events      -> Server-Sent-Events: State- und Config-Push
 #   GET  /state       -> aktueller State als JSON (Initial-Load)
 #   GET  /config      -> aktuelle Config als JSON

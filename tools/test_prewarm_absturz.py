@@ -54,7 +54,7 @@ def check(label, cond, extra=""):
 # Alle Eintragsformen, die im Frontend tatsaechlich vorkommen - samt der
 # schraegen. Genau diese Mischung steht in den Sonderkategorien.
 EINTRAEGE = [
-    ("Zufalls-Zock - Spiel ziehen", "wot_draw", None),
+    ("Zufalls-Zock - Spiel ziehen", "zufallszock_draw", None),
     ("Reboot", "reboot", None),
     ("Ein Script", "script", "/media/fat/Scripts/x.sh"),
     ("Ein Core", "core", "/media/fat/_Console/NES.rbf"),

@@ -5,7 +5,7 @@
 NUTZER: "neue Mister ... SH Script geladen ... restart. Aber nix zu
 sehen". Im Log: "davon _partition_core_cats() 106632 ms" - das erste
 Einlesen des Arcade-Ordners, zwei Minuten lang ohne ein Bild.
-Dazu: "das mit dennsen86 wo er die boxarts abfragt muss raus, und bevor
+Dazu: "das mit dem Mirror, wo er die boxarts abfragt, muss raus, und bevor
 man boxarts nachlaedt sollte das frontend erst schauen ob schon jemand
 ueber update_all sich die boxarts geladen hat".
 
@@ -321,8 +321,8 @@ try:
                                "mister_boxart.py"), encoding="utf-8").read()
     code = "\n".join(z for z in quelle.split("\n")
                      if not z.lstrip().startswith("#"))
-    check("kein dennsen86clips.de mehr im Code",
-          "dennsen86clips" not in code.split('"""', 2)[-1])
+    check("kein Mirror-Host mehr im Code",
+          "HTTP_HOST" not in code and "clips.de" not in code.split('"""', 2)[-1])
     check("keine Mirror-Funktionen mehr",
           not any(n in quelle for n in ("def process_system_mirror",
                                         "def list_art", "def list_png",

@@ -16,8 +16,8 @@ ZWEI STUFEN, automatisch der Reihe nach (Build 336):
   1. LIBRETRO: fuer alles, was dann noch fehlt, PNG-Cover von
      thumbnails.libretro.com (Rueckfall: GitHub).
 
-ENTFERNT (Build 336, Nutzerwunsch): die Mirror-Quelle auf
-dennsen86clips.de, die bis dahin zwischen Stufe 0 und libretro lag.
+ENTFERNT (Build 336, Nutzerwunsch): die Mirror-Quelle, die bis dahin
+zwischen Stufe 0 und libretro lag.
 
 Aufruf (SSH oder ueber die Scripts-Kategorie des Frontends):
   python3 /media/fat/frontend/mister_boxart.py            # alle Systeme, CRT-Profil
@@ -313,9 +313,8 @@ def collect_arcade_names():
     return result
 
 # ---------------------------------------------------------------------------
-# ENTFERNT (Build 336): die Mirror-Quelle auf dennsen86clips.de (frueher
-# Quelle 1 und 2, .art- und png/-Baum). Nutzerwunsch: "das mit dennsen86
-# wo er die boxarts abfragt muss raus". Geblieben ist nur, was der
+# ENTFERNT (Build 336): die fruehere Mirror-Quelle (Quelle 1 und 2, .art-
+# und png/-Baum), auf Wunsch des Nutzers. Geblieben ist nur, was der
 # libretro-Weg weiterhin braucht: das Ablegen des Originals samt
 # JPEG-Arbeitskopie.
 # ---------------------------------------------------------------------------
@@ -1003,7 +1002,7 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     #   1. libretro                   - thumbnails.libretro.com, Rueckfall
     #                                   GitHub
     #
-    # Die Mirror-Stufen dazwischen (dennsen86clips.de) sind entfernt -
+    # Die Mirror-Stufen dazwischen sind entfernt -
     # Nutzerwunsch, Build 336.
     still_missing = [(n, sysname) for sysname, names in by_sysname.items()
                      for n in names]

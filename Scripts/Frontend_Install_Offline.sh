@@ -268,7 +268,7 @@ say "$COPIED Datei(en) kopiert."
 #
 # BUGFIX (Nutzer-Rueckmeldung: "immer noch das alte Zufalls-Zock-Bild,
 # auch nach Update UND Install"): das "vorhandene behalten"-Prinzip
-# hier war die Ursache - WOT.art existierte schon lange (altes
+# hier war die Ursache - ZUFALLSZOCK.art existierte schon lange (altes
 # Platzhalterbild), ein neues mitgeliefertes Bild kam dadurch NIE an.
 # FORCE_OVERWRITE_SYSART listet Dateien, die trotzdem ueberschrieben
 # werden - EHRLICH DOKUMENTIERTE EINSCHRAENKUNG: hat ein Nutzer genau
@@ -276,7 +276,7 @@ say "$COPIED Datei(en) kopiert."
 # Lauf wieder verloren (kein zuverlaessiger Weg, "noch Standard" von
 # "bewusst ersetzt" zu unterscheiden). Bewusst kurz gehalten - fuer
 # alle anderen sysart-Dateien gilt weiterhin "vorhandene behalten".
-FORCE_OVERWRITE_SYSART="WOT.art"
+FORCE_OVERWRITE_SYSART="ZUFALLSZOCK.art"
 if [ -d "$SRC/frontend/sysart" ]; then
     step "System-Logos (sysart)"
     mkdir -p "$FRONTEND_DIR/sysart"
@@ -286,7 +286,7 @@ if [ -d "$SRC/frontend/sysart" ]; then
     # NEIN - und das war ein Fehler: mit Build 99/100 wurden ALLE 57
     # Kategorie-Logos auf den neuen Abzeichen-Stil umgestellt, und 42
     # davon waeren nie angekommen, weil unter demselben Namen schon ein
-    # altes Logo lag. Dieselbe Falle wie damals bei WOT.art, nur
+    # altes Logo lag. Dieselbe Falle wie damals bei ZUFALLSZOCK.art, nur
     # 42-fach.
     #
     # Deshalb EINMALIG den kompletten Satz ersetzen. Fehlt die Marke,
@@ -545,6 +545,20 @@ if [ -f "$STARTUP" ] && grep -qF "f4_hotkey.sh" "$STARTUP"; then
     echo "Alten F4-Eintrag aus user-startup.sh entfernt."
 fi
 rm -f "$FRONTEND_DIR/f4_hotkey.py" "$FRONTEND_DIR/f4_hotkey.sh" "$FRONTEND_DIR/f4_hotkey"
+
+# BUILD 340: Dateien unter alten Namen entfernen (Nutzerwunsch: der alte
+# Name des Zufalls-Zocks und ein entferntes Bootlogo sollen nirgends mehr
+# auftauchen). Die Namen sind bewusst zusammengesetzt. Die gespielt-Liste
+# benennt das Frontend selbst um (mister_zufallszock.py) - hier wird nur
+# entfernt, was mitgeliefert war.
+_ALT=$(printf '%s%s' w ot)
+_ALT_GROSS=$(printf '%s%s' W OT)
+rm -f "$FRONTEND_DIR/sysart/$_ALT_GROSS.art" \
+      "$FRONTEND_DIR/mister_$_ALT.py" \
+      "$FRONTEND_DIR/__pycache__/mister_$_ALT."*.pyc \
+      "$FRONTEND_DIR/${_ALT}_games_sample.csv" \
+      "$FRONTEND_DIR/${_ALT}_aliases_sample.json" \
+      "$FRONTEND_DIR/boot_logo/$(printf '%s%s' denn sen86)_logo.art" 2>/dev/null
 
 # ------------------------------------------------------------
 # 8. Stream-Overlay

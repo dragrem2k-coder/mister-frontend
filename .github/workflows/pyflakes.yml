@@ -29,14 +29,14 @@ jobs:
       - name: pyflakes installieren
         run: pip install pyflakes
 
-      - name: Undefinierte Namen suchen (frontend/, fe/-Paket, mister_wot.py)
+      - name: Undefinierte Namen suchen (frontend/, fe/-Paket, mister_zufallszock.py)
         run: |
           cd frontend
           echo "=== Vollstaendige pyflakes-Ausgabe (zur Info, nicht alles ist ein Fehler) ==="
-          python3 -m pyflakes fe/*.py frontend.py mister_wot.py || true
+          python3 -m pyflakes fe/*.py frontend.py mister_zufallszock.py || true
           echo ""
           echo "=== Nur 'undefined name' - DAS ist die kritische Fehlerklasse ==="
-          UNDEFINED=$(python3 -m pyflakes fe/*.py frontend.py mister_wot.py 2>&1 | grep -i "undefined name" || true)
+          UNDEFINED=$(python3 -m pyflakes fe/*.py frontend.py mister_zufallszock.py 2>&1 | grep -i "undefined name" || true)
           if [ -n "$UNDEFINED" ]; then
             echo "$UNDEFINED"
             echo ""

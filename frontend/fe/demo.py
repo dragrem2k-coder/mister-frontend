@@ -140,8 +140,8 @@ SCHIRME = (
     ("kontext", "Kontextmenue",
      "X am Pad zeigt, was mit diesem Eintrag gerade geht.",
      1.0, "kontextmenue", ("down",), 1.1),
-    ("wot", "Zufalls-Zock", "Drei Spiele werden gezogen - mit Ton, "
-     "und am Ende stehen sie da.", 1.6, "draw_wot_screen",
+    ("zufallszock", "Zufalls-Zock", "Drei Spiele werden gezogen - mit Ton, "
+     "und am Ende stehen sie da.", 1.6, "draw_zufallszock_screen",
      ("down",), 2.2),
     ("trophy", "Trophaeenraum", "Meistgespieltes Spiel, "
      "Lieblingssystem, Erfolgs-Zaehler.", 1.2,

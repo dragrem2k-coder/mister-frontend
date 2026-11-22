@@ -13,7 +13,7 @@ damit selbst gemaltes Artwork bei einem erneuten Lauf nicht
 verlorengeht. Richtig gedacht fuer einzelne Bilder - aber mit Build
 99/100 wurden ALLE 57 Kategorie-Logos umgestellt. 42 davon tragen
 denselben Dateinamen wie ein altes Logo und waeren nie angekommen.
-Dieselbe Falle wie damals bei WOT.art ("immer noch das alte
+Dieselbe Falle wie damals bei ZUFALLSZOCK.art ("immer noch das alte
 Zufalls-Zock-Bild, auch nach Update UND Install"), nur 42-fach.
 
 Dieser Test fuehrt die ECHTEN Shell-Bloecke aus den Installern aus -
@@ -93,11 +93,11 @@ def karte_bauen(wurzel):
     # Im Repo: ein gleichnamiges Abzeichen (neu), ein zusaetzliches.
     open(os.path.join(quelle, "NES.art"), "w").write("NEUES-ABZEICHEN")
     open(os.path.join(quelle, "GAMATE.art"), "w").write("NEU-DAZU")
-    open(os.path.join(quelle, "WOT.art"), "w").write("NEU-WOT")
+    open(os.path.join(quelle, "ZUFALLSZOCK.art"), "w").write("NEU-ZUFALLSZOCK")
 
     # Auf der Karte: das alte Logo, eigenes Artwork, die vier Leichen.
     open(os.path.join(ziel, "NES.art"), "w").write("ALTES-LOGO")
-    open(os.path.join(ziel, "WOT.art"), "w").write("ALT-WOT")
+    open(os.path.join(ziel, "ZUFALLSZOCK.art"), "w").write("ALT-ZUFALLSZOCK")
     for t in TOTE_DATEIEN:
         open(os.path.join(ziel, t), "w").write("TOT")
     return os.path.join(wurzel, "quelle"), os.path.join(wurzel, "karte")
@@ -178,10 +178,10 @@ for name, pruef in INSTALLER:
         check("%-28s eigenes Artwork bleibt" % name,
               lies(os.path.join(sysart, "NES.art")) == "MEIN-EIGENES",
               "ist: %r" % lies(os.path.join(sysart, "NES.art")))
-        # WOT.art ist die eine namentlich gepflegte Ausnahme (siehe
+        # ZUFALLSZOCK.art ist die eine namentlich gepflegte Ausnahme (siehe
         # Kommentar im Installer) - die wird bewusst IMMER ersetzt.
-        check("%-28s WOT bleibt die gepflegte Ausnahme" % name,
-              lies(os.path.join(sysart, "WOT.art")) == "NEU-WOT")
+        check("%-28s ZUFALLSZOCK bleibt die gepflegte Ausnahme" % name,
+              lies(os.path.join(sysart, "ZUFALLSZOCK.art")) == "NEU-ZUFALLSZOCK")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

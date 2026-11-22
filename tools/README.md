@@ -10773,7 +10773,7 @@ war.
 (Fassung 8).
 
 Er hat nach Build 325 Log und Bench 24 geschickt, dazu drei Wuensche:
-die Logos von Dennsen86 und Cirdan als Bootlogos, Ideen fuer
+zwei weitere Logos als Bootlogos, Ideen fuer
 RetroAchievements, und der Ausstieg aus dem Spiel per Pad
 (Start+Select+L+R).
 
@@ -11308,8 +11308,8 @@ Boots. Gemessen sind 106,6 s.) Ursache in zwei Teilen:
 
 ### Boxart-Download: Mirror raus, update_all zuerst
 
-Nutzerwunsch. `mister_boxart.py` v4.1: Mirror-Code (dennsen86clips.de,
-.art- und png/-Baum, samt Fortschritts-Helfern) entfernt; geblieben ist
+Nutzerwunsch. `mister_boxart.py` v4.1: Mirror-Code (.art- und
+png/-Baum, samt Fortschritts-Helfern) entfernt; geblieben ist
 `original_ablegen()`/Arbeitskopie fuer den libretro-Weg. Neu
 `update_all_artwork()`/`update_all_melden()`: zaehlt vor dem Download die
 Cover in den Boxart-Unterordnern unter `/media/fat/docs` und daneben
@@ -11463,3 +11463,53 @@ Vergleich nach dem Schreiben, Sicherung, Passwort in latin-1 und UTF-8,
 cifs-Erkennung, Gegenprobe. Verfaelscht (Kodierung zurueck auf UTF-8 in
 settings und ra_settings, Sicherung wieder als Text, cifs ohne replace) -
 jedes Mal rot.
+
+## Nachtrag Build 340 - zwei Namen entfernt
+
+**Stand:** 21.11.2026, `Dragend_Build_340.zip` (build_id
+`2026-11-21-340`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: ein Mitwirkender "sollte noch komplett raus", und der alte
+Name des Zufalls-Zocks soll "nirgends mehr auftauchen oder durch
+Zufalls-Zock ersetzen". Die Namen stehen auch hier nicht.
+
+### Was weg ist
+
+* Bootlogo (Datei, `BOOT_LOGOS`, Menue), Mitwirkenden-Eintrag, alle
+  Nennungen in READMEs, Handbuechern, Changelogs, Archiv,
+  Entwicklungshistorie, Notizen, Stream-Admin, Kommentaren und Tests.
+* Die Beispiel-CSV des Zufalls-Zocks (eine Bewertungstabelle mit seinen
+  Videos). Die CSV-Anreicherung selbst bleibt als optionale Datei
+  `zufallszock_games.csv`.
+* Im Code heisst alles `zufallszock`: `mister_zufallszock.py`,
+  `sysart/ZUFALLSZOCK.art`, `zufallszock_title`, `sys_zufallszock_action`,
+  Art `zufallszock_draw`. Ersetzt per Wortgrenze (nur ganze Kuerzel,
+  `gewonnen` und Co. blieben unberuehrt), danach von Hand nachgelesen.
+
+### Was auf der Karte erhalten bleibt
+
+* `mister_zufallszock.alte_dateien_umziehen()` (aus `configure()`):
+  gespielt-Liste, CSV, Aliase, Katalog-Cache werden einmal umbenannt; ist
+  die neue Datei schon da, bleibt die alte unberuehrt.
+* `fe/hauptseite.laden()`: das alte Kuerzel in "ausgeblendet" und
+  "Reihenfolge" wird auf `zufallszock_title` gelegt.
+* Eine gespeicherte Bootlogo-Wahl des entfernten Logos ist ein unbekanntes
+  Wort und faellt auf Dragend zurueck.
+* Die drei Installer entfernen die alten mitgelieferten Dateien (alter
+  Sysart-Name, altes Modul samt .pyc, Beispieldateien, das Logo). Die
+  Namen sind dort - wie im Code - nur zusammengesetzt.
+
+### PDFs
+
+Einsteiger-Anleitung und Funktionsliste neu erzeugt. Die SNES-Tracker-
+Anleitung hat keine Quelle im Repository (ReportLab); dort wurde nur die
+Titelzeile im Inhaltsstrom ersetzt und neu zentriert (qpdf).
+
+### Pruefungen
+
+Neu `tools/test_namen_entfernt.py`: alle Textdateien, Dateinamen, PDFs
+(pdftotext), Installer-Aufraeumen in einem Temp-Ordner, Umzug der
+gespielt-Liste mit Gegenprobe, altes Hauptseiten-Kuerzel.
+`tools/test_bootlogo_wahl.py` neu gefasst (zwei Logos, vier Stufen, alte
+Wahl -> Vorgabe).

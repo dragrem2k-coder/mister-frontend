@@ -90,7 +90,7 @@ TITEL = [
 KATEGORIEN = [
     ("Favoriten", "FAVORITES"), ("Weiterspielen", "CONTINUE"),
     ("Zuletzt gespielt", "RECENT"), ("Sammlungen", "COLLECTIONS"),
-    ("Zufalls-Zock", "WOT"), ("Arcade", "ARCADE"),
+    ("Zufalls-Zock", "ZUFALLSZOCK"), ("Arcade", "ARCADE"),
     ("NES", "NES"), ("SNES", "SNES"), ("Game Boy", "GAMEBOY"),
     ("Game Boy Color", "GBC"), ("Game Boy Advance", "GBA"),
     ("Nintendo 64", "N64"), ("Mega Drive", "Genesis"),

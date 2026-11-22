@@ -48,7 +48,7 @@ sechs einzelner.
 
 Neu in v4.2 (BUGFIX: Uhrzeit blieb bei manchen Nutzern trotz
 korrekt eingestelltem Zeitzonen-Versatz dauerhaft falsch):
-  - Nutzer-Rueckmeldung (Dennsen, UTC+2 eingestellt, Uhr trotzdem
+  - Nutzer-Rueckmeldung (UTC+2 eingestellt, Uhr trotzdem
     falsch): der bisherige Neuversuch-Mechanismus fuer eine beim Start
     fehlgeschlagene NTP-Synchronisierung lief NUR ueber
     _maybe_retry_ra() - und der ist an ra_enabled() gekoppelt. Nutzer
@@ -432,7 +432,7 @@ Neu in v3.9 (Credits angepasst: Dfense als Mitwirkender ergaenzt):
     Entwicklerraum (draw_dev_room_screen(), Geheimnis) - fuer
     Konsistenz an beiden Stellen gleichermassen aktualisiert.
   - Getestet: "Dfense" ist nachweislich enthalten, alle anderen Namen
-    (Dragrem, TheRealSutefan, Dennsen) bleiben unveraendert vorhanden.
+    (Dragrem, TheRealSutefan) bleiben unveraendert vorhanden.
     42 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.8 (NEUES FEATURE: Credits-Bildschirm im System-Menue):
@@ -441,7 +441,7 @@ Neu in v3.8 (NEUES FEATURE: Credits-Bildschirm im System-Menue):
     bewusst ein normaler, sichtbarer Menuepunkt.
   - Neuer Bildschirm draw_credits_screen() (System-Menue -> "Mit-
     wirkende"): Ersteller (Dragrem), Beitraege (TheRealSutefan -
-    Patches/RA-Werkzeuge/Bugfixes, Dennsen - Streaming und Testen),
+    Patches/RA-Werkzeuge/Bugfixes),
     und ein Dank an alle Spieler.
   - Getestet: beide Aufloesungen ohne Absturz, alle Namen nachweislich
     im Text enthalten. 42 Kombinationen kompletter Regressionstest
@@ -1323,7 +1323,7 @@ RetroAchievements fehlte bei manchen Systemen):
 
 Neu in v1.91 (Zweiter Patch von TheRealSutefan uebernommen -
 Admin-Oberflaeche, Overlay-Cover, grosser Performance-Schub):
-  - TheRealSutefan (nicht Dennsen selbst, der ist nur Tester/Streamer)
+  - TheRealSutefan
     hat einen zweiten, umfangreicheren Patch eingereicht. Wieder jede
     einzelne Aenderung verifiziert und auf unseren aktuellen Stand
     uebertragen, nichts blind uebernommen.
@@ -1397,7 +1397,7 @@ Admin-Oberflaeche, Overlay-Cover, grosser Performance-Schub):
     hintereinander. 36 Kombinationen kompletter Regressionstest
     bestanden.
 
-Neu in v1.90 (Sieben Verbesserungen aus Dennsens Test-Patch
+Neu in v1.90 (Sieben Verbesserungen aus einem Test-Patch
 uebernommen, geprueft und auf unseren Stand angepasst):
   - Ein Nutzer hat unabhaengig einen eigenen Patch gebaut (basierend
     auf einem aelteren Zwischenstand vor dem Durchgespielt-/

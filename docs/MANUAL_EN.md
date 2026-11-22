@@ -4,8 +4,7 @@ This is the full description of every feature. The short overview is
 in the [README](../README_EN.md) at the top level.
 Deutsch: [`HANDBUCH.md`](HANDBUCH.md).
 
-**By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
-and **Dennsen**.
+**By Dragrem2K**, with contributions from **TheRealSuTefan** and **Dfense**.
 
 My self-built frontend for the MiSTer FPGA: a game browser with boxart
 and game info, gamepad and keyboard control, background music,
@@ -362,7 +361,7 @@ first time in the current calendar year) and "Bite-sized games" (games
 with a short average session length, at least 2 launches required).
 Appears only if something actually fits.
 
-**"Zufalls-Zock"** (Dennsen's rating format, in the main menu under
+**"Zufalls-Zock"** (in the main menu under
 System or as its own menu item depending on configuration): pulls
 three random, not-yet-rated games at once for you to choose from -
 without repeats, until all of them have had a turn. Handy when "don't
@@ -495,7 +494,7 @@ python3 /media/fat/frontend/mister_gameinfo.py           # year/genre/player cou
 2. **thumbnails.libretro.com** (GitHub as fallback) for whatever is
    still missing.
 
-The former mirror source (dennsen86clips.de) was removed in Build 336.
+The former mirror source was removed in Build 336.
 
 The file extension is determined from the **content**, not from the
 name on the server - some servers report the wrong file type for
@@ -2772,7 +2771,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Save current colours as your own scheme | `theme_eigen_speichern` |
 | Edit your own colour scheme | `theme_eigen_bearbeiten` |
 | Navigation sound effects: ON/OFF | `sfx` |
-| Boot logo: Dragend / Dennsen86 / Cirdan / random / plain (cycles since build 326) | `dragend_logo` |
+| Boot logo: Dragend / Cirdan / random / plain (cycles since build 326) | `dragend_logo` |
 | Fast scrolling: ON/OFF | `fast_scroll` |
 | Covers while scrolling: ON/OFF | `cover_sofort` |
 | Cover downscaling: sharp / smooth | `scharf_verkleinern` |
@@ -2888,7 +2887,7 @@ default mapping.
 
 ---
 
-Created by **Dragrem2K**, with contributions from **TheRealSuTefan**,
-**Dfense** and **Dennsen**. Licensed under the MIT license (see
+Created by **Dragrem2K**, with contributions from **TheRealSuTefan**
+and **Dfense**. Licensed under the MIT license (see
 `LICENSE`) - free to use, modify and redistribute. What has changed
 between versions: see `CHANGELOG.md`.

@@ -13,6 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Tidied up: two names no longer appear anywhere.** A contributor has
+  been removed completely — boot logo, credits entry and every mention in
+  the docs, changelogs and program. If you had chosen their logo as the
+  boot logo, you get the Dragend logo again. And the old name of
+  Zufalls-Zock has been replaced by **Zufalls-Zock** everywhere, file
+  names included. Your played list, your own settings and the order of
+  the main page are kept; the frontend renames the old files once on the
+  first start (build 340).
 - **Fixed: an umlaut in MiSTer.ini crashed the frontend at start** — it
   stayed on the "Welcome to MiSTer … login:" greeting. The cause was an
   "ä" in Windows encoding in a comment. MiSTer itself copes with that,
@@ -55,7 +63,7 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
   (much faster on the exFAT card), shows "Reading the arcade folder …"
   with counts, and takes over the screen while it reads (build 336).
 - **Changed: box art download without the mirror source.** The queries
-  to dennsen86clips.de are gone. Before downloading anything, it checks
+  to the former mirror are gone. Before downloading anything, it checks
   what Update All (Game Artwork DBs) has already put on the card and
   says so at the start; those covers are never downloaded, not even in
   "neu" mode. Everything else comes from libretro as before (build 336).
@@ -172,7 +180,7 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
   pads in Switch mode (e.g. 8BitDo); Start is "+" there, Select is "−"
   (build 326).
 - **New: choose your boot logo.** Under System → Display & sound you
-  cycle through Dragend, **Dennsen86**, **Cirdan**, random (a different
+  cycle through Dragend, **Cirdan**, random (a different
   one at every start) or plain (build 326).
 - **More honest RUCKLER line.** What the frontend draws between two
   key presses used to be counted with the previous action — hence
@@ -3963,8 +3971,8 @@ own package.
 
 Rainwave internet radio as a second music source, a volume control, an
 eight-step first-run wizard, SNES Tracker and SMW Hacks as their own
-categories, update notifications via GitHub, the "Wonne oder Tonne"
-rating format, more hidden achievements and seasonal decorations.
+categories, update notifications via GitHub, the "Zufalls-Zock"
+random pick, more hidden achievements and seasonal decorations.
 
 Plus a dozen fixes — among them: `(Unl)`/`(Pirate)` ROMs were wrongly
 discarded, a stale scan cache survived changes to the filter logic, and

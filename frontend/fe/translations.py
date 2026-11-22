@@ -227,8 +227,6 @@ TRANSLATIONS = {
                                 "de": "TheRealSutefan - Patches, RA-Werkzeuge, Bugfixes"},
     "credits_contrib_dfense": {"en": "Dfense1980 - contributions",
                                "de": "Dfense1980 - Mitwirkung"},
-    "credits_contrib_dennsen": {"en": "Dennsen86 - streaming and testing",
-                                "de": "Dennsen86 - Streaming und Testen"},
     "credits_thanks_heading": {"en": "Thanks", "de": "Danke"},
     "credits_thanks_entry": {"en": "To everyone playing, testing and reporting bugs.",
                              "de": "An alle, die spielen, testen und Fehler melden."},
@@ -587,38 +585,38 @@ TRANSLATIONS = {
                        "de": "RetroAchievements-Core"},
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter wählen, OK bestätigen"},
-    "wot_title": {"en": "ZUFALLS-ZOCK", "de": "ZUFALLS-ZOCK"},
-    "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
+    "zufallszock_title": {"en": "ZUFALLS-ZOCK", "de": "ZUFALLS-ZOCK"},
+    "zufallszock_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
                  "de": "Hoch/Runter: wählen   OK: bestätigen   ESC: zurück"},
     # GEAENDERT (Build 144): bis Build 143 bekamen zwei voellig verschiedene
     # Lagen dieselbe Meldung - "gar keine Spiele gescannt" und "alle Spiele
     # waren schon einmal dran". Im ersten Fall ist ein Scan faellig, im
     # zweiten hilft nur das Zuruecksetzen der gespielt-Liste. Deshalb jetzt
     # getrennte Texte, und im zweiten Fall eine Wahl statt einer Sackgasse.
-    "wot_pool_empty": {
+    "zufallszock_pool_empty": {
         "en": "All %d games have been drawn already. The list remembers "
               "every start.",
         "de": "Alle %d Spiele waren schon dran. Die Liste merkt sich "
               "jeden Start."},
-    "wot_pool_keine_spiele": {
+    "zufallszock_pool_keine_spiele": {
         "en": "No games found. Scan the game list first (System - Rescan game list).",
         "de": "Keine Spiele gefunden. Bitte zuerst die Spieleliste einlesen "
               "(System - Spieleliste neu einlesen)."},
-    "wot_reset_option": {
+    "zufallszock_reset_option": {
         "en": "Reset list", "de": "Liste zurücksetzen"},
-    "wot_reset_done": {
+    "zufallszock_reset_done": {
         "en": "List reset - all %d games are back in the pool.",
         "de": "Liste zurückgesetzt - alle %d Spiele sind wieder dabei."},
-    "wot_no_rom_match": {
+    "zufallszock_no_rom_match": {
         "en": "Drew several games but found no matching ROM file for any of them.",
         "de": "Mehrere Spiele gezogen, aber für keins eine passende ROM-Datei gefunden."},
-    "wot_option_start": {"en": "Start", "de": "Starten"},
-    "wot_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
+    "zufallszock_option_start": {"en": "Start", "de": "Starten"},
+    "zufallszock_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
     # NEU (Build 246): Hinweiszeile während der Ziehung.
-    "wot_drawing": {"en": "Drawing...   any button: skip",
+    "zufallszock_drawing": {"en": "Drawing...   any button: skip",
                     "de": "Es wird gezogen...   beliebige Taste: überspringen"},
-    "wot_option_back": {"en": "Back", "de": "Zurück"},
-    "wot_checking": {"en": "Checking games... %d/%d",
+    "zufallszock_option_back": {"en": "Back", "de": "Zurück"},
+    "zufallszock_checking": {"en": "Checking games... %d/%d",
                      "de": "Prüfe Spiele... %d/%d"},
     # NEU (Build 145): den Rechenauftrag an einen PC abgeben.
     "sys_thumb_auftrag_action": {
@@ -630,7 +628,7 @@ TRANSLATIONS = {
     "thumb_auftrag_failed": {
         "en": "Could not write the job file.",
         "de": "Auftragsdatei konnte nicht geschrieben werden."},
-    "sys_wot_action": {"en": "Zufalls-Zock - draw a game", "de": "Zufalls-Zock - Spiel ziehen"},
+    "sys_zufallszock_action": {"en": "Zufalls-Zock - draw a game", "de": "Zufalls-Zock - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",

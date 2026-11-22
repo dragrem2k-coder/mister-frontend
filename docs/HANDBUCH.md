@@ -3,8 +3,7 @@
 Das ist die vollständige Beschreibung aller Funktionen. Die kurze
 Übersicht steht in der [README](../README.md) im Wurzelverzeichnis.
 English: [`MANUAL_EN.md`](MANUAL_EN.md).
-**Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
-und **Dennsen**.
+**Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan** und **Dfense**.
 
 Mein selbstgebautes Frontend für den MiSTer FPGA: Spiele-Browser mit
 Boxart und Spielinfos, Gamepad- und Tastatursteuerung, Hintergrundmusik,
@@ -228,7 +227,7 @@ Nachlesen (`CHANGELOG.md`).
 | frontend/sfx/                   | /media/fat/frontend/sfx/         | Navigations-Klänge |
 | frontend/boot_logo/             | /media/fat/frontend/boot_logo/   | Bilder der Startanimation |
 | frontend/rainwave.py            | /media/fat/frontend/             | Internetradio als Musikquelle (optional) |
-| frontend/mister_wot.py          | /media/fat/frontend/             | Zufalls-Zock |
+| frontend/mister_zufallszock.py          | /media/fat/frontend/             | Zufalls-Zock |
 | frontend/mister_ini_cleanup.py  | /media/fat/frontend/             | Aufräumhilfe für die MiSTer.ini |
 | frontend/VERSION, LATEST_BUILD.json | /media/fat/frontend/         | Für die Update-Prüfung im Frontend |
 | Scripts/Frontend_FB_Probe.sh    | /media/fat/Scripts/              | Bildspeicher-Diagnose (nur bei Anzeigeproblemen nötig) |
@@ -404,7 +403,7 @@ hast) und "Kurzweilige Spiele" (Spiele mit kurzer durchschnittlicher
 Sitzungsdauer, mindestens 2 Starts nötig). Erscheint nur, wenn
 tatsächlich etwas reinpasst.
 
-**"Zufalls-Zock"** (Dennsens Bewertungs-Format, im Hauptmenü unter
+**"Zufalls-Zock"** (im Hauptmenü unter
 System oder als eigener Menüpunkt je nach Konfiguration): zieht drei
 zufällige, noch nicht bewertete Spiele auf einmal zur Auswahl -
 wiederholungsfrei, bis alle einmal dran waren. Praktisch, wenn "keine
@@ -548,7 +547,7 @@ python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranz
 2. **thumbnails.libretro.com** (Rückfall GitHub) für alles, was dann
    noch fehlt.
 
-Die frühere Spiegel-Quelle (dennsen86clips.de) ist seit Build 336
+Die frühere Spiegel-Quelle ist seit Build 336
 entfernt.
 
 Die Dateiendung wird nach dem **Inhalt** bestimmt, nicht nach dem
@@ -3175,7 +3174,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Aktuelle Farben als eigenes Schema speichern | `theme_eigen_speichern` |
 | Eigenes Farbschema bearbeiten | `theme_eigen_bearbeiten` |
 | Navigations-Soundeffekte: AN/AUS | `sfx` |
-| Boot-Logo: Dragend / Dennsen86 / Cirdan / Zufall / neutral (seit Build 326 zum Durchschalten) | `dragend_logo` |
+| Boot-Logo: Dragend / Cirdan / Zufall / neutral (seit Build 326 zum Durchschalten) | `dragend_logo` |
 | Schnelles Scrollen: AN/AUS | `fast_scroll` |
 | Cover beim Scrollen: AN/AUS | `cover_sofort` |
 | Cover verkleinern: scharf / weich | `scharf_verkleinern` |
@@ -3292,7 +3291,7 @@ Standardbelegung zusammengeführt wird.
 
 ---
 
-Erstellt von **Dragrem2K**, mit Beiträgen von **TheRealSuTefan**,
-**Dfense** und **Dennsen**. Lizenziert unter der MIT-Lizenz (siehe
+Erstellt von **Dragrem2K**, mit Beiträgen von **TheRealSuTefan**
+und **Dfense**. Lizenziert unter der MIT-Lizenz (siehe
 `LICENSE`) - frei nutzbar, veränderbar und weitergebbar. Was sich
 zwischen den Versionen getan hat: siehe `CHANGELOG.md`.

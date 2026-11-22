@@ -1,7 +1,6 @@
 # Dragend — MiSTer Custom Frontend v5.1
 
-**By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
-and **Dennsen**.
+**By Dragrem2K**, with contributions from **TheRealSuTefan** and **Dfense**.
 
 🇩🇪 [Deutsch](README.md) · 📖 [Manual](docs/MANUAL_EN.md) ·
 📄 [Manual as PDF](docs/Dragend_Manual_EN.pdf) ·
@@ -141,7 +140,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **RetroAchievements** | Progress, achievement showcase (F6), popup when you earn one |
 | **Completed & custom achievements** | Also for games RA does not support |
 | **Easter eggs & frontend level** | Hidden achievements, anniversary notes, seasonal decorations |
-| **Random pick / rate-it** | A random game you have not played, or not yet rated |
+| **Zufalls-Zock (random pick)** | Draws random games you have not played yet |
 | **The draw, with sound** | Titles spin like a wheel while a draw sound plays — duration 1–5 s, adjustable or off |
 
 ### Display & sound

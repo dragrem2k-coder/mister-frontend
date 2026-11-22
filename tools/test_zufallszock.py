@@ -2,16 +2,16 @@
 # -*- coding: utf-8 -*-
 """Prueft die beiden Sackgassen des Zufalls-Zock-Bildschirms (Build 144).
 
-Bis Build 143 endete draw_wot_screen() in genau EINER Meldung, sobald
+Bis Build 143 endete draw_zufallszock_screen() in genau EINER Meldung, sobald
 nichts mehr ziehbar war: "alles durchgespielt". Dahinter steckten aber
 zwei voellig verschiedene Lagen:
 
   a) Der Bestand ist leer (noch nie gescannt, oder keine Spiele-Systeme).
      Dann ist "durchgespielt" schlicht falsch - faellig ist ein Scan.
-  b) Der Bestand ist da, aber jedes Spiel steht schon in wot_played.json.
+  b) Der Bestand ist da, aber jedes Spiel steht schon in zufallszock_played.json.
      Dann stimmte die Meldung zwar, war aber eine Sackgasse: die
      gespielt-Liste liess sich nirgends im Frontend zuruecksetzen, man
-     musste wot_played.json von Hand loeschen.
+     musste zufallszock_played.json von Hand loeschen.
 
 Getestet wird deshalb:
   1. leerer Bestand  -> Hinweis auf den Scan, KEINE Auswahl
@@ -63,7 +63,7 @@ def _rueste(f, wahl):
     # Nach dem Zuruecksetzen laeuft die echte Funktion weiter und will
     # ziehen/zeichnen. So weit soll der Test nicht - eine Abbruch-Marke
     # direkt hinter der Ruecksetz-Stelle reicht.
-    f._wot_start_screen = lambda pick: None
+    f._zufallszock_start_screen = lambda pick: None
 
 
 class _Abbruch(Exception):
@@ -78,20 +78,20 @@ def _pool_setzen(f, spiele):
 
 
 def _played_datei(tmpdir, eintraege):
-    """wot_played.json im Testordner anlegen und mister_wot darauf
+    """zufallszock_played.json im Testordner anlegen und mister_zufallszock darauf
     umbiegen. Liefert den Pfad."""
-    pfad = os.path.join(tmpdir, "wot_played.json")
+    pfad = os.path.join(tmpdir, "zufallszock_played.json")
     if eintraege is None:
         if os.path.exists(pfad):
             os.remove(pfad)
     else:
         with open(pfad, "w", encoding="utf-8") as fh:
             json.dump({"version": 1, "played": eintraege}, fh)
-    fm.mister_wot.WOT_PLAYED_FILE = pfad
+    fm.mister_zufallszock.ZUFALLSZOCK_PLAYED_FILE = pfad
     return pfad
 
 
-tmp = tempfile.mkdtemp(prefix="wot_test_")
+tmp = tempfile.mkdtemp(prefix="zufallszock_test_")
 
 # ---------------------------------------------------------------------------
 print("Test 1: leerer Bestand -> Hinweis auf den Scan")
@@ -100,7 +100,7 @@ f = H.make_frontend(page=1)
 _pool_setzen(f, [])
 _played_datei(tmp, None)
 _rueste(f, wahl=0)
-f.draw_wot_screen()
+f.draw_zufallszock_screen()
 
 arten = [e[0] for e in f._protokoll]
 check("genau eine Meldung, keine Auswahl", arten == ["info"], str(arten))
@@ -120,10 +120,10 @@ SPIELE = ["Super Mario World", "F-Zero", "Chrono Trigger"]
 f = H.make_frontend(page=1)
 _pool_setzen(f, SPIELE)
 pfad = _played_datei(tmp, [{"system": "SNES", "title": s,
-                            "norm": fm.wot_normalize_title(s)}
+                            "norm": fm.zufallszock_normalize_title(s)}
                            for s in SPIELE])
 _rueste(f, wahl=1)                       # 1 = "Zurueck"
-f.draw_wot_screen()
+f.draw_zufallszock_screen()
 
 arten = [e[0] for e in f._protokoll]
 check("Auswahl statt Sackgasse", arten == ["choice"], str(arten))
@@ -144,7 +144,7 @@ print("Test 3: alles gespielt -> 'Zuruecksetzen' leert die Datei")
 f = H.make_frontend(page=1)
 _pool_setzen(f, SPIELE)
 pfad = _played_datei(tmp, [{"system": "SNES", "title": s,
-                            "norm": fm.wot_normalize_title(s)}
+                            "norm": fm.zufallszock_normalize_title(s)}
                            for s in SPIELE])
 _rueste(f, wahl=0)                       # 0 = "Liste zuruecksetzen"
 # Nach dem Zuruecksetzen zieht die Funktion weiter; der Ziehvorgang
@@ -162,7 +162,7 @@ def _info_mit_stopp(title, lines, skippable=True):
 
 f._wizard_info = _info_mit_stopp
 try:
-    f.draw_wot_screen()
+    f.draw_zufallszock_screen()
 except _Abbruch:
     pass
 

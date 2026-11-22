@@ -385,7 +385,7 @@ class Framebuffer:
         # hochgezaehlt wird - unabhaengig davon, WELCHE Funktion das
         # ausloest. _draw_page_items_impl() nutzt das, um zuverlaessig zu
         # erkennen, ob seit dem letzten eigenen vollen Neuaufbau
-        # ZWISCHENDURCH irgendetwas anderes (Hilfe-Bildschirm, WoT,
+        # ZWISCHENDURCH irgendetwas anderes (Hilfe-Bildschirm, Zufalls-Zock,
         # Bestaetigungsdialog, Attract-Modus, ...) den Puffer ebenfalls
         # komplett neu geschrieben hat - nur dann ist der schnelle,
         # NICHT-loeschende Pfad wirklich sicher.

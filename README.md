@@ -1,7 +1,6 @@
 # Dragend — MiSTer Custom Frontend v5.1
 
-**Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
-**Dennsen**.
+**Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan** und **Dfense**.
 
 🇬🇧 [English](README_EN.md) · 📖 [Handbuch](docs/HANDBUCH.md) ·
 📄 [Anleitung als PDF](docs/Dragend_Anleitung.pdf) ·
@@ -142,7 +141,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **RetroAchievements** | Fortschritt, Erfolgs-Vitrine (F6), Popup bei neuen Erfolgen |
 | **Durchgespielt & eigene Erfolge** | Auch für Spiele ohne RA-Unterstützung |
 | **Easter Eggs & Frontend-Level** | Versteckte Erfolge, Jubiläums-Hinweise, saisonale Dekorationen |
-| **Zufalls-Zock / Wonne oder Tonne** | Zufälliges, noch nicht gespieltes bzw. noch nicht bewertetes Spiel |
+| **Zufalls-Zock** | Zieht zufällig Spiele, die du noch nicht gespielt hast |
 | **Ziehung mit Ton** | Beim Ziehen laufen die Titel wie auf einem Rad, dazu ein Ziehungssound — Dauer 1–5 s einstellbar oder ganz aus |
 
 ### Anzeige & Ton

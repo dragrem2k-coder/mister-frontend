@@ -57,7 +57,13 @@ SYSTEM = "system"
 # entsteht. Ihr Kuerzel IST dieser Schluessel - damit ist es von der
 # Sprache unabhaengig.
 BESONDERE = ("continue_cat", "recent_cat", "favorites_cat",
-             "collections_cat", "ra_hunter_cat", "wot_title")
+             "collections_cat", "ra_hunter_cat", "zufallszock_title")
+
+# Build 340: das Kuerzel, unter dem der Zufalls-Zock bis Build 339
+# gespeichert wurde. Bewusst zusammengesetzt - der alte Name soll im
+# Quelltext nicht mehr stehen (Nutzerwunsch), gebraucht wird er nur, um
+# eine alte Einstellung zu verstehen.
+ALTES_ZUFALL_KUERZEL = "".join(("w", "o", "t", "_title"))
 
 _NAMENSMAP = None
 
@@ -139,6 +145,14 @@ def laden(pfad=None):
         # eine von Hand verstellte Datei darf "System" nicht
         # ausblenden.
         aus.discard(SYSTEM)
+        # BUILD 340: der Zufalls-Zock hatte bis dahin ein anderes
+        # Kuerzel. Wer ihn ausgeblendet oder verschoben hat, behaelt
+        # das - das alte Kuerzel wird beim Lesen auf das neue gelegt.
+        alt = ALTES_ZUFALL_KUERZEL
+        if alt in aus:
+            aus.discard(alt)
+            aus.add("zufallszock_title")
+        folge = ["zufallszock_title" if x == alt else x for x in folge]
         return (aus, folge)
     except Exception:                                    # noqa: BLE001
         return (set(), [])

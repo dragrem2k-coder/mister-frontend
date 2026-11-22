@@ -76,7 +76,7 @@ try:
                                     None), ("Lautstaerke", "volume", None)]),
         "Info": knoten([("Hilfe", "help", None)])})
     vorher = [("SNES", knoten([("Mario", "game", None)]), "SNES"),
-              ("Zufalls-Zock", knoten([("Ziehen", "wot_draw", None)]), None),
+              ("Zufalls-Zock", knoten([("Ziehen", "zufallszock_draw", None)]), None),
               ("System", system, None)]
     f.cats = vorher
     f.cat_i = 2

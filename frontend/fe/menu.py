@@ -232,7 +232,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     swap_ok_back_label = t("sys_swap_ok_back_on" if swap_ok_back_enabled()
                            else "sys_swap_ok_back_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
-    # Build 326: das Bootlogo zum Aussuchen - Dragend, Dennsen86, Cirdan,
+    # Build 326: das Bootlogo zum Aussuchen - Dragend, Cirdan,
     # Zufall, neutral (siehe BOOT_LOGO_WAHLEN in fe/settings.py).
     _bl = boot_logo_wahl()
     if _bl == "zufall":

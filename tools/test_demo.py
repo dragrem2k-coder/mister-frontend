@@ -550,7 +550,7 @@ class NurWinzige(MitSystem):
     def __init__(self):
         MitSystem.__init__(self)
         self.cats = [("ZUFALLS-ZOCK",
-                      {"items": [("Spiel ziehen", "wot_draw", None)],
+                      {"items": [("Spiel ziehen", "zufallszock_draw", None)],
                        "folders": {}}, None)] + self.cats[1:]
 
 

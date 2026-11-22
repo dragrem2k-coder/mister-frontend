@@ -481,7 +481,7 @@ steckten aber zwei völlig verschiedene Lagen: wer **noch nie gescannt**
 hatte, bekam „alles durchgespielt" zu lesen; und wer wirklich alles
 einmal gezogen hatte, saß in einer **Sackgasse**, weil sich die
 gespielt-Liste nirgends im Frontend zurücksetzen ließ — man musste
-`wot_played.json` von Hand löschen.
+`zufallszock_played.json` von Hand löschen.
 
 Jetzt: leerer Bestand verweist auf den Scan, und „alles dran gewesen"
 bietet das Zurücksetzen gleich mit an, mit der Anzahl im Text. Dafür
@@ -2769,7 +2769,7 @@ selbst gemaltes Artwork bei einem erneuten Lauf nicht verlorengeht.
 Richtig gedacht für einzelne Bilder — aber mit Build 99/100 wurden
 *alle* 57 Kategorie-Logos umgestellt. 42 davon tragen denselben
 Dateinamen wie ein altes Logo und wären nie auf der Karte angekommen.
-Dieselbe Falle wie damals bei `WOT.art` („immer noch das alte
+Dieselbe Falle wie damals bei `ZUFALLSZOCK.art` („immer noch das alte
 Zufalls-Zock-Bild, auch nach Update UND Install"), nur 42-fach.
 
 | | |
@@ -4743,8 +4743,8 @@ zwei Tabellenzeilen in einer Zeile zusammengelaufen.
   keine ALSA-Variante installiert haben. Betrifft ausschliesslich
   find_ra_core() in fe/ra_core.py (eine einzige, zentrale Stelle,
   ueber die JEDER RA-Core-Start laeuft - Core-Auswahl-Bildschirm beim
-  Kategorie-Eintritt, Weiterspielen/Zuletzt gespielt/Favoriten, Wonne
-  oder Tonne) - keine weiteren Aenderungen an frontend.py noetig,
+  Kategorie-Eintritt, Weiterspielen/Zuletzt gespielt/Favoriten,
+  Zufalls-Zock) - keine weiteren Aenderungen an frontend.py noetig,
   find_ra_core() war fuer genau so eine Namens-Priorisierung schon von
   Anfang an ausgelegt ("mehrere plausible Varianten durchprobiert -
   die erste tatsaechlich existierende gewinnt").
@@ -5364,7 +5364,7 @@ Verhaltensänderung im Normalbetrieb):
   (`THUMB_CACHE ...`).
 - Textcache-Treffer/-Fehler/-Verdrängungen jetzt im Log sichtbar
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
-- Größe und Änderungsdatum von `sysart/WOT.art` (Zufalls-Zock-Vorschau
+- Größe und Änderungsdatum von `sysart/ZUFALLSZOCK.art` (Zufalls-Zock-Vorschau
   in der Boxart) jetzt bei jedem Start im Log sichtbar.
 - Start-Dauer bis das Kategorien-Menü zum ersten Mal bereit ist
   (Framebuffer/Eingaben öffnen, RA-Abruf anstoßen, Spieleliste
@@ -5374,20 +5374,20 @@ Verhaltensänderung im Normalbetrieb):
   Optimierung wäre ohne diese Zahl nur Raten gewesen.
 
 **KORREKTUR** (Nutzer-Rückmeldung: "das Bild für Zufalls-Zock muss in
-den Ordner sysart, du hast einen eigenen wot_logo-Ordner dafür
+den Ordner sysart, du hast einen eigenen zufallszock_logo-Ordner dafür
 erstellt, das war nicht richtig"): der vorherige Build hatte für das
 neue Zufalls-Zock-Bild fälschlich einen komplett neuen, eigenen
-Mechanismus samt eigenem `wot_logo/`-Ordner eingeführt (ein
+Mechanismus samt eigenem `zufallszock_logo/`-Ordner eingeführt (ein
 zusätzliches Logo-Bild oben im Zufalls-Zock-Bildschirm selbst). Der
 eigentliche, schon lange vor dieser Session bestehende Ort für dieses
-Bild ist aber `sysart/WOT.art` - darüber läuft die kleine Vorschau
+Bild ist aber `sysart/ZUFALLSZOCK.art` - darüber läuft die kleine Vorschau
 links neben der Kategorie "Zufalls-Zock" im Kategorien-Hauptmenü, auf
 die sich der ursprüngliche Nutzerwunsch ("das alte Bild in der Boxart
 neben der Kategorie ZUFALLS-ZOCK austauschen") die ganze Zeit bezog.
 Diese Datei wurde beim vorherigen Versuch nie angefasst - das erklärt
 auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
-`wot_logo/` komplett entfernt, das neue Bild liegt jetzt korrekt unter
-`sysart/WOT.art`, der Zufalls-Zock-Bildschirm selbst zeigt wieder nur
+`zufallszock_logo/` komplett entfernt, das neue Bild liegt jetzt korrekt unter
+`sysart/ZUFALLSZOCK.art`, der Zufalls-Zock-Bildschirm selbst zeigt wieder nur
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
@@ -6265,7 +6265,7 @@ den reinen Text-Titel wie vor dieser Session.
   anstatt die SD-Cover dort einzublenden? Das sieht blöd aus"). Ein auf
   HDMI-Auflösung stark hochskaliertes SD-Bild wirkt tatsächlich sichtbar
   matschig. Betroffen waren alle sechs Stellen im Code, die HD-Cover
-  laden (Spieleliste, Attract-Modus, "Wonne oder Tonne", Trophäenraum,
+  laden (Spieleliste, Attract-Modus, "Zufalls-Zock", Trophäenraum,
   Jahresrückblick) - fehlt jetzt die HD-Datei, wird im HDMI-Modus
   konsequent kein Cover gezeigt (bzw. die an den meisten dieser Stellen
   bereits vorhandene "kein Artwork"-/Systembild-Platzhalteranzeige
@@ -6349,10 +6349,10 @@ den reinen Text-Titel wie vor dieser Session.
   nachgestellt und bestätigt). Neue `.gitattributes`-Datei erzwingt
   jetzt für jeden, der das Repo auscheckt, reine LF-Zeilenenden bei
   `.sh`/`.py`/`.json`/`.md`/`.txt` - unabhängig von der eigenen
-  Git-Konfiguration. Zusätzlich die neue WOT.art-Ausnahme (siehe
+  Git-Konfiguration. Zusätzlich die neue ZUFALLSZOCK.art-Ausnahme (siehe
   vorheriger Eintrag) ohne Backslash-Zeilenfortsetzung umgeschrieben,
   damit sie auch ohne den `.gitattributes`-Fix robust bleibt.
-- Das neue Zufalls-Zock-Bild (`sysart/WOT.art`) kam bei einer
+- Das neue Zufalls-Zock-Bild (`sysart/ZUFALLSZOCK.art`) kam bei einer
   BESTEHENDEN Installation über Update UND Install NIE an, egal wie
   oft man es versuchte (Nutzer-Rückmeldung eines Freundes: "Nope noch
   da", nach mehrfachem Update UND Install-Lauf). Ursache gefunden:
@@ -6360,13 +6360,13 @@ den reinen Text-Titel wie vor dieser Session.
   `Frontend_Install_Remote.sh`, `Frontend_Install_Offline.sh`) kopieren
   `sysart/` bewusst mit "nicht überschreiben" - schützt eigene, per
   Hand ersetzte System-Logos vor einem Update. Existierte
-  `sysart/WOT.art` aber schon (das alte Platzhalterbild lag dort schon
+  `sysart/ZUFALLSZOCK.art` aber schon (das alte Platzhalterbild lag dort schon
   lange), griff genau dieser Schutz und verhinderte JEDE Aktualisierung
   dauerhaft - unabhängig davon, wie oft die Skripte liefen. Jetzt gibt
   es eine kurze, bewusst gepflegte Ausnahmeliste (aktuell nur
-  `WOT.art`), die trotzdem überschrieben wird; alle anderen
+  `ZUFALLSZOCK.art`), die trotzdem überschrieben wird; alle anderen
   sysart-Dateien (also echte Nutzer-Anpassungen) bleiben wie bisher
-  geschützt. EHRLICH DOKUMENTIERTE EINSCHRÄNKUNG: wer `WOT.art`
+  geschützt. EHRLICH DOKUMENTIERTE EINSCHRÄNKUNG: wer `ZUFALLSZOCK.art`
   zwischenzeitlich selbst durch eigenes Artwork ersetzt hat, verliert
   das bei einem künftigen Update wieder - es gibt keinen zuverlässigen
   Weg, "noch der alte Standard" von "bewusst selbst ersetzt" zu
@@ -6785,7 +6785,7 @@ Ausführlich als `v4.3-alpha1` getestet, bevor es hierher gemergt wurde.
 - GitHub-Update-Benachrichtigung, asynchroner RA-Fortschritts-Abruf
 - Mehr versteckte Erfolge, Jubiläums-Hinweise, saisonale
   Dekorationen, weitere Ostereier
-- "Wonne oder Tonne" (Dennsens Bewertungs-Format): zieht ein
+- "Zufalls-Zock": zieht ein
   zufälliges, noch nicht bewertetes NES/SNES-Spiel, mit korrekter
   RetroAchievements-Core-Abfrage beim Start
 - Echter, selbst gewählter Sound für Erfolge und Popup-Benachrichtigungen

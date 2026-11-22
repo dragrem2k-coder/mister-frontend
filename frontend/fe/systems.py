@@ -10,7 +10,7 @@ Komplett eigenstaendig - keine Abhaengigkeiten zu anderem Code, reine
 Daten + eine kleine Nachschlage-Funktion. Bewusst als EIGENES,
 kleines Modul (nicht zusammen mit scan_games() etc.) - der groessere
 Scan-Cluster (scan_games/_scan_folder_tree/...) ist im Original stark
-mit anderen Konzepten verflochten (Wonne oder Tonne, Theme-System,
+mit anderen Konzepten verflochten (Zufalls-Zock, Theme-System,
 RetroAchievements liegen dazwischen) und wird in einem spaeteren,
 eigenen Schritt behandelt.
 """

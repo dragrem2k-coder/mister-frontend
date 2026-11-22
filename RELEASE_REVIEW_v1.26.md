@@ -57,7 +57,7 @@ Totalverlust. Wollte ich nicht ohne Not weiter verkomplizieren.
 
 `stream_state()` las immer `items[self.item_i]` — auch auf Seite 0. Dort
 gehört `item_i` aber noch zur zuletzt geöffneten Kategorie. Im Stream stand
-also ein veralteter Spieltitel, während Dennsen durch die Systeme blättert.
+also ein veralteter Spieltitel, während der Streamer durch die Systeme blättert.
 
 Jetzt seitenbewusst: Auf Seite 0 zeigt das Overlay die markierte **Kategorie**
 (inkl. Vorschau-Liste der Systeme), kein Cover; auf Seite 1 wie gehabt das
@@ -95,7 +95,7 @@ echten Dateinamen geladen (neues Feld `art_name` — deshalb ist auch
 
 ## 📄 Kleinigkeit an der Doku
 
-`STREAM_fuer_Dennsen.md` (die Einrichtungs-Anleitung) fehlte im Paket, nur die
+Die Stream-Einrichtungs-Anleitung fehlte im Paket, nur die
 Technik-Doku war drin. Habe ich wieder beigelegt und den README-Verweis
 entsprechend ergänzt.
 

@@ -6084,15 +6084,15 @@ def _category_art_key(name, syskey):
     if name == t("recent_cat"):
         return "RECENT"
     # NEU (Nutzerwunsch: "solltest du das als sysart anlegen, wenn man
-    # auf Wonne oder Tonne geht wird es in der Art-Box angezeigt" -
+    # auf Zufalls-Zock geht wird es in der Art-Box angezeigt" -
     # bisher zeigte die Art-Box beim Markieren dieses Menuepunkts nur
-    # den generischen Platzhalter, da "Wonne oder Tonne" wie
+    # den generischen Platzhalter, da "Zufalls-Zock" wie
     # Weiterspielen/Zuletzt gespielt mit syskey=None angelegt wird,
     # aber hier oben noch fehlte): gleiches Prinzip, fester
-    # sprachunabhaengiger Schluessel "WOT" - Bilddatei liegt unter
-    # SYSART_BASE/WOT.art.
-    if name == t("wot_title"):
-        return "WOT"
+    # sprachunabhaengiger Schluessel "ZUFALLSZOCK" - Bilddatei liegt unter
+    # SYSART_BASE/ZUFALLSZOCK.art.
+    if name == t("zufallszock_title"):
+        return "ZUFALLSZOCK"
     # NEU (Nutzerwunsch: "fuer Arcade, Computer und System im Hauptmenue
     # kleine Sysart erstellen, da steht noch kein Artwork vorhanden") -
     # "Arcade" bekommt seinen Schluessel bereits automatisch (siehe
@@ -6115,7 +6115,7 @@ def _category_art_key(name, syskey):
         return "COMPUTER"
     # NEU (Nutzerwunsch: eigenes Artwork auch fuer "Favoriten" und
     # "Sammlungen" im Hauptmenue) - gleiches Prinzip wie oben bei
-    # Weiterspielen/Zuletzt gespielt/Wonne oder Tonne: beide Kategorien
+    # Weiterspielen/Zuletzt gespielt/Zufalls-Zock: beide Kategorien
     # werden mit syskey=None angelegt (build_categories(): eigene,
     # kuratierte bzw. gemischte Auswahl statt eines echten Systems),
     # der Vergleich laeuft daher wieder ueber t(...) statt eines festen

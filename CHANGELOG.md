@@ -13,6 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Aufgeräumt: zwei Namen kommen nirgends mehr vor.** Ein Mitwirkender
+  ist komplett entfernt — Bootlogo, Eintrag bei den Mitwirkenden und alle
+  Nennungen in Doku, Changelogs und Programm. Wer sein Logo als Bootlogo
+  gewählt hatte, bekommt wieder das Dragend-Logo. Und der alte Name des
+  Zufalls-Zocks ist überall durch **Zufalls-Zock** ersetzt, auch in
+  Dateinamen. Deine gespielt-Liste, eigene Einstellungen und die
+  Reihenfolge auf der Hauptseite bleiben dabei erhalten; das Frontend
+  benennt die alten Dateien beim ersten Start einmal um (Build 340).
 - **Repariert: ein Umlaut in der MiSTer.ini ließ das Frontend beim Start
   abstürzen** — es blieb beim Login-Gruß „Welcome to MiSTer … login:"
   stehen. Ursache war ein „ä" im Windows-Format in einem Kommentar. Der
@@ -56,7 +64,7 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
   „Arcade-Ordner wird eingelesen …" mit Zahlen und holt sich den
   Bildschirm schon während des Einlesens (Build 336).
 - **Geändert: Boxart-Download ohne die Mirror-Quelle.** Die Abfrage bei
-  dennsen86clips.de ist raus. Bevor etwas geladen wird, schaut der
+  dem früheren Spiegel ist raus. Bevor etwas geladen wird, schaut der
   Download nach, was Update All (Game Artwork DBs) schon auf die Karte
   gelegt hat, und sagt es am Anfang; diese Cover werden nie geladen,
   auch nicht im Modus „neu". Der Rest kommt wie bisher von libretro
@@ -178,7 +186,7 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
   Joy-Con und Pads im Switch-Modus (z.B. 8BitDo); Start ist dort „+",
   Select „−" (Build 326).
 - **Neu: Bootlogo zum Aussuchen.** Unter System → Anzeige & Sound
-  schaltest du durch: Dragend, **Dennsen86**, **Cirdan**, Zufall
+  schaltest du durch: Dragend, **Cirdan**, Zufall
   (bei jedem Start ein anderes) oder neutral (Build 326).
 - **Ehrlichere RUCKLER-Zeile.** Was das Frontend zwischen zwei
   Tastendrücken zeichnet, stand bisher bei der vorigen Aktion mit drin
@@ -4334,8 +4342,8 @@ Installer fand sein eigenes Paket nicht.
 
 Rainwave-Internetradio als zweite Musikquelle, Lautstärke-Regler,
 Ersteinrichtungs-Assistent in acht Schritten, SNES Tracker und SMW Hacks
-als eigene Kategorien, Update-Benachrichtigung über GitHub, „Wonne oder
-Tonne" als Bewertungs-Format, mehr versteckte Erfolge und saisonale
+als eigene Kategorien, Update-Benachrichtigung über GitHub, „Zufalls-Zock"
+als Zufallsauswahl, mehr versteckte Erfolge und saisonale
 Dekorationen.
 
 Dazu ein Dutzend Reparaturen — darunter: `(Unl)`/`(Pirate)`-ROMs wurden

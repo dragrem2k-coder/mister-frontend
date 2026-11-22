@@ -459,7 +459,7 @@ Menue sucht.
 - `mister_system` - MiSTer-Systemnahes: update_all und der Speicher-Wächter (Build 213)
 - `nachladen` - Fertige Miniaturen von der Karte in den Arbeitsspeicher holen
 - `naming` - Namens-/Anzeige-Hilfsfunktionen fuer den Scan: Klammer-Tags entfernen (display_name), Regions-/Dedupe-Schluessel (region_rank/canonical_key), Junk-/Japan-only-/Boot-Datei-Erkennung, freundliche Ordnernamen
-- `paths` - GAMES_BASES als eigenstaendiges Modul - vermeidet einen Zirkelbezug zwischen frontend.py und fe/wot.py bzw. fe/scan.py (Modularisierung, Git-Branch 'modular-refactor')
+- `paths` - GAMES_BASES als eigenstaendiges Modul - vermeidet einen Zirkelbezug zwischen frontend.py und fe/zufallszock.py bzw. fe/scan.py (Modularisierung, Git-Branch 'modular-refactor')
 - `prewarm_worker` - Arbeitsprozess fuer den Cover-Vorauslader (Build 102)
 - `ra_core` - RA-Core-Erkennung (sage2050s "MiSTer_RetroAchievements"-Werkzeug - legt RA-faehige Core-Varianten in einen separaten Ordner an)
 - `scan` - Kern des ROM-Scans: Cores durchsuchen, Ordnerbaeume aufbauen, Cache-Verwaltung (Pickle), USB-/Netzwerk-Bereitschaft abwarten

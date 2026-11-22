@@ -43,8 +43,9 @@ DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
 DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
 
 # BUILD 326: DAS BOOTLOGO ZUM AUSSUCHEN. Nutzerwunsch: "die beiden logos
-# bitte als bootlogos zum aussuchen mit einbinden" (Dennsen86 und
-# Cirdan). Die Logos liegen wie das Dragend-Logo als .art in
+# bitte als bootlogos zum aussuchen mit einbinden". (Build 340: eines
+# davon auf Wunsch des Nutzers wieder entfernt - eine alte Wahl dieses
+# Logos faellt auf die Vorgabe zurueck, siehe boot_logo_wahl().) Die Logos liegen wie das Dragend-Logo als .art in
 # frontend/boot_logo/ und werden von den Installern mitkopiert (alle
 # *.art des Ordners). Die Wahl steht als ein Wort in BOOT_LOGO_WAHL_FILE.
 #
@@ -60,8 +61,6 @@ BOOT_LOGO_WAHL_FILE = "/media/fat/frontend/boot_logo_wahl"
 # (Name, Datei, angezeigter Name) - die Reihenfolge ist die im Menue.
 BOOT_LOGOS = (
     ("dragend", DRAGEND_LOGO_FILE, "Dragend"),
-    ("dennsen86", os.path.join(BOOT_LOGO_DIR, "dennsen86_logo.art"),
-     "Dennsen86"),
     ("cirdan", os.path.join(BOOT_LOGO_DIR, "cirdan_logo.art"), "Cirdan"),
 )
 BOOT_LOGO_WAHLEN = tuple(n for n, _d, _a in BOOT_LOGOS) + ("zufall",
@@ -82,7 +81,7 @@ def boot_logo_wahl():
 
 
 def boot_logo_anzeigename(wahl=None):
-    """Der Name fuers Menue ("Dragend", "Dennsen86", ...) - fuer
+    """Der Name fuers Menue ("Dragend", "Cirdan", ...) - fuer
     "zufall" und "neutral" der Schluessel selbst; den Text dafuer holt
     das Menue aus den Uebersetzungen."""
     wahl = wahl or boot_logo_wahl()

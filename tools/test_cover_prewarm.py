@@ -685,7 +685,7 @@ H.set_screen(320, 240)
 fe = H.make_frontend(page=0)
 node = fe.cats[0][1]
 fe.cats = [(kat_name, node, None) for kat_name, _kl in SONDER] + [
-    (fm.t("wot_cat"), node, None) if hasattr(fm, "t") else fe.cats[0]]
+    (fm.t("zufallszock_cat"), node, None) if hasattr(fm, "t") else fe.cats[0]]
 auftraege = fe.kategorie_logo_auftraege()
 namen = {os.path.basename(p) for p, _w, _h in auftraege}
 for erwartet in ("CONTINUE.art", "RECENT.art", "FAVORITES.art",

@@ -2,8 +2,8 @@
 
 Mein selbstgebautes Frontend für den MiSTer FPGA, komplett in purem
 Standard-Python — keine einzige externe Abhängigkeit auf dem MiSTer
-selbst. Gebaut von Dragrem2K, mit Beiträgen von TheRealSuTefan,
-Dfense und Dennsen.
+selbst. Gebaut von Dragrem2K, mit Beiträgen von TheRealSuTefan
+und Dfense.
 
 <p align="center">
   <img src="screenshots/preview_1_kategorien.png" width="420" alt="Kategorien-Menü">

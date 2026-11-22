@@ -12,7 +12,7 @@ Explorer/Finder `\\<MiSTer-IP>\` bzw. `smb://<MiSTer-IP>/`) **oder die
 microSD-Karte direkt am PC**. Betroffen:
 
 - README.md (Voraussetzungen, Option A/C/D, Art-Upload, Bootanim, die
-  Kommandozeilen-Warnung verallgemeinert), ANLEITUNG_fuer_Dennsen.md,
+  Kommandozeilen-Warnung verallgemeinert), die Stream-Anleitung,
   CHANGELOG.md, KORREKTUREN_fuer_Dragrem.md
 - install.sh, install_offline.sh, Scripts/install_frontend.sh,
   Scripts/update_frontend.sh (Root- und Scripts/-Kopien synchron)

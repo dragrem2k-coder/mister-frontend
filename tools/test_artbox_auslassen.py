@@ -327,7 +327,7 @@ print("Test 5: DER FALL, AN DEM ES FAST SCHIEFGEGANGEN IST")
 # der auch ohne die Reparatur gruen waere, sichert nichts ab.
 ABZ = (304, 399, bytes(bytearray([90, 40, 20, 255]) * (304 * 399)))
 _get_scaled = fm.ART.get_scaled
-fm.ART.get_scaled = lambda pfad, w, h: (ABZ if "WOT" in pfad else None)
+fm.ART.get_scaled = lambda pfad, w, h: (ABZ if "ZUFALLSZOCK" in pfad else None)
 try:
     def nach_stillstand(vermerk_behalten):
         f = H.make_frontend(page=0)

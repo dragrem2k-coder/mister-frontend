@@ -1,6 +1,6 @@
 # Einrichtung: SNES ALTTP Tracker & SMW Hacks
 
-Kurzanleitung für Dennsen86 – zwei neue Menüpunkte im MiSTer Custom Frontend (ab Version v4.2 mit den aktuellen Updates).
+Kurzanleitung – zwei neue Menüpunkte im MiSTer Custom Frontend (ab Version v4.2 mit den aktuellen Updates).
 
 **Wichtig vorweg:** Beide Menüpunkte erscheinen nur, wenn die passenden Dateien wirklich an der richtigen Stelle liegen. Fehlt etwas, taucht der Menüpunkt einfach gar nicht erst auf – das ist normal und kein Fehler.
 

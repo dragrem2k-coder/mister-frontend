@@ -164,7 +164,7 @@ eingaben = ["ok"]
 fb.clear(fm.C_BG)
 f._wizard_choice("ZUFALLS-ZOCK",
                  ["Liste zurücksetzen", "Zurück"],
-                 hint_key="wot_hint",
+                 hint_key="zufallszock_hint",
                  lines=["Alle 1274 Spiele waren schon dran. "
                         "Die Liste merkt sich jeden Start."])
 baender = _baender(_textzeilen(fb))

@@ -302,7 +302,7 @@ BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 # bisherigen D-Pad-Symbol auch. Per Menuepunkt (System -> Anzeige &
 # Sound) abschaltbar - dann erscheint wieder das alte, neutrale
 # D-Pad-Symbol statt des personalisierten Logos (fuer alle, die das
-# nicht wollen, z.B. TheRealSutefan/Dennsen/Dfense mit eigenem Namen
+# nicht wollen, z.B. Mitwirkende mit eigenem Namen
 # an der Sache).
 from fe.settings import (
     ATTRACT_CHANGE_SECONDS, ATTRACT_DELAY_FILE, ATTRACT_DELAY_STEPS,
@@ -406,10 +406,10 @@ import fe.ra_settings as RASET
 import fe.framebuffer
 
 import fe.paths
-import mister_wot
-mister_wot.configure(GAME_SYSTEMS, lambda: fe.paths.GAMES_BASES, LOG)
-from mister_wot import (
-    wot_mark_played, wot_normalize_title, wot_load_played, wot_save_played,
+import mister_zufallszock
+mister_zufallszock.configure(GAME_SYSTEMS, lambda: fe.paths.GAMES_BASES, LOG)
+from mister_zufallszock import (
+    zufallszock_mark_played, zufallszock_normalize_title, zufallszock_load_played, zufallszock_save_played,
 )
 
 from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDATES, find_ra_core
@@ -1997,21 +1997,21 @@ class Frontend:
         # DIAGNOSE (Nutzer-Rueckmeldung: "habe nach dem Update immer
         # noch das alte Zufalls-Zock-Bild") - inzwischen als Ursache
         # identifiziert und behoben (siehe Korrektur-Kommentar in
-        # _draw_wot_title()): das Bild wurde bisher an der FALSCHEN
+        # _draw_zufallszock_title()): das Bild wurde bisher an der FALSCHEN
         # Stelle ausgetauscht (ein eigens dafuer angelegter, aber
-        # falscher wot_logo/-Ordner) - die tatsaechlich angezeigte
-        # Datei (SYSART_BASE/WOT.art, ueber den bereits VORHER
+        # falscher zufallszock_logo/-Ordner) - die tatsaechlich angezeigte
+        # Datei (SYSART_BASE/ZUFALLSZOCK.art, ueber den bereits VORHER
         # bestehenden Sysart-Mechanismus) wurde dabei nie angefasst.
         # Trotzdem bei jedem Start geloggt, damit ein kuenftiger
         # Austausch immer nachvollziehbar bleibt.
         try:
-            _wot_st = os.stat(os.path.join(SYSART_BASE, "WOT.art"))
-            LOG("SYSART WOT.art: %d Bytes, zuletzt geaendert %s" % (
-                _wot_st.st_size,
+            _zufallszock_st = os.stat(os.path.join(SYSART_BASE, "ZUFALLSZOCK.art"))
+            LOG("SYSART ZUFALLSZOCK.art: %d Bytes, zuletzt geaendert %s" % (
+                _zufallszock_st.st_size,
                 time.strftime("%Y-%m-%d %H:%M:%S",
-                               time.localtime(_wot_st.st_mtime))))
+                               time.localtime(_zufallszock_st.st_mtime))))
         except OSError as _e:
-            LOG("SYSART WOT.art: nicht vorhanden (%s) - Platzhalter in der "
+            LOG("SYSART ZUFALLSZOCK.art: nicht vorhanden (%s) - Platzhalter in der "
                 "Boxart-Vorschau" % _e)
 
         # BUGFIX (KRITISCH - Nutzer-Rueckmeldung von echter Hardware:
@@ -3300,16 +3300,16 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
-        # Zufalls-Zock (internes Kuerzel im Code weiterhin WOT): eigene Kategorie,
+        # Zufalls-Zock (im Code ZUFALLSZOCK, seit Build 340): eigene Kategorie,
         # gleiches Prinzip wie RA-Erfolgsjaeger direkt darueber. IMMER aktiv -
         # das Feature ist jetzt ROM-first (Spiele kommen aus den vorhandenen
         # ROMs, gespielt-DB als JSON), eine CSV ist nicht mehr noetig. Nur EIN
         # Eintrag ("Spiel ziehen"), kein Ordnerbaum - das Ziehen selbst
-        # passiert im Bildschirm (draw_wot_screen()), nicht ueber Navigation.
+        # passiert im Bildschirm (draw_zufallszock_screen()), nicht ueber Navigation.
         # Anlegen des Menuepunkts ist billig; der (nur beim ersten Oeffnen /
-        # nach ROM-Aenderung) teure Katalogbau laeuft erst in draw_wot_screen().
-        self.cats.append((t("wot_title"), _wrap_flat(
-            [(t("sys_wot_action"), "wot_draw", None)]), None))
+        # nach ROM-Aenderung) teure Katalogbau laeuft erst in draw_zufallszock_screen().
+        self.cats.append((t("zufallszock_title"), _wrap_flat(
+            [(t("sys_zufallszock_action"), "zufallszock_draw", None)]), None))
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
@@ -3503,7 +3503,7 @@ class Frontend:
         "Spaeter"-Option bestaetigt wurde): hoch/runter schalten jetzt
         GENAUSO wie links/rechts zwischen den beiden Optionen um - das
         entspricht exakt dem bereits bestehenden, vertrauten Muster aus
-        draw_core_choice_screen()/draw_wot_screen() (dort toggelt JEDE
+        draw_core_choice_screen()/draw_zufallszock_screen() (dort toggelt JEDE
         Richtungstaste zwischen den beiden bzw. mehreren Optionen).
         "Hoch" wechselt zur ERSTEN Option (wie "links"), "runter" zur
         ZWEITEN (wie "rechts") - entspricht der Lese-/Leserichtung
@@ -9706,7 +9706,7 @@ class Frontend:
         # funktionieren" ausdruecklich gefordert war): fb.full_redraw_gen
         # (siehe fe/framebuffer.py) wird bei JEDEM vollstaendigen
         # Neuaufbau hochgezaehlt, unabhaengig von hier - lief zwischen-
-        # durch irgendeine ANDERE Bildschirmseite (Hilfe, WoT, Bestaeti-
+        # durch irgendeine ANDERE Bildschirmseite (Hilfe, Zufalls-Zock, Bestaeti-
         # gungsdialog, Attract-Modus, ...), stimmt die eigene gemerkte
         # Generation nicht mehr mit fb.full_redraw_gen ueberein, und der
         # schnelle Pfad wird automatisch NICHT genommen - dann laeuft
@@ -16744,8 +16744,8 @@ class Frontend:
         # SD-Layout (H < 720, z.B. CRT) bleibt UNVERAENDERT: dort gab
         # es noch nie eine HD-Datei zu suchen, art_path() greift
         # weiterhin direkt, ohne Umweg. Gleiches Prinzip an den
-        # uebrigen ART_HD-Fundstellen (draw_attract(), Wonne-oder-
-        # Tonne-Screens, Trophaeenraum/Jahresrueckblick) mitgezogen.
+        # uebrigen ART_HD-Fundstellen (draw_attract(), Zufalls-
+        # Zock-Screens, Trophaeenraum/Jahresrueckblick) mitgezogen.
         # NEU (Build 89): merken, wie oft der Bild-Cache bisher etwas
         # uebersprungen hat. Liefert get_scaled() gleich None UND ist der
         # Zaehler dabei gestiegen, war es kein "kein Cover vorhanden",
@@ -19171,34 +19171,34 @@ class Frontend:
             elif act in ("back", "exit"):
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
-    def _draw_wot_title(self, fb, ox, oy, text_w, s):
+    def _draw_zufallszock_title(self, fb, ox, oy, text_w, s):
         """Zeichnet den 'Zufalls-Zock'-Titel als Text.
 
         KORRIGIERT (Nutzer-Rueckmeldung: "das Bild fuer Zufalls-Zock
-        muss in den Ordner sysart. Du hast einen eigenen wot_logo-
+        muss in den Ordner sysart. Du hast einen eigenen zufallszock_logo-
         Ordner dafuer erstellt, das war nicht richtig"): dieser
         Bildschirm hatte urspruenglich NIE eigenes Bild-Artwork - der
         Nutzerwunsch "das alte Bild in der Boxart neben der Kategorie
         ZUFALLS-ZOCK austauschen" bezog sich die ganze Zeit auf die
         kleine Vorschau links im Kategorien-Hauptmenue (siehe
         _draw_cat_artbox()), die bereits VOR dieser Session ueber den
-        etablierten Sysart-Mechanismus lief (SYSART_BASE/WOT.art,
+        etablierten Sysart-Mechanismus lief (SYSART_BASE/ZUFALLSZOCK.art,
         siehe _category_art_key() in fe/art.py). Hier wurde
         faelschlich ein KOMPLETT NEUER, eigener Mechanismus samt
-        eigenem wot_logo/-Ordner fuer eine andere Stelle (dieser
+        eigenem zufallszock_logo/-Ordner fuer eine andere Stelle (dieser
         Bildschirm hier) eingefuehrt - der eigentliche Ort, an dem der
         Nutzer das alte Bild sah, blieb dadurch unveraendert, das neue
         Bild landete bisher an der falschen Stelle. Jetzt entfernt;
-        das neue Bild liegt korrekt unter SYSART_BASE/WOT.art."""
-        fb.text(ox, oy, t("wot_title"),
-                self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+        das neue Bild liegt korrekt unter SYSART_BASE/ZUFALLSZOCK.art."""
+        fb.text(ox, oy, t("zufallszock_title"),
+                self._fit_scale(t("zufallszock_title"), text_w, s + 1), C_TITLE, C_BG)
 
-    def _wot_cover_sichern(self, picks, cover_cache, cell_w, covers_h, s):
+    def _zufallszock_cover_sichern(self, picks, cover_cache, cell_w, covers_h, s):
         """Die Cover der drei gezogenen Spiele in den Zwischenspeicher
         holen - genau EINE Stelle dafuer.
 
         NEU (Build 246). Vorher stand dieser Griff mitten in der
-        Zeichenschleife von draw_wot_screen(), beim ersten Durchlauf
+        Zeichenschleife von draw_zufallszock_screen(), beim ersten Durchlauf
         also gleich dreimal hintereinander - und der erste fb.flip()
         kam erst danach. Genau DAS ist die Wartezeit, die der
         Ziehungssound ueberdecken soll, und die Spannungsphase muss
@@ -19208,7 +19208,7 @@ class Frontend:
         Deshalb hier herausgezogen: die Phase ruft es, die Schleife
         ruft es, und was dort geladen wird, findet die Schleife
         fertig vor. Der Zwischenspeicher gilt ueber "Neu ziehen"
-        hinweg (siehe cover_cache in draw_wot_screen), ein zweites
+        hinweg (siehe cover_cache in draw_zufallszock_screen), ein zweites
         Mal dasselbe Spiel kostet also nichts."""
         for p in picks:
             psys = p[0]
@@ -19229,7 +19229,7 @@ class Frontend:
                 # die Zeile ohne Bild ist immer noch spielbar.
                 cover_cache[ckey] = None
 
-    def _wot_ziehung_zeigen(self, fb, ox, oy, text_w, s, games_top,
+    def _zufallszock_ziehung_zeigen(self, fb, ox, oy, text_w, s, games_top,
                             row_h, rows_scale, maxchars, playable,
                             picks, cover_cache, cell_w, covers_h):
         """Die Ziehung VORFUEHREN: wechselnde Titel, Sound dazu, und am
@@ -19266,7 +19266,7 @@ class Frontend:
         dauer_ms = load_ziehung_spannung()
         if dauer_ms <= 0:
             # Aus: nur laden, nichts zeigen, nichts spielen.
-            self._wot_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
+            self._zufallszock_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
             return
         griff = SoundGriff()
         # KORRIGIERT (Build 247, Nutzer-Rueckmeldung: "bei zufallszock
@@ -19303,14 +19303,14 @@ class Frontend:
             def _rahmen(zeilen):
                 """Ein Bild der laufenden Ziehung."""
                 fb.clear(C_BG)
-                self._draw_wot_title(fb, ox, oy, text_w, s)
+                self._draw_zufallszock_title(fb, ox, oy, text_w, s)
                 y = games_top
                 for ln in zeilen:
                     if len(ln) > maxchars:
                         ln = ln[:maxchars - 1] + "~"
                     fb.text(ox, y, "  " + ln, rows_scale, C_DIM, C_BG)
                     y += row_h
-                self._hinweis_unten(t("wot_drawing"), hint_sc)
+                self._hinweis_unten(t("zufallszock_drawing"), hint_sc)
                 fb.flip()
 
             def _zufalls_zeilen():
@@ -19318,7 +19318,7 @@ class Frontend:
 
             _rahmen(_zufalls_zeilen())
             # Jetzt die echte Arbeit - sie laeuft INNERHALB der Phase.
-            self._wot_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
+            self._zufallszock_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
             # Und die Restzeit auffuellen. Der Abstand waechst von
             # Bild zu Bild: am Anfang hetzen die Titel, zum Schluss
             # klicken sie nur noch weiter.
@@ -19394,7 +19394,7 @@ class Frontend:
         finally:
             griff.stoppen()
 
-    def draw_wot_screen(self):
+    def draw_zufallszock_screen(self):
         """'Zufalls-Zock': bietet drei zufaellige Spiele GLEICHZEITIG zur Wahl
         an (je Zeile voller Name + System; die drei Cover nebeneinander unten).
         Hoch/Runter waehlt, OK oeffnet den Starten-Screen. "Neu ziehen" zeigt
@@ -19404,7 +19404,7 @@ class Frontend:
         seine Menues aufbaut (_attract_games_pool()) - dadurch ist das Roulette
         immer deckungsgleich mit dem, was tatsaechlich auf dem MiSTer liegt,
         und aktualisiert sich automatisch mit jedem Rescan. Bereits gespielte
-        Spiele (wot_played.json) werden herausgefiltert; ist dadurch nichts
+        Spiele (zufallszock_played.json) werden herausgefiltert; ist dadurch nichts
         mehr uebrig, bietet der Bildschirm seit Build 144 das Zuruecksetzen
         dieser Liste an, statt in einer Sackgasse zu enden."""
         fb = self.fb
@@ -19426,16 +19426,16 @@ class Frontend:
         # gebaut hat. Damit kann das Roulette nicht mehr vom echten Bestand
         # abweichen (kein separater Zweitscan, kein eigener Cache), und ein
         # Rescan aktualisiert es automatisch mit. Bereits gespielte Spiele
-        # (wot_played.json) werden herausgefiltert. Jeder Attract-Eintrag ist
+        # (zufallszock_played.json) werden herausgefiltert. Jeder Attract-Eintrag ist
         # (label, syskey, arg) mit arg=(rom, ext, syskey, rbf, load); wir
         # bringen ihn in die bewaehrte Roulette-Form
         # (system, title, genre, ra_id, rom, score) - genre/ra_id bleiben leer,
         # Ziehen/Anzeige/Start darunter bleiben unveraendert.
-        played_set, _ = wot_load_played()
+        played_set, _ = zufallszock_load_played()
         pool = self._attract_games_pool()
         playable = []
         for label, syskey, arg in pool:
-            if (syskey, wot_normalize_title(label)) in played_set:
+            if (syskey, zufallszock_normalize_title(label)) in played_set:
                 continue
             playable.append((syskey, label, "", "", arg[0], 1.0))
         if not playable:
@@ -19445,26 +19445,26 @@ class Frontend:
             # hatte, bekam also "durchgespielt" zu lesen; und wer wirklich
             # alles einmal gezogen hatte, sass in einer Sackgasse, weil die
             # gespielt-Liste nirgends im Frontend zurueckzusetzen war - man
-            # musste wot_played.json von Hand loeschen.
+            # musste zufallszock_played.json von Hand loeschen.
             if not pool:
-                self._wizard_info(t("wot_title"),
-                                  [t("wot_pool_keine_spiele")],
+                self._wizard_info(t("zufallszock_title"),
+                                  [t("zufallszock_pool_keine_spiele")],
                                   skippable=False)
                 return
             wahl = self._wizard_choice(
-                t("wot_title"),
-                [t("wot_reset_option"), t("wot_option_back")],
-                hint_key="wot_hint",
-                lines=[t("wot_pool_empty") % len(pool)])
+                t("zufallszock_title"),
+                [t("zufallszock_reset_option"), t("zufallszock_option_back")],
+                hint_key="zufallszock_hint",
+                lines=[t("zufallszock_pool_empty") % len(pool)])
             if wahl != 0:
                 return
-            wot_save_played([])
+            zufallszock_save_played([])
             LOG("Zufalls-Zock: gespielt-Liste zurueckgesetzt (%d Spiele wieder ziehbar)"
                 % len(pool))
             playable = [(syskey, label, "", "", arg[0], 1.0)
                         for label, syskey, arg in pool]
-            self._wizard_info(t("wot_title"),
-                              [t("wot_reset_done") % len(pool)],
+            self._wizard_info(t("zufallszock_title"),
+                              [t("zufallszock_reset_done") % len(pool)],
                               skippable=False)
 
         # Rotations-Queue: gemischte spielbare Liste, jeweils drei entnehmen;
@@ -19556,7 +19556,7 @@ class Frontend:
             # Cover-Streifen unten rechts: die drei Cover nebeneinander, auf
             # Hoehe der Aktionszeilen. Wuerde die Aktionsspalte links zu breit,
             # rueckt der Streifen nach rechts (kein Ueberlappen).
-            action_labels = [t("wot_option_redraw"), t("wot_option_back")]
+            action_labels = [t("zufallszock_option_redraw"), t("zufallszock_option_back")]
             action_col = ox + max(len(a) for a in action_labels) * 8 * s + 16 * s
             covers_block_w = int(W * 0.62)
             covers_x0 = max(action_col, W - ox - covers_block_w)
@@ -19584,7 +19584,7 @@ class Frontend:
             #
             # Jede Taste ueberspringt - wer das nicht sehen will, muss
             # nicht warten, und die Einstellung findet er trotzdem.
-            self._wot_ziehung_zeigen(fb, ox, oy, text_w, s, games_top,
+            self._zufallszock_ziehung_zeigen(fb, ox, oy, text_w, s, games_top,
                                      row_h, rows_scale, maxchars,
                                      playable, picks, cover_cache,
                                      cell_w, covers_h)
@@ -19594,7 +19594,7 @@ class Frontend:
             back_to_menu = False
             while True:
                 fb.clear(C_BG)
-                self._draw_wot_title(fb, ox, oy, text_w, s)
+                self._draw_zufallszock_title(fb, ox, oy, text_w, s)
 
                 # Spielzeilen (volle Breite)
                 y = games_top
@@ -19617,11 +19617,11 @@ class Frontend:
                 # Drei Cover nebeneinander (rechts, auf Hoehe der Aktionen);
                 # das markierte Spiel bekommt einen farbigen Rahmen.
                 # Build 246: das Laden steht jetzt in
-                # _wot_cover_sichern() - die Spannungsphase ruft
+                # _zufallszock_cover_sichern() - die Spannungsphase ruft
                 # dieselbe Funktion, also ist hier beim ersten
                 # Durchlauf schon alles da. Ist die Phase abgeschaltet,
                 # laedt dieser Aufruf wie bisher beim ersten Bild.
-                self._wot_cover_sichern(picks, cover_cache, cell_w,
+                self._zufallszock_cover_sichern(picks, cover_cache, cell_w,
                                         covers_h, s)
                 for i, p in enumerate(picks):
                     psys = p[0]
@@ -19639,7 +19639,7 @@ class Frontend:
                                 accent_for(psys))
                     self.blit(cax, cay, caw, cah, cpix)
 
-                hint = t("wot_hint")
+                hint = t("zufallszock_hint")
                 sc = s - 1 if s > 1 else 1
                 self._hinweis_unten(hint, sc)
                 fb.flip()
@@ -19651,7 +19651,7 @@ class Frontend:
                     sel = (sel + 1) % n_rows
                 elif act == "ok":
                     if sel < n_games:
-                        if self._wot_start_screen(picks[sel]):
+                        if self._zufallszock_start_screen(picks[sel]):
                             return
                     elif sel == redraw_i:
                         picks = _next_three()
@@ -19668,7 +19668,7 @@ class Frontend:
                 return
             # redraw -> aeussere Schleife mit den neuen picks
 
-    def _wot_start_screen(self, pick):
+    def _zufallszock_start_screen(self, pick):
         """Bestaetigungs-/Starten-Screen fuer ein aus der Dreier-Auswahl
         gewaehltes Spiel: grosses Cover + Starten/Zurueck. Liefert True, wenn
         gestartet wurde (Aufrufer kehrt ins Menue zurueck), sonst False
@@ -19680,7 +19680,7 @@ class Frontend:
         s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        # Gleicher CRT-Bugfix wie in draw_wot_screen() (siehe dortiger
+        # Gleicher CRT-Bugfix wie in draw_zufallszock_screen() (siehe dortiger
         # Kommentar): sichere untere Grenze oberhalb der Hinweiszeile, an
         # der sich der Abstand vor/zwischen den Optionszeilen weiter unten
         # orientiert, statt fest 70*s/40*s anzunehmen.
@@ -19692,20 +19692,20 @@ class Frontend:
         rom_base = os.path.splitext(os.path.basename(rom_path))[0]
         cov_w = int(W * 0.40)
         cov_h = int(H * 0.62)
-        wot_art = None
+        zufallszock_art = None
         # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher Kommentar in
         # draw_art_panel(): kein SD-Rueckfall mehr im HD-Modus - fehlende
         # HD-Datei = kein Cover statt matschig hochskaliertem SD-Bild).
-        wot_art = ART.get_scaled(self.cover_quelle(system, rom_base),
+        zufallszock_art = ART.get_scaled(self.cover_quelle(system, rom_base),
                                  cov_w, cov_h)
         text_w = W - 2 * ox
-        if wot_art:
-            text_w = max(80 * s, W - 2 * ox - wot_art[0] - 20 * s)
+        if zufallszock_art:
+            text_w = max(80 * s, W - 2 * ox - zufallszock_art[0] - 20 * s)
         choice = 0
-        options = [t("wot_option_start"), t("wot_option_back")]
+        options = [t("zufallszock_option_start"), t("zufallszock_option_back")]
         while True:
             fb.clear(C_BG)
-            self._draw_wot_title(fb, ox, oy, text_w, s)
+            self._draw_zufallszock_title(fb, ox, oy, text_w, s)
             y = oy + 70 * s
             fb.text(ox, y, clean_title, self._fit_scale(clean_title, text_w, s + 1), accent, C_BG)
             y += 50 * s
@@ -19716,7 +19716,7 @@ class Frontend:
             if ra_id:
                 y += 45 * s
                 fb.text(ox, y, "RA-ID: %s" % ra_id, s, C_DIM, C_BG)
-            # BUGFIX (gleiche Ursache wie in draw_wot_screen(), siehe dortiger
+            # BUGFIX (gleiche Ursache wie in draw_zufallszock_screen(), siehe dortiger
             # Kommentar): auf CRT reichte die feste Kombination aus 70*s
             # Abstand + 2x 40*s Optionszeilen rechnerisch nicht mehr in die
             # verfuegbare Hoehe - "Zurueck" landete dadurch unsichtbar
@@ -19729,8 +19729,8 @@ class Frontend:
             option_row_h = max(8 * s + 4 * s,
                                min(40 * s, remaining // (len(options) + 1)))
             y += min(70 * s, max(option_row_h, remaining - len(options) * option_row_h))
-            if wot_art:
-                caw, cah, cpix = wot_art
+            if zufallszock_art:
+                caw, cah, cpix = zufallszock_art
                 cax = W - ox - caw
                 cay = oy + 70 * s
                 cpad = 6 * s
@@ -19742,7 +19742,7 @@ class Frontend:
                 prefix = "> " if selrow else "  "
                 fb.text(ox, y, prefix + label, s, color, C_BG)
                 y += option_row_h
-            hint = t("wot_hint")
+            hint = t("zufallszock_hint")
             self._hinweis_unten(hint, sc)
             fb.flip()
             act = self.inp.read_action()
@@ -19772,7 +19772,7 @@ class Frontend:
                             setname = None
                             LOG("Zufalls-Zock: kein RA-Core fuer %s, Standard-Core - %s"
                                 % (system, title))
-                        wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
+                        zufallszock_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
                         record_recent(title, (rom_path, ext, system, sysdef[3], (dl, ftype, idx)))
                         mgl = write_mgl(launch_rbf, rom_path, dl, ftype, idx, setname=setname)
                         self.run_core(mgl, label=title, syskey=system)
@@ -22523,7 +22523,6 @@ class Frontend:
         heading(t("credits_contrib_heading"))
         entry(t("credits_contrib_sutefan"))
         entry(t("credits_contrib_dfense"))
-        entry(t("credits_contrib_dennsen"))
         rows.append(("", C_DIM, 0))
         heading(t("credits_thanks_heading"))
         entry(t("credits_thanks_entry"))
@@ -26013,7 +26012,7 @@ class Frontend:
             # System -> Anzeige & Sound, faellt dann auf das alte,
             # neutrale D-Pad-Symbol zurueck.
             # Build 326: welches Logo, steht in boot_logo_datei()
-            # (fe/settings.py) - Dragend, Dennsen86, Cirdan, Zufall oder
+            # (fe/settings.py) - Dragend, Cirdan, Zufall oder
             # neutral. None heisst D-Pad-Symbol.
             _wahl = boot_logo_wahl()
             _logo = boot_logo_datei(_wahl)
@@ -28462,8 +28461,8 @@ class Frontend:
                         elif kind == "setup_wizard":
                             self.run_setup_wizard()
                             self.draw()
-                        elif kind == "wot_draw":
-                            self.draw_wot_screen()
+                        elif kind == "zufallszock_draw":
+                            self.draw_zufallszock_screen()
                             self.draw()
                         elif kind == "secrets":
                             self.draw_secrets_screen()

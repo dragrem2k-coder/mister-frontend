@@ -209,7 +209,7 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # mit Build 99/100 wurden ALLE 57 Kategorie-Logos auf einen neuen,
     # einheitlichen Abzeichen-Stil umgestellt. Von denen waeren 42 nie
     # auf der Karte angekommen, weil unter demselben Namen schon ein
-    # altes Logo lag. Dieselbe Falle, die es bei WOT.art schon einmal
+    # altes Logo lag. Dieselbe Falle, die es bei ZUFALLSZOCK.art schon einmal
     # gab ("immer noch das alte Zufalls-Zock-Bild, auch nach Update UND
     # Install") - nur diesmal 42-fach.
     #
@@ -231,7 +231,7 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
               "$FRONTEND_DIR/sysart/SNES_ALTTP_TRACKER_320x240.art" 2>/dev/null
         : > "$_MARKE" 2>/dev/null || true
     fi
-    for _f in WOT.art; do
+    for _f in ZUFALLSZOCK.art; do
         if [ -f "$SRC_DIR/frontend/sysart/$_f" ]; then
             cp -f "$SRC_DIR/frontend/sysart/$_f" "$FRONTEND_DIR/sysart/$_f" 2>/dev/null
         fi
@@ -348,6 +348,20 @@ if [ -f "$STARTUP_FILE" ] && grep -qF "f4_hotkey.sh" "$STARTUP_FILE"; then
     echo "Alten F4-Eintrag aus user-startup.sh entfernt."
 fi
 rm -f "$FRONTEND_DIR/f4_hotkey.py" "$FRONTEND_DIR/f4_hotkey.sh" "$FRONTEND_DIR/f4_hotkey"
+
+# BUILD 340: Dateien unter alten Namen entfernen (Nutzerwunsch: der alte
+# Name des Zufalls-Zocks und ein entferntes Bootlogo sollen nirgends mehr
+# auftauchen). Die Namen sind bewusst zusammengesetzt. Die gespielt-Liste
+# benennt das Frontend selbst um (mister_zufallszock.py) - hier wird nur
+# entfernt, was mitgeliefert war.
+_ALT=$(printf '%s%s' w ot)
+_ALT_GROSS=$(printf '%s%s' W OT)
+rm -f "$FRONTEND_DIR/sysart/$_ALT_GROSS.art" \
+      "$FRONTEND_DIR/mister_$_ALT.py" \
+      "$FRONTEND_DIR/__pycache__/mister_$_ALT."*.pyc \
+      "$FRONTEND_DIR/${_ALT}_games_sample.csv" \
+      "$FRONTEND_DIR/${_ALT}_aliases_sample.json" \
+      "$FRONTEND_DIR/boot_logo/$(printf '%s%s' denn sen86)_logo.art" 2>/dev/null
 
 # BUGFIX (gleiche Ursache wie in Frontend_Install.sh, siehe dortiger
 # ausfuehrlicher Kommentar): "cd $TMP_DIR" ganz oben laesst die Shell in

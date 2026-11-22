@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 GAMES_BASES als eigenstaendiges Modul - vermeidet einen Zirkelbezug
-zwischen frontend.py und fe/wot.py bzw. fe/scan.py (Modularisierung,
+zwischen frontend.py und fe/zufallszock.py bzw. fe/scan.py (Modularisierung,
 Git-Branch 'modular-refactor').
 
 GAMES_BASES wird mehrfach NEU zugewiesen (nicht nur mutiert - siehe
 _wait_for_network_ready() in fe/scan.py, wartet auf ein evtl. erst
 spaeter erscheinendes NAS-Mount) - dieselbe Einfrier-Falle wie bei
-CURRENT_LANG/C_BG/VOLUME. Alles, was GAMES_BASES braucht (fe/wot.py,
+CURRENT_LANG/C_BG/VOLUME. Alles, was GAMES_BASES braucht (fe/zufallszock.py,
 fe/scan.py), liest es modul-qualifiziert (import fe.paths;
 fe.paths.GAMES_BASES) statt per "from fe.paths import GAMES_BASES",
 um selbst keine eingefrorene Kopie zu erzeugen.
