@@ -3628,6 +3628,62 @@ class ArtCache:
         self.order = []
         self._original_bytes = 0
 
+    # BUILD 344: wieviel fertige Miniaturen beim Spielstart im Speicher
+    # bleiben. Bench 25, Abschnitt T: waehrend eines Spiels belegte das
+    # Frontend 131 MB, nach dem Start 72 MB - der Unterschied sind
+    # Cover, die niemand ansieht, solange das Spiel laeuft. Linux hat
+    # auf dem MiSTer 491 MB fuer alles. Behalten werden die JUENGSTEN
+    # Miniaturen bis zu diesem Budget - das ist die Seite, auf die man
+    # nach dem Spiel zurueckkommt, und die soll ohne Karte dastehen.
+    SPIEL_BEHALTEN = 16 * 1024 * 1024
+
+    def fuer_spiel_freigeben(self, behalten=None):
+        """Vor einem Spiel: die Originale ganz, die fertigen Miniaturen
+        bis auf die juengsten SPIEL_BEHALTEN Byte aus dem Speicher
+        nehmen. Liefert die freigegebenen Bytes.
+
+        Was BLEIBT, und warum:
+          - "kein Cover"-Eintraege (None) in den Originalen: sie kosten
+            nichts und ersparen beim Zurueckkommen je Spiel einen Blick
+            auf die Karte.
+          - die juengsten Miniaturen: die Seite, auf der man war. Ohne
+            sie kaeme das erste Bild nach dem Spiel von der Karte - genau
+            die Zeit, die Build 344 bei der Rueckkehr einspart.
+        Auf der Karte wird nichts angefasst; alles Weggenommene kommt
+        beim Blaettern von dort wieder (Abschnitt B: "Karte")."""
+        grenze = self.SPIEL_BEHALTEN if behalten is None else behalten
+        frei = 0
+        # Originale: nur die mit Bild
+        for pfad in list(self.cache):
+            art = self.cache[pfad]
+            if art is not None:
+                frei += self._bildbytes(art)
+                del self.cache[pfad]
+                self.nativ.pop(pfad, None)
+                self._voll.discard(pfad)
+        self.order = [p_ for p_ in self.order if p_ in self.cache]
+        self._original_bytes = 0
+        # Miniaturen: von hinten (juengste zuerst) bis zum Budget
+        alt = getattr(self, "scaled", {})
+        reihe = getattr(self, "scaled_order", [])
+        behalten_k, gesehen, summe = [], set(), 0
+        for k in reversed(reihe):
+            if k in gesehen or k not in alt:
+                continue
+            gesehen.add(k)
+            groesse = len(alt[k][2])
+            if behalten_k and summe + groesse > grenze:
+                continue
+            behalten_k.append(k)
+            summe += groesse
+        behalten_k.reverse()
+        bleibt = set(behalten_k)
+        frei += sum(len(v[2]) for k, v in alt.items() if k not in bleibt)
+        self.scaled = {k: alt[k] for k in behalten_k}
+        self.scaled_order = behalten_k
+        self.scaled_bytes = summe
+        return frei
+
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
             self.scaled = {}

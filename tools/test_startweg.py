@@ -383,11 +383,24 @@ check("gewartet wird nur, wenn der Aufrufer es will",
       and "if nachlauf:" in ecm,
       "Vorgabe True - alle bisherigen Aufrufer merken nichts")
 
-# Die anderen beiden Aufrufer duerfen NICHT umgestellt sein: nur der
-# Startweg hat etwas Nuetzliches zu tun, das in die Frist passt.
-check("nur EIN Aufrufer verzichtet auf das Warten",
-      fe_src.count("enter_console_mode(nachlauf=False)") == 1,
+# Die anderen Aufrufer duerfen NICHT umgestellt sein: nur der Startweg
+# hat etwas Nuetzliches zu tun, das in die Frist passt - und seit
+# Build 344 die Rueckkehr aus einem Core (back_to_frontend mit
+# vorzeichnen=True: das erste Bild wird in der Frist gerechnet). Fuer
+# BEIDE gilt dieselbe Zusage: Restfrist abwarten, BEVOR Konsole und
+# Eingabegeraete angefasst werden.
+check("genau ZWEI Aufrufer verzichten auf das Warten (Start, Rueckkehr)",
+      fe_src.count("enter_console_mode(nachlauf=False)") == 2,
       "%d x" % fe_src.count("enter_console_mode(nachlauf=False)"))
+_btf = koerper(fe_src, "back_to_frontend", klasse="Frontend")
+_i_f9 = _btf.find("self.enter_console_mode(nachlauf=False)")
+_i_rest = _btf.find("self._f9_nachlauf_abwarten()")
+_i_blink = _btf.find("self.set_cursor_blink(False)", _i_f9)
+_i_griff = _btf.find("self.inp.grab(True)", _i_f9)
+_i_flip = _btf.find("self.fb.flip()", _i_f9)
+check("Rueckkehr: Restfrist VOR Konsole, Pad und sichtbarem Bild",
+      0 < _i_f9 < _i_rest < _i_blink < _i_griff < _i_flip,
+      (_i_f9, _i_rest, _i_blink, _i_griff, _i_flip))
 
 init_fe = koerper(fe_src, "__init__", klasse="Frontend")
 # DAS IST DIE TRAGENDE ZUSAGE DIESES BUILDS, und sie ist die eine,

@@ -256,7 +256,10 @@ print("Test 9: nach einem Script wird nachgefasst (Build 158)")
 # Login: auch auf". back_to_frontend() zeichnet zwar das ganze Bild neu
 # und wischt damit alles weg - aber der Login-Prozess meldet sich ERST
 # DANACH zurueck.
-zurueck = quelle.split("def back_to_frontend")[1][:1400]
+# Build 344: die GANZE Funktion statt der ersten 1400 Zeichen - sie hat
+# seither zwei Wege (mit und ohne Vorzeichnen), und der Termin steht
+# hinter beiden.
+zurueck = quelle.split("def back_to_frontend")[1].split("\n    def ")[0]
 check("back_to_frontend setzt einen Nachfass-Termin",
       "_f9_aufraeumen_ab" in zurueck, zurueck[:80])
 check("und blendet den Cursor aus", "konsole_cursor_aus" in zurueck)

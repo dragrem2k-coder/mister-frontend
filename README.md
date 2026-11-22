@@ -345,12 +345,15 @@ eingebauten Bench (unten) auf einem DE10-Nano bei 1920×1080, mit
 | Start bis die **Kategorien bereitstehen** | **1,87 s** — 0,045 ms je Spiel |
 | Scrollschritt **Hauptseite** (Median) | Liste 21,7 ms · Raster 21,9 ms · Galerie 27,0 ms · Kachelwand 19,9 ms |
 | Scrollschritt **Spieleliste** mit Cover (Median) | Liste 37,9 ms · Raster 18,9 ms · Galerie 32,1 ms · Coverflow 39,1 ms |
-| **Volles Bild** einer Spieleliste mit 2 139 Einträgen | 100 ms (Liste), 65 ms (Coverflow) |
+| **Kategorie öffnen** mit 2 139 Einträgen | 99 ms bis zum fertigen Bild ¹ |
+| **Rückkehr aus einem Spiel** | 2,0 s vom Menü bis zum ersten Bild, 2,6 s ab der Ausstiegs-Taste ¹ ² |
+| **Speicher** | 72 MB nach dem Start, 131 MB während eines Spiels ¹ ² — Linux hat auf dem MiSTer 491 MB |
 
-**Speicher** und **Rückkehr aus einem Spiel** misst der Bench ab
-Build 343 (Abschnitte S und T). Die Rückkehr misst das Frontend dabei
-bei jedem echten Spiel selbst — sie lässt sich nicht nachstellen. Die
-Zahlen kommen hierher, sobald sie vom Gerät vorliegen.
+¹ Bench 25, Build 343. ² Build 344 zieht die Arbeit bei der Rückkehr
+zusammen und gibt beim Spielstart den größten Teil des Cover-Speichers
+frei — die Zahlen dazu kommen mit dem nächsten Bench. Die Rückkehr
+misst das Frontend bei jedem echten Spiel selbst; nachstellen lässt sie
+sich nicht.
 
 Ehrlich dazu: Dragend läuft in Python, ohne eine einzige zusätzliche
 Abhängigkeit. Ein fertig übersetztes Programm startet schneller und

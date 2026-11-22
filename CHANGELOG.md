@@ -13,6 +13,20 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Schneller zurück aus dem Spiel.** Bench 25 hatte 2,0 s vom Menü bis
+  zum ersten Bild gemessen. Jetzt läuft das Speichern von Spielzeit und
+  Listen in der Pause, die MiSTer nach dem Core bekommt, statt davor;
+  das erste Bild wird gerechnet, während MiSTer auf die Konsole
+  umschaltet; und das Frontend bemerkt das Menü schneller (alle 0,2 s
+  statt 0,7 s, nach der Ausstiegs-Taste alle 0,1 s). Die Sekunde für
+  MiSTer selbst bleibt (Build 344).
+- **Schlanker während des Spiels.** 131 MB hatte das Frontend belegt,
+  während ein Spiel lief — von 491 MB, die Linux auf dem MiSTer hat.
+  Beim Spielstart gibt es jetzt den größten Teil des Cover-Speichers
+  frei; die Seite, auf die man zurückkommt, bleibt im Speicher (Build 344).
+- **Bench 26:** Abschnitt P zeigt, woran der längste Happen der
+  Vorarbeit hängt — Dateisystem oder Python, mit den langsamsten
+  Aufrufen (Build 344).
 - **Gemessen statt behauptet.** Die README nennt jetzt eigene Zahlen vom
   DE10-Nano mit 41 401 Spielen: 0,73 s bis zum ersten Bild, 1,87 s bis
   die Kategorien stehen, ein Scrollschritt 19 bis 39 ms. Neu im Bench

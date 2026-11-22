@@ -344,12 +344,14 @@ in 31 categories** (bench 24, build 341).
 | Start to the **categories being ready** | **1.87 s** — 0.045 ms per game |
 | Scroll step, **main page** (median) | list 21.7 ms · grid 21.9 ms · gallery 27.0 ms · tile wall 19.9 ms |
 | Scroll step, **game list** with covers (median) | list 37.9 ms · grid 18.9 ms · gallery 32.1 ms · coverflow 39.1 ms |
-| **Full picture** of a game list with 2,139 entries | 100 ms (list), 65 ms (coverflow) |
+| **Opening a category** with 2,139 entries | 99 ms to the finished picture ¹ |
+| **Returning from a game** | 2.0 s from the menu to the first picture, 2.6 s from the exit button ¹ ² |
+| **Memory** | 72 MB after start-up, 131 MB while a game runs ¹ ² — Linux has 491 MB on the MiSTer |
 
-**Memory** and **returning from a game** are measured by the bench from
-build 343 on (sections S and T). The frontend measures every real
-return itself — it cannot be simulated. The numbers will be added here
-as soon as they come from the device.
+¹ Bench 25, build 343. ² Build 344 overlaps the work on returning and
+frees most of the cover memory when a game starts — its numbers come
+with the next bench. The frontend measures every real return itself;
+it cannot be simulated.
 
 To be honest about it: Dragend runs in Python, without a single extra
 dependency. A compiled program starts faster and needs less memory. In

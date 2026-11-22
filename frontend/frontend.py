@@ -18069,6 +18069,10 @@ class Frontend:
         PREWARMER.beenden()
         self.lader.beenden()
         launch_core(path)
+        # BUILD 344: Cover-Speicher freigeben, waehrend der Core laedt -
+        # siehe _speicher_fuer_spiel(). Nach launch_core(), damit der
+        # Start keine Millisekunde darauf wartet.
+        self._speicher_fuer_spiel()
         t0 = time.monotonic()
         started = False
         # Auf den tatsaechlichen Core-Start warten (nicht mehr Menue).
@@ -18167,7 +18171,10 @@ class Frontend:
                 launch_core(MENU_RBF)
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
-                    time.sleep(0.3)
+                    # Build 344: 0,1 statt 0,3 s - das Menue ist im
+                    # Mittel 0,1 s frueher erkannt, gefragt wird eine
+                    # Datei im Arbeitsspeicher (/tmp/CORENAME).
+                    time.sleep(0.1)
         # Bewusst HIER, direkt nach der Schleife (deckt BEIDE Wege
         # zurueck ab: normales Core-Ende UND manueller Notausstieg
         # ueber combo/hid_combo oben) - EINE Stelle statt an jedem
@@ -18196,10 +18203,6 @@ class Frontend:
         check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start,
                                           label=label, syskey=syskey)
         self._playtime_cache = load_playtime()
-        _rk_pause = time.monotonic()
-        time.sleep(1.0)
-        _rk_listen = time.monotonic()
-        self.music.resume_after_core()
         # BUGFIX (Nutzer-Rueckmeldung: "Weiterspielen und Zuletzt gezockt
         # funktioniert bei mir doch nicht so richtig ... Tetris zeigt er
         # nicht"): 'Weiterspielen'/'Zuletzt gespielt' in self.cats VOR
@@ -18208,14 +18211,33 @@ class Frontend:
         # HIER (ein einziger Ort, deckt alle drei Aufrufer von run_core()
         # ab: normaler Kategorie-Start, Zufalls-Zock, F11-Schnellstart),
         # statt an jeder record_recent()-Stelle einzeln.
+        #
+        # BUILD 344: VOR die Pause gezogen - reine Daten, kein Ton, kein
+        # Bildschirm. Siehe RUECKKEHR_PAUSE.
         self._sync_recent_category()
+        # BUILD 344: DIE PAUSE ZAEHLT AB DEM ERKANNTEN MENUE. Bench 25,
+        # Abschnitt S: "feste Pause 1000 ms" stand HINTER 194 ms
+        # Nacharbeit - zusammen also 1,2 s ab dem Menue, bevor auch nur
+        # die Musik wieder anlief. Wofuer MiSTer die Sekunde braucht,
+        # steht nirgends; sie bleibt deshalb unangetastet - aber die
+        # Nacharbeit (Spielzeit, OBS, RA, die Listen) laeuft jetzt IN ihr
+        # statt davor. Die Zusage "mindestens RUECKKEHR_PAUSE zwischen dem
+        # Menue und Musik/F9" gilt weiter.
+        _rk_pause = time.monotonic()
+        _rk_rest = self.RUECKKEHR_PAUSE - (_rk_pause - _rk_menue)
+        if _rk_rest > 0:
+            time.sleep(_rk_rest)
+        _rk_listen = time.monotonic()
+        self.music.resume_after_core()
         # Overlay wieder auf den (jetzt evtl. veraenderten, z.B. neue
         # Spielzeit) Menue-Stand auffrischen.
         if hasattr(self, "stream") and self.stream:
             self._stream_sig = None
             self._publish_stream()
         _rk_btf = time.monotonic()
-        self.back_to_frontend()
+        # Build 344: das erste Bild entsteht WAEHREND der F9-Frist -
+        # siehe back_to_frontend(vorzeichnen=True).
+        self.back_to_frontend(vorzeichnen=True)
         self._rueckkehr_merken(_rk_menue, _rk_pause, _rk_listen, _rk_btf,
                                _rk_weg, _rk_ausstieg, _rk_speicher)
         # NACH back_to_frontend() (das mit einem normalen draw() endet),
@@ -25064,11 +25086,14 @@ class Frontend:
         schreiben und fuer den Bench merken (fe/messwerte.py).
 
         Die Abschnitte, alle in ms:
-          nacharbeit  OBS, RA-Waechter, Spielzeit und Tagebuch speichern
-          pause       die feste Sekunde, die MiSTer zum Umschalten bekommt
-          listen      Musik, Weiterspielen/Zuletzt gespielt, Overlay
-          konsole     Bildschirm uebernehmen, Pad holen
-          zeichnen    das erste Bild
+          nacharbeit  OBS, RA-Waechter, Spielzeit und Tagebuch speichern,
+                      seit Build 344 auch Weiterspielen/Zuletzt gespielt
+          pause       was von RUECKKEHR_PAUSE danach noch abzuwarten war
+                      (seit Build 344 zaehlt sie ab dem Menue)
+          listen      Musik, Overlay
+          konsole     Bildschirm uebernehmen, Pad holen - seit Build 344
+                      steckt darin auch das Vorzeichnen (vorgezeichnet_ms)
+          zeichnen    was nach der Frist noch anfiel (das flip)
         "gesamt" zaehlt ab dem Moment, in dem das Frontend das Menue
         ERKANNT hat; wann MiSTer es wirklich geladen hat, weiss nur
         MiSTer. Beim Ausstieg ueber die Tastenkombination gibt es
@@ -25093,6 +25118,14 @@ class Frontend:
             }
             if t_ausstieg is not None:
                 e["ab_ausstieg_ms"] = ms(t_ausstieg, jetzt)
+            # Build 344: was in der F9-Frist vorgezeichnet wurde (steckt
+            # in "konsole") - None, wenn normal gezeichnet wurde.
+            _vz = getattr(self, "_btf_vorgezeichnet_ms", None)
+            if _vz is not None and getattr(self, "_btf_vorgezeichnet",
+                                           False):
+                e["vorgezeichnet_ms"] = int(round(_vz))
+            self._btf_vorgezeichnet_ms = None
+            self._btf_vorgezeichnet = False
             if speicher_im_core:
                 e["speicher_im_core_kb"] = int(speicher_im_core)
             LOG(MESS.rueckkehr_zeile(e))
@@ -25102,18 +25135,109 @@ class Frontend:
             LOG("RUECKKEHR: Messung fehlgeschlagen (%s)" % ex)
             return None
 
-    def back_to_frontend(self):
-        self.enter_console_mode()
-        self.set_cursor_blink(False)
-        self.konsole_cursor_aus()
-        self.fb.refresh_geometry()
-        self.inp.flush()
-        self.inp.grab(True)
-        # Build 343: wie lange das erste Bild dauert - fuer die
-        # Rueckkehr-Messung in run_core() (_rueckkehr_merken()).
-        _t_bild = time.monotonic()
-        self.draw()
-        self._btf_zeichnen_ms = (time.monotonic() - _t_bild) * 1000.0
+    def _speicher_fuer_spiel(self):
+        """Vor dem Spiel Cover-Speicher freigeben (Build 344).
+
+        Bench 25, Abschnitt T: 131 MB belegt, waehrend ein Spiel lief -
+        von 491 MB, die Linux auf dem MiSTer insgesamt hat. Das meiste
+        davon waren Cover. Die juengsten bleiben (die Seite, auf die man
+        zurueckkommt), der Rest geht, und malloc_trim() gibt ihn an
+        Linux zurueck. Eine Zeile im Log nennt vorher und nachher.
+
+        Darf den Spielstart nie aufhalten oder verhindern: jeder Fehler
+        wird nur ins Log geschrieben."""
+        try:
+            vorher = MESS.speicher().get("belegt")
+            frei = ART.fuer_spiel_freigeben()
+            MESS.speicher_zurueckgeben()
+            nachher = MESS.speicher().get("belegt")
+            if vorher and nachher:
+                LOG("SPIEL: Cover-Speicher freigegeben (%.1f MB), belegt "
+                    "%.1f MB -> %.1f MB" % (frei / 1048576.0,
+                                            vorher / 1024.0, nachher / 1024.0))
+            return frei
+        except Exception as e:                           # noqa: BLE001
+            LOG("SPIEL: Speicher freigeben fehlgeschlagen (%s)" % e)
+            return 0
+
+    # BUILD 344: so lange bekommt MiSTer nach dem erkannten Menue, bevor
+    # Musik und F9 kommen - siehe run_core().
+    RUECKKEHR_PAUSE = 1.0
+
+    def _vorzeichnen(self):
+        """Das naechste Bild in den Puffer zeichnen, OHNE es auf den
+        Schirm zu bringen (Build 344). True, wenn es geklappt hat.
+
+        Alle drei Flip-Wege werden dafuer an der Instanz stillgelegt und
+        danach wieder freigegeben; das eine volle flip() danach bringt
+        das ganze Bild auf einmal und frischt dabei die Proben des
+        Bildwaechters auf. Geht beim Zeichnen etwas schief, zeichnet der
+        Aufrufer ganz normal - lieber 130 ms laenger als kein Bild."""
+        fb = self.fb
+        leer = (lambda *a, **k: 0)
+        try:
+            fb.flip = fb.flip_rows = fb.flip_rechtecke = leer
+            self.draw()
+            return True
+        except Exception:                                # noqa: BLE001
+            LOG("Rueckkehr: Vorzeichnen fehlgeschlagen - normal weiter\n"
+                + traceback.format_exc())
+            return False
+        finally:
+            for _n in ("flip", "flip_rows", "flip_rechtecke"):
+                fb.__dict__.pop(_n, None)
+
+    def back_to_frontend(self, vorzeichnen=False):
+        """Zurueck ins Frontend: Konsole uebernehmen, Pad holen, Bild.
+
+        vorzeichnen=True (Build 344, nur die Rueckkehr aus einem Core):
+        das erste Bild wird WAEHREND der F9-Frist in den Puffer gerechnet
+        - dasselbe Muster wie beim Start (Build 292, _f9_nachlauf_abwarten()).
+        Was sich NICHT verschiebt: die Konsolen-Aufrufe, das Ergreifen der
+        Eingabegeraete und das flip() stehen weiter HINTER der vollen
+        Frist. Hat sich die Bildgroesse nach der Frist geaendert, wird
+        normal neu gezeichnet."""
+        if not vorzeichnen:
+            self.enter_console_mode()
+            self.set_cursor_blink(False)
+            self.konsole_cursor_aus()
+            self.fb.refresh_geometry()
+            self.inp.flush()
+            self.inp.grab(True)
+            # Build 343: wie lange das erste Bild dauert - fuer die
+            # Rueckkehr-Messung in run_core() (_rueckkehr_merken()).
+            _t_bild = time.monotonic()
+            self.draw()
+            self._btf_zeichnen_ms = (time.monotonic() - _t_bild) * 1000.0
+        else:
+            self.enter_console_mode(nachlauf=False)
+            self.fb.refresh_geometry()
+            _geo = (self.fb.width, self.fb.height, self.fb.stride)
+            _t_bild = time.monotonic()
+            _fertig = self._vorzeichnen()
+            _vorher_ms = (time.monotonic() - _t_bild) * 1000.0
+            self._f9_nachlauf_abwarten()
+            self.set_cursor_blink(False)
+            self.konsole_cursor_aus()
+            self.fb.refresh_geometry()
+            self.inp.flush()
+            self.inp.grab(True)
+            _t_bild = time.monotonic()
+            if _fertig and _geo == (self.fb.width, self.fb.height,
+                                    self.fb.stride):
+                self.fb.flip()
+                self._btf_vorgezeichnet = True
+            else:
+                self.fb.full_redraw_gen += 1
+                self._force_full_redraw = True
+                self.draw()
+                self._btf_vorgezeichnet = False
+            # "zeichnen" ist hier, was NACH der Frist noch anfiel (das
+            # flip, oder im Ausnahmefall das ganze Bild); das Rechnen
+            # davor steckt in der Frist und steht als vorgezeichnet_ms
+            # in der Messung.
+            self._btf_zeichnen_ms = (time.monotonic() - _t_bild) * 1000.0
+            self._btf_vorgezeichnet_ms = _vorher_ms
         # NEU (Build 158, Nutzer-Rueckmeldung: "wenn ich ueber frontend
         # ein Script zum Beispiel Frontend_install ausgefuehrt hab
         # ploppte der Welcome to misterfpga mit Login: auch auf").

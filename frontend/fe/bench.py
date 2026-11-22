@@ -46,6 +46,7 @@ from collections import deque as _deque   # Build 308, Abschnitt M
 import struct
 import sys
 import tempfile
+import threading                # Build 344, Abschnitt P (_FsUhr)
 import time
 import zlib
 
@@ -98,7 +99,10 @@ import fe.messwerte as MESS    # Build 343, Abschnitte S und T
 # dem Core, aus den Messungen im echten Betrieb) und T (Speicher) sind
 # neu. Anlass: ein Vergleich mit einem anderen Frontend, in dem bei
 # Dragend genau dort "kein belastbarer Messwert" stand.
-BENCH_VERSION = 25
+# 26 ab Build 344: Abschnitt P schluesselt den laengsten Happen auf
+# (Dateisystem gegen Python, die langsamsten Aufrufe) und wartet vorher
+# den Vorarbeit-Faden ab; Abschnitt S kennt das Vorzeichnen.
+BENCH_VERSION = 26
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -5427,6 +5431,104 @@ def _abschnitt_o(b, fe, S, A, fm):
         fe._last_input_time = _s_zeit
 
 
+class _FsUhr(object):
+    """Stoppt die Dateisystem-Aufrufe EINES Fadens (Build 344, Abschnitt
+    P) und bucht sie auf den gerade laufenden Happen.
+
+    Bench 25 zeigte bei N64 einen Happen von 582 ms bei nur 836
+    Eintraegen - nach Build 342 wird ein Ordner aber in Portionen zu 256
+    Eintraegen gelesen. Die Zeit steckt also woanders, und wo, laesst
+    sich nur am Geraet sehen. Gestoppt werden os.listdir, os.stat (darueber
+    laufen auch exists/isdir/getmtime), os.lstat, das Oeffnen eines
+    os.scandir und jeder Schritt durch ihn. Andere Faeden laufen
+    ungestoppt durch - die Vorarbeit des Frontends kann nebenher
+    laufen und darf das Bild nicht verfaelschen."""
+
+    NAMEN = ("listdir", "stat", "lstat", "scandir")
+
+    def __init__(self):
+        self.faden = threading.get_ident()
+        self.happen = 0
+        self.je = {}        # happen -> [fs_ms, anzahl, [(ms, was, pfad)]]
+        self._alt = {}
+
+    def buchen(self, was, pfad, ms):
+        eintrag = self.je.setdefault(self.happen, [0.0, 0, []])
+        eintrag[0] += ms
+        eintrag[1] += 1
+        top = eintrag[2]
+        if len(top) < 3 or ms > top[-1][0]:
+            top.append((ms, was, str(pfad)))
+            top.sort(reverse=True)
+            del top[3:]
+
+    def _huelle(self, name, echt):
+        uhr = self
+
+        def gestoppt(*a, **k):
+            if threading.get_ident() != uhr.faden:
+                return echt(*a, **k)
+            t0 = time.perf_counter()
+            try:
+                erg = echt(*a, **k)
+            finally:
+                uhr.buchen(name, a[0] if a else "",
+                           (time.perf_counter() - t0) * 1000.0)
+            if name == "scandir":
+                return _ScanUhr(erg, uhr, a[0] if a else "")
+            return erg
+        return gestoppt
+
+    def __enter__(self):
+        for n in self.NAMEN:
+            self._alt[n] = getattr(os, n)
+            setattr(os, n, self._huelle(n, self._alt[n]))
+        return self
+
+    def __exit__(self, *exc):
+        for n, f in self._alt.items():
+            setattr(os, n, f)
+        return False
+
+
+class _ScanUhr(object):
+    """Ein os.scandir, dessen Schritte gestoppt werden (siehe _FsUhr).
+    Verhaelt sich nach aussen wie das Original: iterierbar, mit with,
+    close()."""
+
+    def __init__(self, it, uhr, pfad):
+        self._it, self._uhr, self._pfad = it, uhr, pfad
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        t0 = time.perf_counter()
+        try:
+            return next(self._it)
+        finally:
+            self._uhr.buchen("scandir-lesen", self._pfad,
+                             (time.perf_counter() - t0) * 1000.0)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+    def close(self):
+        try:
+            self._it.close()
+        except Exception:                                # noqa: BLE001
+            pass
+
+
+def _kurz(pfad, n=38):
+    pfad = str(pfad)
+    return pfad if len(pfad) <= n else "..." + pfad[-(n - 3):]
+
+
 def _abschnitt_p(b, fe, S, A, fm):
     """Die Namensverzeichnisse: was nach dem Start im Hintergrund laeuft.
 
@@ -5467,6 +5569,23 @@ def _abschnitt_p(b, fe, S, A, fm):
     b("   Systeme mit eigenem Schluessel             %d" % len(systeme))
     if not systeme:
         return
+    # Build 344: erst den Vorarbeit-Faden des Frontends fertig werden
+    # lassen - sonst misst P, wer gerade die GIL hat, und nicht, wie
+    # lang ein Happen ist.
+    _va = getattr(fe, "_vorarbeit", None)
+    if _va is not None and hasattr(_va, "warten"):
+        _t_va = time.perf_counter()
+        try:
+            _va.warten(hoechstens=15.0)
+        except Exception:                                # noqa: BLE001
+            pass
+        b("   Vorarbeit-Faden vorher abgewartet       %7.0f ms"
+          % ((time.perf_counter() - _t_va) * 1000.0))
+    _andere = [t.name for t in threading.enumerate()
+               if t is not threading.current_thread() and t.is_alive()]
+    b("   andere Faeden waehrend der Messung       %d%s"
+      % (len(_andere), (" (" + ", ".join(_andere[:5]) + ")")
+         if _andere else ""))
     # --- 1) vergleichsname alt gegen neu -------------------------------
     groesster, namen = None, []
     for sk in systeme:
@@ -5517,24 +5636,38 @@ def _abschnitt_p(b, fe, S, A, fm):
     zeilen = []
     luecke_max = [0.0]
 
+    aufschluss = {}      # sk -> (happen_ms, fs_ms, anzahl, top, wo)
+
     def _bauen(sk):
         marke = [time.perf_counter()]
         groesste = [0.0]
+        groesster_happen = [0]
+        wo = ["Anfang"]
+        stelle = ["Anfang"]
+        uhr = _FsUhr()
 
         def _zw():
             jetzt = time.perf_counter()
             if jetzt - marke[0] > groesste[0]:
                 groesste[0] = jetzt - marke[0]
+                groesster_happen[0] = uhr.happen
+                wo[0] = stelle[0]
             marke[0] = jetzt
+            uhr.happen += 1
         for w in wurzeln:
             A._art_index_cache.pop((w, sk), None)
         A._docs_index_cache.pop(sk, None)
         t0 = time.perf_counter()
         n = 0
-        for w in wurzeln:
-            n += len(A._art_index(w, sk, _zw))
-        n += len(A._docs_index(sk, "boxart", _zw))
-        _zw()
+        with uhr:
+            for w in wurzeln:
+                stelle[0] = "Cover-Ordner " + _kurz(w, 24)
+                n += len(A._art_index(w, sk, _zw))
+            stelle[0] = "fremde Datenbank"
+            n += len(A._docs_index(sk, "boxart", _zw))
+            _zw()
+        fs = uhr.je.get(groesster_happen[0], [0.0, 0, []])
+        aufschluss[sk] = (groesste[0] * 1000.0, fs[0], fs[1], fs[2], wo[0])
         return (time.perf_counter() - t0) * 1000.0, n, groesste[0] * 1000.0
 
     gemessen = 0
@@ -5557,6 +5690,17 @@ def _abschnitt_p(b, fe, S, A, fm):
     if len(zeilen) > 10:
         b("      ... und %d weitere" % (len(zeilen) - 10))
     summe = sum(z[0] for z in zeilen)
+    # --- Build 344: der laengste Happen aufgeschluesselt --------------
+    b("")
+    b("   2b) die drei laengsten Happen aufgeschluesselt (Build 344)")
+    for sk in sorted(aufschluss, key=lambda k: -aufschluss[k][0])[:3]:
+        hm, fsm, anz, top, wo_ = aufschluss[sk]
+        b("      %-12s %7.1f ms, davon Dateisystem %7.1f ms in %d Aufrufen"
+          % (sk[:12], hm, fsm, anz))
+        b("         Python/Warten  %7.1f ms   endete in: %s"
+          % (max(0.0, hm - fsm), wo_))
+        for ms_, was, pfad in top:
+            b("         %8.1f ms  %-13s %s" % (ms_, was, _kurz(pfad)))
     b("")
     b("   3) gemessen %d von %d Systemen" % (gemessen, len(systeme)))
     b("      Vorarbeit zusammen                 %8.0f ms" % summe)
@@ -5573,6 +5717,11 @@ def _abschnitt_p(b, fe, S, A, fm):
     b("   10 Sekunden'. Ob ein Druck dabei verloren ging, steht in")
     b("   Abschnitt L ('Vom Kernel verworfen') und im Log")
     b("   (EINGABE: ... SYN_DROPPED, EINGABE-STAU).")
+    b("   2b sagt, WORAN der laengste Happen haengt: steht fast alles")
+    b("   beim Dateisystem und dort EIN langsamer Aufruf, ist es ein")
+    b("   kalter Zugriff auf die Karte (dann hilft nur, ihn aus dem")
+    b("   Hauptfaden zu halten); steht es bei 'Python/Warten', rechnet")
+    b("   der Happen zu lange oder ein anderer Faden hielt die GIL.")
 
 
 def _abschnitt_q(b, fe, S, A, fm):
@@ -5730,11 +5879,12 @@ def _abschnitt_s(b):
         b("   %-34s Median %6.0f ms, laengste %6.0f ms"
           % (name, MESS.median(w), max(w)))
     zeile("Menue erkannt -> erstes Bild", "gesamt_ms")
-    zeile("  Nacharbeit (Spielzeit, OBS, RA)", "nacharbeit_ms")
-    zeile("  feste Pause fuer MiSTer", "pause_ms")
-    zeile("  Musik, Listen, Overlay", "listen_ms")
+    zeile("  Nacharbeit (Spielzeit, OBS, RA, Listen)", "nacharbeit_ms")
+    zeile("  Rest der Pause fuer MiSTer", "pause_ms")
+    zeile("  Musik, Overlay", "listen_ms")
     zeile("  Bildschirm uebernehmen", "konsole_ms")
-    zeile("  erstes Bild zeichnen", "zeichnen_ms")
+    zeile("    darin vorgezeichnet (Build 344)", "vorgezeichnet_ms")
+    zeile("  erstes Bild auf den Schirm", "zeichnen_ms")
     taste = [e for e in alle if isinstance(e.get("ab_ausstieg_ms"),
                                            (int, float))]
     if taste:
@@ -5750,10 +5900,13 @@ def _abschnitt_s(b):
                                       e.get("weg", "?")))
     b("")
     b("   ZU LESEN ALS: 'Menue erkannt' ist der Moment, in dem das")
-    b("   Frontend sieht, dass MiSTer wieder im Menue ist - es sieht")
-    b("   alle 0,7 s nach. Beim Ausstieg ueber Pad-Kombination oder F1")
-    b("   zaehlt die letzte Zeile ab dem Druck selbst. Die feste Pause")
-    b("   ist eine Sekunde, in der MiSTer nach dem Core umschaltet.")
+    b("   Frontend sieht, dass MiSTer wieder im Menue ist. Beim Ausstieg")
+    b("   ueber Pad-Kombination oder F1 zaehlt die Zeile 'Ausstiegs-")
+    b("   Taste' ab dem Druck selbst. SEIT BUILD 344: nachgesehen wird")
+    b("   alle 0,2 s (vorher 0,7 s), die Pause von einer Sekunde zaehlt")
+    b("   ab dem Menue (die Nacharbeit laeuft in ihr), und das erste")
+    b("   Bild wird waehrend der F9-Frist vorgezeichnet. Aeltere")
+    b("   Messungen stehen mit in der Liste und zaehlten noch anders.")
 
 
 def _abschnitt_r(b, fe, S):

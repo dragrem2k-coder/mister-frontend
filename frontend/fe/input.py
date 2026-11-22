@@ -2715,6 +2715,14 @@ class InputManager:
                               # _hid_report_has_reset_key() in
                               # fe/hidraw.py fuer den genauen Grund.
 
+    # BUILD 344: wie oft waehrend des Spiels nachgesehen wird, ob MiSTer
+    # wieder im Menue ist. Bis hierher 0,7 s - nach einem Ausstieg ueber
+    # das OSD hat das Frontend im Mittel 0,35 s gebraucht, um es auch nur
+    # zu BEMERKEN (Bench 25, Abschnitt S). Gefragt wird eine Datei im
+    # Arbeitsspeicher (/tmp/CORENAME); die Schleife wacht ohnehin alle
+    # 0,2 s auf (select), es kommt also kein Aufwachen dazu.
+    KERN_PRUEF_TAKT = 0.2
+
     @_mit_lesesperre
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
@@ -2867,7 +2875,7 @@ class InputManager:
                 if now - self.last_scan > self._rescan_takt():
                     self.rescan()
                     down = {k for k in down if k[0] in self.devices}
-                if now - last_core_check > 0.7:
+                if now - last_core_check > self.KERN_PRUEF_TAKT:
                     last_core_check = now
                     if current_core() == "MENU":
                         return "menu"

@@ -72,6 +72,23 @@ def system_speicher(pfad=None):
     return raus
 
 
+def speicher_zurueckgeben():
+    """Freigegebenen Speicher wirklich an Linux zurueckgeben (Build 344).
+
+    Python gibt grosse Bloecke beim Freigeben an die C-Bibliothek
+    zurueck - die behaelt sie aber oft fuer spaeter, und fuer Linux
+    sieht der Prozess dann genauso gross aus wie vorher. malloc_trim()
+    aus der glibc gibt sie heraus. Gibt es die Funktion nicht (andere
+    C-Bibliothek), passiert nichts. True, wenn sie gerufen wurde."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim(0)
+        return True
+    except Exception:                                    # noqa: BLE001
+        return False
+
+
 def rueckkehr_laden(pfad=None):
     """Die gemerkten Rueckkehr-Messungen, aelteste zuerst. Eine kaputte
     oder fremde Datei ergibt eine leere Liste, nie einen Fehler."""
@@ -136,6 +153,8 @@ def rueckkehr_zeile(e):
     if isinstance(e.get("ab_ausstieg_ms"), (int, float)):
         zeile += " - %d ms ab der Ausstiegs-Taste (%s)" % (
             e["ab_ausstieg_ms"], e.get("weg", "?"))
+    if isinstance(e.get("vorgezeichnet_ms"), (int, float)):
+        zeile += ", in der F9-Frist vorgezeichnet %d ms" % e["vorgezeichnet_ms"]
     if isinstance(e.get("speicher_im_core_kb"), (int, float)):
         zeile += ", waehrend des Spiels %d kB belegt" % e["speicher_im_core_kb"]
     return zeile

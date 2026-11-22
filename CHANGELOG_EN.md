@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Faster back from a game.** Bench 25 measured 2.0 s from the menu to
+  the first picture. Saving play time and lists now runs inside the
+  pause the MiSTer gets after a core instead of before it; the first
+  picture is drawn while the MiSTer switches to the console; and the
+  frontend notices the menu sooner (every 0.2 s instead of 0.7 s, every
+  0.1 s after the exit button). The second for the MiSTer itself stays
+  (build 344).
+- **Leaner while a game runs.** The frontend occupied 131 MB while a
+  game was running — out of the 491 MB Linux has on the MiSTer. It now
+  frees most of the cover memory when a game starts; the page you come
+  back to stays in memory (build 344).
+- **Bench 26:** section P shows what its longest chunk of start-up work
+  hangs on — filesystem or Python, with the slowest calls (build 344).
 - **Measured, not claimed.** The README now gives our own numbers from
   a DE10-Nano with 41,401 games: 0.73 s to the first picture, 1.87 s
   until the categories are ready, a scroll step 19 to 39 ms. New in the

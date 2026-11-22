@@ -11745,3 +11745,92 @@ echter `run_core()`-Durchlauf mit nachgestelltem Core (Abschnitte
 ergeben die Gesamtzeit, Pause 1000 ms, erstes Bild 80 ms, Zeit ab der
 Taste, Logzeile), eine Messung, die schiefgeht, und die Bench-Abschnitte
 R, S, T.
+
+## Nachtrag Build 344 - schneller zurueck, schlanker im Spiel
+
+**Stand:** 22.11.2026, `Dragend_Build_344.zip` (build_id
+`2026-11-22-344`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Grundlage ist Bench 25 vom Geraet des Nutzers (Build 343):
+
+    S  Menue erkannt -> erstes Bild   2032 ms
+         Nacharbeit                    194
+         feste Pause                  1000
+         Musik, Listen, Overlay         92
+         Bildschirm uebernehmen        614   (0,1 + F9 0,1 + Frist 0,4)
+         erstes Bild zeichnen          131
+       Ausstiegs-Taste -> Bild        2637
+    T  belegt nach dem Start 72 MB, waehrend eines Spiels 131 MB,
+       Spitze 228 MB, Linux gesamt 491 MB
+    P  laengster Happen N64 581,8 ms bei 836 Eintraegen
+
+### Rueckkehr
+
+- **Die Pause zaehlt ab dem Menue** (`RUECKKEHR_PAUSE` = 1.0). Vorher
+  stand sie HINTER der Nacharbeit; jetzt laufen Spielzeit, OBS, RA und
+  `_sync_recent_category()` in ihr, und es wird nur der Rest
+  abgewartet. Musik und F9 kommen weiter fruehestens eine Sekunde nach
+  dem erkannten Menue - wofuer MiSTer sie braucht, steht nirgends, also
+  bleibt sie.
+- **Vorzeichnen in der F9-Frist** (`back_to_frontend(vorzeichnen=True)`,
+  nur fuer die Rueckkehr aus einem Core): F9 raus, `refresh_geometry()`,
+  `_vorzeichnen()` zeichnet mit an der Instanz stillgelegten
+  `flip`/`flip_rows`/`flip_rechtecke` in den Puffer, dann der Rest der
+  Frist, Konsole, Pad holen, EIN `fb.flip()`. Hat sich die Bildgroesse
+  nach der Frist geaendert oder ging das Zeichnen schief, wird normal
+  gezeichnet. Dasselbe Muster wie der Start seit Build 292; was sich
+  nicht verschiebt, sind Konsole, Pad und das sichtbare Bild - alle
+  weiter hinter der vollen Frist.
+- **Menue schneller bemerkt:** `KERN_PRUEF_TAKT` = 0,2 s in
+  `wait_game_exit()` (vorher 0,7 s; die Schleife wacht ohnehin alle
+  0,2 s per select auf), nach der Ausstiegs-Taste alle 0,1 s statt
+  0,3 s.
+
+Erwartung, nicht Messung: rund 0,4 s weniger ab dem erkannten Menue,
+beim Ausstieg uebers OSD im Mittel weitere 0,25 s fuers Bemerken.
+Abschnitt S zeigt es beim naechsten Bench (neu: "darin vorgezeichnet").
+
+### Speicher im Spiel
+
+`ArtCache.fuer_spiel_freigeben()` direkt nach `launch_core()`: die
+Originale mit Bild gehen ganz ("kein Cover"-Eintraege bleiben - sie
+ersparen beim Zurueckkommen den Blick auf die Karte), von den fertigen
+Miniaturen bleiben die juengsten bis `SPIEL_BEHALTEN` = 16 MB (die
+Seite, auf die man zurueckkommt), die juengste immer. Danach
+`malloc_trim(0)` (fe/messwerte.py, `speicher_zurueckgeben()`), damit
+Linux den Speicher auch zurueckbekommt. Logzeile `SPIEL: Cover-Speicher
+freigegeben (x MB), belegt a -> b MB`. Fehler werden nur geloggt.
+
+### Bench 26, Abschnitt P
+
+- Wartet vorher den Vorarbeit-Faden ab (bis 15 s) und nennt die
+  anderen laufenden Faeden - sonst misst P, wer die GIL hat.
+- `_FsUhr` stoppt `os.listdir`, `os.stat` (darueber exists/isdir),
+  `os.lstat`, das Oeffnen eines `os.scandir` und jeden Schritt durch
+  ihn - NUR im eigenen Faden - und bucht sie auf den laufenden Happen.
+- "2b": die drei laengsten Happen mit Dateisystem-Anteil, Zahl der
+  Aufrufe, dem Rest (Python oder Warten auf die GIL), wo der Happen
+  endete und den drei langsamsten Aufrufen samt Pfad.
+
+### README
+
+"Gemessen auf dem MiSTer" um Kategorie oeffnen (99 ms), Rueckkehr
+(2,0 s / 2,6 s) und Speicher (72 / 131 MB) aus Bench 25 ergaenzt, mit
+dem Hinweis, dass Build 344 beides angeht.
+
+### Pruefungen
+
+`tools/test_messwerte.py` erweitert: Pause ab dem Menue (300 ms
+Nacharbeit + 700 ms Rest), Reihenfolge F9 -> vorzeichnen -> Pad, der
+Schirm bleibt beim Vorzeichnen unberuehrt, danach Bild = Puffer, Flips
+wieder frei, Rueckfall beim Fehler, das Freigeben (Originale, "kein
+Cover", Budget, juengste immer), Fehler halten das Spiel nicht auf,
+Pruef-Takte, `_FsUhr` nur im eigenen Faden und os danach wieder frei.
+
+Angepasst: `tools/test_startweg.py` erlaubt jetzt genau ZWEI Aufrufer
+von `enter_console_mode(nachlauf=False)` (Start und Rueckkehr) und prueft
+fuer die Rueckkehr dieselbe Zusage wie fuer den Start - Restfrist vor
+Konsole, Pad und sichtbarem Bild. `tools/test_konsole_wache.py` sucht
+den Nachfass-Termin in der ganzen Funktion statt in den ersten 1400
+Zeichen.
