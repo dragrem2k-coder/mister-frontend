@@ -1,8 +1,9 @@
 # Die PDFs neu erzeugen
 
-Es sind fünf — zwei Dokumente in zwei Sprachen, dazu seit Build 338 die
-Einsteiger-Anleitung (nur Deutsch). Jedes hat eine HTML-Quelle im selben
-Ordner. Die Einsteiger-Anleitung übernimmt den `<style>`-Block aus
+Es sind sechs — drei Dokumente in zwei Sprachen: Kurzanleitung,
+Installation und seit Build 338 die Einsteiger-Anleitung (englisch seit
+Build 342). Jedes hat eine HTML-Quelle im selben
+Ordner. Die Einsteiger-Anleitung (beide Sprachen) übernimmt den `<style>`-Block aus
 `anleitung_source.html` Zeichen für Zeichen und hängt eigene Klassen an. **Änderungen gehören in die HTML-Datei,
 nicht in die PDF.**
 
@@ -12,7 +13,8 @@ nicht in die PDF.**
 | `Dragend_Manual_EN.pdf` | `manual_source_en.html` | dasselbe auf Englisch |
 | `Installation_und_Update.pdf` | `installation_source.html` | 4 Seiten: Übersicht, Installation, nach der Installation, Update & Hilfe |
 | `Installation_and_Update_EN.pdf` | `installation_source_en.html` | dasselbe auf Englisch |
-| `Dragend_Einsteiger.pdf` | `einsteiger_source.html` | 11 Seiten, nur Deutsch (Build 338): was das Frontend kann und jede Einstellung im Systemmenü erklärt |
+| `Dragend_Einsteiger.pdf` | `einsteiger_source.html` | 11 Seiten (Build 338): was das Frontend kann und jede Einstellung im Systemmenü erklärt |
+| `Dragend_Beginners_EN.pdf` | `einsteiger_source_en.html` | dasselbe auf Englisch (Build 342) |
 
 ```bash
 CHROME=chromium   # oder der Pfad zu deinem Chromium/Chrome
@@ -21,13 +23,14 @@ for p in anleitung_source:Dragend_Anleitung \
          installation_source:Installation_und_Update \
          manual_source_en:Dragend_Manual_EN \
          installation_source_en:Installation_and_Update_EN \
-         einsteiger_source:Dragend_Einsteiger; do
+         einsteiger_source:Dragend_Einsteiger \
+         einsteiger_source_en:Dragend_Beginners_EN; do
   "$CHROME" --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
       --print-to-pdf="docs/${p##*:}.pdf" "file://$PWD/docs/${p%%:*}.html"
 done
 ```
 
-## Die Funktionsliste ist der fünfte Fall — und läuft anders
+## Die Funktionsliste ist der siebte Fall — und läuft anders
 
 `Dragend_Funktionsliste.pdf` hat **keine** handgeschriebene HTML-Quelle.
 Sie wird aus dem Quelltext erzeugt, in zwei Schritten:

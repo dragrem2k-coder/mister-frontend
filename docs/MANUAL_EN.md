@@ -180,6 +180,7 @@ history to read up on (`CHANGELOG.md`).
    - 8r-3. Four small things about the list
    - 8r-4. Hiding entries
    - 8r-5. The button legend
+   - 8r-6. The Christmas decoration
    - 8s. ROMs inside ZIP archives
    - 8s-2. Multi-disc games
    - 8s-3. The game's manual
@@ -2010,6 +2011,35 @@ Switch it off in the system menu under *Display & Sound → Button
 legend*. On by default: it is there for the people who do not yet know
 which button does what.
 
+## 8r-6. The Christmas decoration (Build 342)
+
+From **December 1 to January 6** the frontend decorates itself:
+
+- **Falling snow** on the main page and in the lists — but only while
+  you are not pressing anything. The first button press clears it, and
+  it comes back a good half second after the last one. There is none
+  while scrolling, in windows or in attract mode. Round flakes in
+  three depths on HDMI, deliberately pixel snow with fewer flakes on a
+  CRT.
+- A **warm-white string of lights** in the margin above the title. If
+  you have set the top margin to 0 you get none — it would hang into
+  the title.
+- A **Santa hat** hanging from the top left of the "M" in "MiSTer" — in
+  all six main page views.
+- **Zufalls-Zock** becomes **Wichtel-Zock**. If you hid or moved the
+  category, it stays where you put it.
+
+Set it in the system menu under *Display & Sound → Christmas
+decoration*: **automatic (Dec 1 - Jan 6)** (default), **always on** or
+**off**. The setting is stored in `/media/fat/frontend/weihnachten`.
+
+**Does it cost speed?** Hardly. Hat and lights are calculated once and
+then just put in place; scrolling the main page costs nothing
+measurable for the hat. The snow only moves the small rectangles
+around the flakes, never the whole picture, and it does not wait for
+the vertical blank — so a button press is not read any later. The
+bench always measures without the decoration.
+
 ## 8s. ROMs inside ZIP archives
 
 If your ROMs live inside ZIP archives, they are listed normally. An
@@ -2804,6 +2834,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Menu resolution: full / half / quarter (HDMI only) | `fb_size` |
 | Selection shimmer: ON/OFF | `pulse_effect` |
 | Equalizer bars: ON/OFF | `eq_effect` |
+| Christmas decoration: automatic / always on / off | `weihnachten` |
 | Music title marquee: ON/OFF | `track_marquee` |
 | Stream overlay: ON/OFF (restart) | `stream_overlay` |
 | Screen mirror: ON/OFF (restart) | `screen_mirror` |

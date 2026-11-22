@@ -586,6 +586,9 @@ TRANSLATIONS = {
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter wählen, OK bestätigen"},
     "zufallszock_title": {"en": "ZUFALLS-ZOCK", "de": "ZUFALLS-ZOCK"},
+    # Build 342: in der Weihnachtszeit heisst die Kategorie anders -
+    # siehe UMLEITUNG unten und fe/weihnachten.py.
+    "zufallszock_title_xmas": {"en": "WICHTEL-ZOCK", "de": "WICHTEL-ZOCK"},
     "zufallszock_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
                  "de": "Hoch/Runter: wählen   OK: bestätigen   ESC: zurück"},
     # GEAENDERT (Build 144): bis Build 143 bekamen zwei voellig verschiedene
@@ -629,6 +632,7 @@ TRANSLATIONS = {
         "en": "Could not write the job file.",
         "de": "Auftragsdatei konnte nicht geschrieben werden."},
     "sys_zufallszock_action": {"en": "Zufalls-Zock - draw a game", "de": "Zufalls-Zock - Spiel ziehen"},
+    "sys_zufallszock_action_xmas": {"en": "Wichtel-Zock - draw a game", "de": "Wichtel-Zock - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
@@ -957,6 +961,13 @@ TRANSLATIONS = {
                        "de": "Diese Kategorie ausblenden"},
     "sys_scroll_tempo": {"en": "Scroll speed: %s -> next",
                          "de": "Scrollgeschwindigkeit: %s -> nächste"},
+    # Build 342: die Weihnachts-Deko (fe/weihnachten.py).
+    "sys_weihnachten": {"en": "Christmas decoration: %s -> next",
+                        "de": "Weihnachts-Deko: %s -> nächste"},
+    "weihnachten_auto": {"en": "automatic (Dec 1 - Jan 6)",
+                         "de": "automatisch (1.12. - 6.1.)"},
+    "weihnachten_an": {"en": "always on", "de": "immer an"},
+    "weihnachten_aus": {"en": "off", "de": "aus"},
     "sys_ordner_zuerst": {"en": "Folders: first",
                           "de": "Ordner: zuerst"},
     "sys_ordner_hinten": {"en": "Folders: after the games",
@@ -1834,10 +1845,41 @@ def set_language(lang):
     except OSError:
         pass
 
+# BUILD 342: UMLEITUNG fuer die Weihnachtszeit. Solange die Deko laeuft,
+# setzt fe/weihnachten.py hier "zufallszock_title" auf
+# "zufallszock_title_xmas" (und die Aktion darunter genauso) - aus
+# Zufalls-Zock wird Wichtel-Zock, an JEDER Stelle, die den Namen zeigt,
+# ohne dass eine davon etwas davon wissen muss. Ausserhalb der Zeit ist
+# das Woerterbuch leer, und t() kostet ein einziges dict.get mehr.
+#
+# SAISON_FASSUNGEN ist die feste Liste aller moeglichen Umleitungen -
+# fuer die Stellen, die einen gespeicherten Namen wiedererkennen
+# muessen, egal in welcher Jahreszeit er gespeichert wurde
+# (fe/hauptseite.py, fe/art.py).
+SAISON_FASSUNGEN = {
+    "zufallszock_title": "zufallszock_title_xmas",
+    "sys_zufallszock_action": "sys_zufallszock_action_xmas",
+}
+UMLEITUNG = {}
+
+
+def alle_fassungen(key):
+    """Alle Texte, unter denen dieser Schluessel je erscheinen kann -
+    ueber alle Sprachen und beide Jahreszeiten."""
+    raus = set()
+    for k in (key, SAISON_FASSUNGEN.get(key)):
+        for text in (TRANSLATIONS.get(k) or {}).values():
+            if isinstance(text, str) and text:
+                raus.add(text)
+    return raus
+
+
 def t(key, *fmt_args):
     """Uebersetzten Text fuer den aktuellen Sprachstand liefern.
     Faellt bei fehlendem Schluessel/fehlender Sprache auf Englisch
     bzw. den Schluessel selbst zurueck, statt abzustuerzen."""
+    if UMLEITUNG:
+        key = UMLEITUNG.get(key, key)
     entry = TRANSLATIONS.get(key)
     if entry is None:
         return key

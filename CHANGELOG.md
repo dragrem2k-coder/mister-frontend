@@ -13,6 +13,20 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Neu: die Weihnachts-Deko.** Vom 1. Dezember bis zum 6. Januar fällt
+  im Leerlauf Schnee über Hauptseite und Listen, über dem Titel hängt
+  eine warmweiße Lichterkette, am „M" von „MiSTer" eine
+  Weihnachtsmütze, und aus Zufalls-Zock wird Wichtel-Zock. Der Schnee
+  verschwindet mit der ersten Taste und kostet beim Bedienen nichts.
+  Unter *System → Anzeige & Sound → Weihnachts-Deko*: automatisch,
+  immer an oder aus (Build 342).
+- **Neu: die Einsteiger-Anleitung auf Englisch** —
+  [`docs/Dragend_Beginners_EN.pdf`](docs/Dragend_Beginners_EN.pdf),
+  dieselben elf Seiten wie die deutsche (Build 342).
+- **Kürzere Pausen in der Vorarbeit nach dem Start.** Auch das Lesen
+  eines großen Cover-Ordners geschieht jetzt in Häppchen; dazwischen
+  wird das Pad abgeholt. Der Bench hatte bis zu 450 ms am Stück
+  gemessen (Build 342).
 - **Schneller: das erste Einlesen über ein NAS.** Über das Netz wartet
   jeder Zugriff auf eine Antwort des NAS, und das Frontend hat bisher
   System für System nacheinander gelesen. Jetzt liest es mehrere Systeme

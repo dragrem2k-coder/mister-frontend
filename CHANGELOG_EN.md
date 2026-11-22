@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **New: the Christmas decoration.** From December 1 to January 6 snow
+  falls over the main page and the lists while idle, a warm-white
+  string of lights hangs above the title, a Santa hat hangs from the
+  "M" in "MiSTer", and Zufalls-Zock becomes Wichtel-Zock. The snow
+  disappears with the first button press and costs nothing while you
+  use the frontend. Under *System → Display & Sound → Christmas
+  decoration*: automatic, always on or off (Build 342).
+- **New: the beginner's guide in English** —
+  [`docs/Dragend_Beginners_EN.pdf`](docs/Dragend_Beginners_EN.pdf),
+  the same eleven pages as the German one (Build 342).
+- **Shorter pauses in the work after start-up.** Reading a large cover
+  folder now also happens in small portions, collecting the pad in
+  between. The bench had measured up to 450 ms in one go (Build 342).
 - **Faster: the first scan over a NAS.** Over the network every access
   waits for an answer from the NAS, and the frontend used to read one
   system after the other. It now reads several systems at once (six as

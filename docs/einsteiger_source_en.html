@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dragend for Beginners</title>
+<!-- BUILD 342: Beginner's Guide, the English counterpart of
+     einsteiger_source.html (same layout, same <style>). Generate the PDF:
+     see PDF_ERZEUGEN.md. -->
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #101218; }
+  body {
+    font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+    color: #ffffff;
+  }
+  :root {
+    --bg: #101218;
+    --panel: #181c28;
+    --blue: #4285f4;
+    --purple: #8572d1;
+    --gold: #d2af46;
+    --dim: #8c92a0;
+    --dim2: #c7ccd6;
+    --red: #ed2024;
+    --keybox: #1c2130;
+    --keyborder: #3a4258;
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    position: relative;
+    background: var(--bg);
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: auto; }
+  .frame {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 9mm; bottom: 9mm;
+    border: 1.6px solid var(--blue);
+    border-radius: 16px;
+  }
+  .topbar {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 13mm;
+    height: 12mm;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 9mm;
+  }
+  .logo-chip {
+    width: 13mm; height: 13mm;
+    background: #000;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .logo-chip img { width: 100%; height: 100%; object-fit: contain; }
+  .page-tag { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: 0.5px; }
+  .footer {
+    position: absolute;
+    left: 9mm; right: 9mm; bottom: 9mm;
+    padding: 0 9mm 5mm;
+    display: flex;
+    justify-content: space-between;
+    font-family: "Courier New", monospace;
+    font-size: 9px;
+    color: var(--dim);
+  }
+  .footer-rule {
+    position: absolute;
+    left: 15mm; right: 15mm; bottom: 15mm;
+    border-top: 0.8px solid #262b3a;
+  }
+  .content { position: absolute; left: 15mm; right: 15mm; top: 28mm; bottom: 20mm; }
+
+  h1.section-title {
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+    color: var(--blue);
+    font-size: 21px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 11mm;
+  }
+  h1.section-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #262b3a;
+  }
+
+  /* ---------- Page 1 (Cover) ---------- */
+  .cover-logo { width: 65mm; margin: 14mm auto 0; display:block; }
+  .cover-title { text-align:center; font-size: 24px; font-weight: bold; margin-top: 6mm; }
+  .cover-tagline { text-align:center; color: var(--dim2); font-size: 12px; margin-top: 5mm; line-height: 1.6; }
+  .badges { display:flex; justify-content:center; gap: 11mm; margin-top: 11mm; }
+  .badge { display:flex; flex-direction:column; align-items:center; width: 30mm; }
+  .badge-circle {
+    width: 19mm; height: 19mm; border-radius: 50%;
+    border: 1.6px solid var(--gold); color: var(--gold);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 14px; font-weight:bold; font-family:"Courier New",monospace;
+  }
+  .badge-label { margin-top: 3mm; font-size: 8.6px; color: var(--dim2); text-align:center; }
+  .demo-heading { text-align:center; color: var(--blue); letter-spacing: 2px; font-size: 12.5px; font-weight:bold; margin-top: 13mm; }
+  .mockup {
+    width: 155mm; margin: 6mm auto 0;
+    border: 1.6px solid var(--blue); border-radius: 10px;
+    overflow: hidden;
+  }
+  .mockup img { width: 100%; display:block; }
+
+  /* ---------- Page 2/3 (Tastatur/Joypad) ---------- */
+  .arrows { display:flex; align-items:flex-start; justify-content: space-between; margin-bottom: 13mm; padding: 0 4mm; }
+  .dpad { display:grid; grid-template-columns: repeat(3, 12mm); grid-template-rows: repeat(2, 12mm); gap: 2mm; justify-content:center; }
+  .key {
+    background: var(--keybox);
+    border: 1.2px solid var(--keyborder); border-radius: 4px;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 13px; color:#fff;
+  }
+  .dpad .k-up { grid-column:2; grid-row:1; }
+  .dpad .k-left { grid-column:1; grid-row:2; }
+  .dpad .k-down { grid-column:2; grid-row:2; }
+  .dpad .k-right { grid-column:3; grid-row:2; }
+  .arrow-label { font-size: 11px; color: var(--dim2); margin-top: 4mm; text-align:center; }
+  .key-wide { background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 4mm 8mm; font-family:"Courier New",monospace; font-size: 13px; font-weight:bold; text-align:center; }
+  .key-desc { font-size: 10px; color: var(--dim2); margin-top: 3mm; text-align:center; }
+  .ok-esc { display:flex; flex-direction:column; gap: 9mm; width: 62mm; }
+
+  .frow-title, .extra-title { font-size: 11px; color: var(--dim2); font-style: italic; margin: 11mm 0 6mm; }
+  .frow { display:flex; gap: 5mm; }
+  .fkey { flex:1; display:flex; flex-direction:column; align-items:center; }
+  .fkey .key-wide { width: 100%; padding: 4mm 2mm; }
+  .fkey .key-desc { font-size: 9px; }
+
+  .extra-row { display:flex; align-items:center; gap: 6mm; margin-bottom: 5.5mm; }
+  .extra-key { min-width: 46mm; background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 3.2mm 4mm; font-family:"Courier New",monospace; font-size: 11px; font-weight:bold; text-align:center; }
+  .extra-desc { font-size: 10.5px; color: var(--dim2); line-height: 1.4; }
+  .extra-desc .sub { display:block; font-size: 9px; color: #caa74a; font-style: italic; margin-top: 1.2mm; }
+
+  .remap-note { margin-top: 9mm; font-size: 10px; color: var(--dim); font-style: italic; line-height: 1.5; }
+
+  /* Joypad grid */
+  .pad-intro { font-size: 11px; color: var(--dim2); font-style: italic; margin-bottom: 9mm; }
+  .pad-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 6.5mm 9mm; }
+  .pad-item { display:flex; align-items:center; gap: 5mm; border-bottom: 0.6px solid #202537; padding-bottom: 4.5mm; }
+  .pad-btn { min-width: 21mm; height: 12mm; border-radius: 6mm; background: var(--keybox); border: 1.4px solid var(--gold); color: var(--gold);
+             display:flex; align-items:center; justify-content:center; font-family:"Courier New",monospace; font-size:10px; font-weight:bold; flex-shrink:0; padding: 0 2mm; text-align:center; line-height:1.15; }
+  .pad-desc { font-size: 9.8px; color: var(--dim2); line-height:1.4; }
+
+  /* Page 4 Funktionen */
+  .func-grid { display:flex; flex-direction:column; gap: 6mm; }
+  .func-row { display:flex; gap: 6mm; align-items:stretch; }
+  .func-shot { width: 50mm; height: 28mm; border: 1.4px solid var(--blue); border-radius: 6px; background: var(--panel); flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .func-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .func-text { flex:1; padding-top: 1mm; }
+  .func-title { color: var(--blue); font-weight:bold; font-size: 12px; letter-spacing: 0.3px; margin-bottom: 2.5mm; }
+  .func-body { font-size: 10px; color: var(--dim2); line-height: 1.55; }
+
+  /* ---------- Einsteiger-Anleitung (Build 338) ---------- */
+  .txt { font-size: 12px; color: var(--dim2); line-height: 1.55; margin-bottom: 3mm; }
+  .txt b { color: #fff; }
+  .h2 { color: var(--gold); font-size: 13px; font-weight: bold; letter-spacing: .5px;
+        margin: 5mm 0 2.5mm; }
+  .h2:first-child { margin-top: 0; }
+  table.opt { width: 100%; border-collapse: collapse; font-size: 10.6px; }
+  table.opt td { padding: 1.9mm 2mm; border-bottom: .6px solid #202537;
+                 vertical-align: top; color: var(--dim2); line-height: 1.38; }
+  table.opt td.o { width: 54mm; color: #fff; font-weight: bold; }
+  table.opt td.p, table.opt td.k { width: 42mm; font-family: "Courier New", monospace;
+                 font-size: 10.2px; color: var(--gold); font-weight: bold; }
+  table.opt tr.kopf td { color: var(--blue); font-weight: bold; font-size: 10px;
+                 letter-spacing: .6px; border-bottom: 1px solid #2d3448; }
+  .tipp { border-left: 3px solid var(--gold); background: var(--panel); padding: 2.8mm 4mm;
+          font-size: 11px; color: var(--dim2); margin: 4mm 0; border-radius: 4px;
+          line-height: 1.5; }
+  .tipp b { color: var(--gold); }
+  .schritte { counter-reset: s; margin: 1mm 0 2mm; }
+  .schritt { display: flex; gap: 4mm; align-items: flex-start; margin-bottom: 3mm; }
+  .schritt .n { width: 7mm; height: 7mm; border-radius: 50%; background: var(--blue);
+                color: #fff; font-weight: bold; font-size: 11px; display: flex;
+                align-items: center; justify-content: center; flex-shrink: 0; }
+  .schritt .t { font-size: 12px; color: var(--dim2); line-height: 1.5; padding-top: .6mm; }
+  .schritt .t b { color: #fff; }
+  .pfad { font-family: "Courier New", monospace; color: var(--gold); font-size: 10.8px; }
+  code { font-family: "Courier New", monospace; color: #7ee787; font-size: 11px; }
+  .codebox { background: #0b0d12; border: 1px solid #262b3a; border-radius: 6px;
+             padding: 2.2mm 4mm; margin: 1.5mm 0 3mm; }
+  .zwei { display: flex; gap: 7mm; }
+  .zwei > div { flex: 1; }
+  .rech { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 6mm; margin-top: 2mm; }
+  .rechner { display: flex; gap: 4mm; align-items: flex-start; background: var(--panel);
+             border-radius: 6px; padding: 3mm; }
+  .rechner img { width: 30mm; border-radius: 4px; flex-shrink: 0; }
+  .rechner .rt { font-size: 10.6px; color: var(--dim2); line-height: 1.45; }
+  .rechner .rt b { color: #fff; }
+  .rechner .rt .rn { color: #fff; font-weight: bold; font-size: 12px; display: block; margin-bottom: 1mm; }
+  .kat { display: flex; gap: 4mm; border-bottom: .6px solid #202537; padding: 2.6mm 0; }
+  .kat .kn { width: 40mm; color: #fff; font-weight: bold; font-size: 11.5px; flex-shrink: 0; }
+  .kat .kd { font-size: 11.2px; color: var(--dim2); line-height: 1.45; }
+  .cover-version { text-align: center; color: var(--gold); font-family: "Courier New", monospace;
+                   font-size: 11px; margin-top: 4mm; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content" style="top:0; bottom: 20mm;">
+    <img class="cover-logo" src="_anleitung_assets/logo.png">
+    <div class="cover-title">Dragend for Beginners</div>
+    <div class="cover-tagline">What the frontend can do &ndash; and what every setting does.<br>
+    No jargon, step by step.</div>
+    <div class="cover-version">VERSION 5.1</div>
+    <div class="badges">
+      <div class="badge"><div class="badge-circle">1</div><div class="badge-label">Install &amp;<br>first start</div></div>
+      <div class="badge"><div class="badge-circle">2</div><div class="badge-label">Controls &amp;<br>starting games</div></div>
+      <div class="badge"><div class="badge-circle">3</div><div class="badge-label">Every setting<br>explained</div></div>
+      <div class="badge"><div class="badge-circle">?</div><div class="badge-label">When something<br>goes wrong</div></div>
+    </div>
+    <div class="mockup" style="margin-top: 12mm;">
+      <img src="_anleitung_assets/shot_categories.png">
+    </div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">2/11 &nbsp;-&nbsp; GETTING STARTED</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">WHAT IS DRAGEND?</h1>
+
+    <div class="txt"><b>Dragend is a menu of its own for your MiSTer.</b> Instead of clicking through
+    folders in the MiSTer menu, you see your games sorted by system &ndash; with cover, release year
+    and description &ndash; and start them with one button press. When you quit a game, you are back
+    in the frontend.</div>
+    <div class="txt">Dragend changes <b>nothing</b> on the MiSTer itself: no kernel, no image, no cores.
+    It is a program that runs alongside the MiSTer. An uninstall script removes it, and everything is
+    as it was before.</div>
+
+    <div class="h2">INSTALLED IN THREE STEPS</div>
+    <div class="schritte">
+      <div class="schritt"><div class="n">1</div><div class="t">Download <b>Frontend_Install.sh</b> from the
+      project page (right-click &rarr; <i>Save link as</i>).</div></div>
+      <div class="schritt"><div class="n">2</div><div class="t">Copy the file to <span class="pfad">/media/fat/Scripts/</span>
+      &ndash; with WinSCP/FTP, or with the SD card in your PC.</div></div>
+      <div class="schritt"><div class="n">3</div><div class="t">On the MiSTer, run <b>Scripts &rarr;
+      Frontend Install</b>. The script downloads everything else by itself, sets up autostart and
+      reboots the MiSTer.</div></div>
+    </div>
+    <div class="tipp"><b>The very first start takes longer.</b> The frontend reads all your games and the
+    arcade folder once and shows its progress. After that it starts in about two seconds.</div>
+
+    <div class="h2">THE FIRST START: SETUP</div>
+    <div class="txt">On the first start a short setup walks you through seven questions:
+    <b>language</b>, <b>display</b> (HDMI TV or CRT), <b>time zone</b>, <b>RetroAchievements</b>,
+    downloading <b>box art</b> and <b>game info</b>, and then your <b>games are found</b>.
+    OK moves on, Esc skips a step. Everything can be changed later &ndash; you can run the setup
+    again at any time under <span class="pfad">System &rarr; Info &rarr; Run setup wizard again</span>.</div>
+
+    <div class="h2">WHERE YOUR GAMES NEED TO BE</div>
+    <div class="txt">Exactly where the MiSTer looks for them: under <span class="pfad">/media/fat/games/&lt;system&gt;</span>
+    (for example <span class="pfad">games/SNES</span>), on a USB drive under <span class="pfad">games/&lt;system&gt;</span>
+    or on a network share. Subfolders are fine and show up as folders in the frontend.
+    Arcade games come from <span class="pfad">/media/fat/_Arcade</span>.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">3/11 &nbsp;-&nbsp; CONTROLS</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">CONTROLS: PAD AND KEYBOARD</h1>
+
+    <div class="txt">You only need a pad <i>or</i> a keyboard. Either one reaches everything &ndash;
+    a few shortcuts exist on only one of them.</div>
+<table class="opt">
+<tr class="kopf"><td>WHAT</td><td>PAD</td><td>KEYBOARD</td></tr>
+<tr><td class="o">Move</td><td class="p">D-pad / stick</td><td class="k">Arrow keys</td></tr>
+<tr><td class="o">Select, open folder, start game</td><td class="p">A (or Start)</td><td class="k">Enter</td></tr>
+<tr><td class="o">Back (at the top: quit question)</td><td class="p">B (or Select)</td><td class="k">Esc</td></tr>
+<tr><td class="o">Page up / down</td><td class="p">L / R</td><td class="k">Arrow left / right</td></tr>
+<tr><td class="o">Context menu (everything about this game)</td><td class="p">X</td><td class="k">F1</td></tr>
+<tr><td class="o">Search</td><td class="p">Select + A</td><td class="k">/ or F2</td></tr>
+<tr><td class="o">Jump to start / end</td><td class="p">Select + L / Select + R</td><td class="k">F3 / F4</td></tr>
+<tr><td class="o">Jump to a letter</td><td class="p">via the context menu</td><td class="k">Letter key</td></tr>
+<tr><td class="o">Favorite on / off</td><td class="p">L2</td><td class="k">F8</td></tr>
+<tr><td class="o">Switch view</td><td class="p">Select + Y</td><td class="k">F10</td></tr>
+<tr><td class="o">Switch picture: cover, screenshot, title screen</td><td class="p">R2</td><td class="k">&ndash;</td></tr>
+<tr><td class="o">Achievements of the game (RetroAchievements)</td><td class="p">Select + X</td><td class="k">F6</td></tr>
+<tr><td class="o">Mark as completed</td><td class="p">via the context menu</td><td class="k">F7</td></tr>
+<tr><td class="o">Random game</td><td class="p">via the context menu</td><td class="k">F11 (across all systems)</td></tr>
+<tr><td class="o">Next music track (in the menu)</td><td class="p">Y</td><td class="k">F5</td></tr>
+<tr><td class="o">Open the MiSTer menu (OSD)</td><td class="p">Mode / Home</td><td class="k">F12</td></tr>
+</table>
+    <div class="h2">WHILE PLAYING</div>
+<table class="opt">
+<tr class="kopf"><td>WHAT</td><td>PAD</td><td>KEYBOARD</td></tr>
+<tr><td class="o">Back to the frontend</td><td class="p">Hold Start + Select + L + R briefly (Nintendo pads)</td><td class="k">F1, or hold Esc for about 0.6 s</td></tr>
+<tr><td class="o">Reset the game</td><td class="p">&ndash;</td><td class="k">F5</td></tr>
+</table>
+    <div class="tipp"><b>No keyboard?</b> With a Nintendo pad (Pro Controller, Joy-Con) you get back with
+    Start+Select+L+R. The MiSTer often locks other pads while a game is running &ndash; then a keyboard
+    is the reliable way. You can remap every button under <span class="pfad">System &rarr; Input &amp; language</span>;
+    the <b>Controller test</b> there shows which button your pad is reporting right now.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">4/11 &nbsp;-&nbsp; MAIN PAGE</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">THE MAIN PAGE</h1>
+
+    <div class="txt">After starting you see the <b>main page</b>: a list of categories.
+    What appears there depends on what is on your SD card.</div>
+    <div class="kat"><div class="kn">Continue Playing</div><div class="kd">The game you played last and have not marked as completed yet &ndash; one press and you carry on.</div></div>
+    <div class="kat"><div class="kn">Recently Played</div><div class="kd">The games you started most recently, newest at the top.</div></div>
+    <div class="kat"><div class="kn">Favorites</div><div class="kd">Everything you marked with L2 / F8.</div></div>
+    <div class="kat"><div class="kn">The systems</div><div class="kd">One category per system you have games for &ndash; SNES, Mega Drive, PlayStation and so on. Systems without games do not appear.</div></div>
+    <div class="kat"><div class="kn">The computers</div><div class="kd">Commodore 64, Amiga 500, Amstrad CPC and DOS (ao486) &ndash; more on page 10.</div></div>
+    <div class="kat"><div class="kn">Arcade</div><div class="kd">The arcade machines from the _Arcade folder, with all subfolders.</div></div>
+    <div class="kat"><div class="kn">Collections</div><div class="kd">Automatic selections across all systems.</div></div>
+    <div class="kat"><div class="kn">RA Achievement Hunter</div><div class="kd">Games in your collection with open RetroAchievements (if RetroAchievements is set up).</div></div>
+    <div class="kat"><div class="kn">Zufalls-Zock</div><div class="kd">Can&rsquo;t decide? The frontend draws three games for you to choose from &ndash; no repeats until every game has had its turn. From Dec 1 to Jan 6 it is called <i>Wichtel-Zock</i>.</div></div>
+    <div class="kat"><div class="kn">System</div><div class="kd">All settings, statistics and maintenance &ndash; plus your scripts and the core folders. Always at the very bottom.</div></div>
+    <div class="h2">THE MAIN PAGE YOUR WAY</div>
+    <div class="txt"><b>Order and hide:</b> <span class="pfad">System &rarr; Options &rarr; Home page</span>,
+    or <i>Hide this category</i> in the context menu (X / F1). <b>Six views</b>
+    (F10 / Select+Y): list, grid, gallery &ndash; and on HDMI also tile wall,
+    dashboard and carousel.</div>
+    <div class="tipp"><b>Attract mode:</b> leave it alone for a while and the frontend shows games with
+    covers as a screensaver. <b>OK</b> starts the game shown, <b>left/right</b> switches the system,
+    any other button just wakes it up. Set it under <span class="pfad">System &rarr; Options</span>.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">5/11 &nbsp;-&nbsp; GAME LIST</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">STARTING AND FINDING GAMES</h1>
+
+    <div class="h2">STARTING A GAME</div>
+    <div class="txt">Open a category, pick a game, <b>A / Enter</b>. For systems with more than one core
+    the frontend asks briefly: <b>standard core</b>, <b>RetroAchievements core</b> (with real
+    achievements) or <b>netplay core</b> &ndash; whichever is installed.
+    Multi-disc games are <i>one</i> entry in the list; you choose the disc when starting.</div>
+
+    <div class="h2">FOUR VIEWS FOR THE GAME LIST (F10 / SELECT+Y)</div>
+    <div class="txt"><b>List</b> (names on the left, large cover on the right), <b>grid</b> (many covers
+    side by side), <b>gallery</b> (large cover with description, neighbours below) and
+    <b>coverflow</b> (HDMI only: the cover in the middle, its neighbours smaller beside it).
+    The button just tries them out; the default for everything is set under
+    <span class="pfad">System &rarr; Display &amp; sound &rarr; Game list view</span>.</div>
+
+    <div class="h2">THE CONTEXT MENU (X / F1)</div>
+<table class="opt">
+<tr><td class="o">Game info</td><td>The profile: cover, year, genre, publisher, your play time and the description on one page.</td></tr>
+<tr><td class="o">Show manual</td><td>Only if a manual for this game is on your SD card.</td></tr>
+<tr><td class="o">Favorite / completed</td><td>Set and remove marks.</td></tr>
+<tr><td class="o">Core build for this game</td><td>A specific core just for this one game (if there are several).</td></tr>
+<tr><td class="o">Search, filter, letter</td><td>Get to the game quickly &ndash; search also finds words in the middle of a name.</td></tr>
+<tr><td class="o">Switch view</td><td>Same as F10.</td></tr>
+<tr><td class="o">Random game / favorite</td><td>Starts a random game or a random favorite.</td></tr>
+<tr><td class="o">Hide this entry</td><td>Hides a game or folder. Bring it back under System &rarr; Display &amp; sound &rarr; Hidden entries.</td></tr>
+</table>
+    <div class="h2">WHERE THE COVERS COME FROM</div>
+    <div class="txt">The frontend uses whatever it finds, in this order: your <b>own covers</b>,
+    then the <b>artwork database from Update All</b> (<span class="pfad">/media/fat/docs</span>, via
+    <i>Extra Content &rarr; Game Artwork DBs</i>), and for the rest
+    <span class="pfad">System &rarr; Maintenance &rarr; Download box art</span> fetches the missing ones
+    from the internet. Anything Update All already delivered is recognised and not downloaded again.</div>
+    <div class="tipp"><b>For smooth scrolling:</b> run
+    <span class="pfad">System &rarr; Options &rarr; Prepare cover thumbnails</span> once. It scales every
+    cover to the right size in advance &ndash; after that each cover is there instantly, even after a
+    restart. It takes a few minutes, any button cancels it, and it continues later where it stopped.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">6/11 &nbsp;-&nbsp; SETTINGS 1/4</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">DISPLAY &amp; SOUND: LOOK</h1>
+
+    <div class="txt">All settings are on the main page at the very bottom under <b>System</b>.
+    An entry always shows its current value; OK switches to the next. This is the folder
+    <span class="pfad">System &rarr; Display &amp; sound</span>, first part:</div>
+<table class="opt">
+<tr><td class="o">Menu video: HDMI / CRT</td><td>For CRT TVs: switches the MiSTer menu picture to 15 kHz. Takes effect after a restart.</td></tr>
+<tr><td class="o">Color theme</td><td>The colours of the frontend. With <i>save as your own scheme</i> and <i>edit</i> you build your own.</td></tr>
+<tr><td class="o">Boot logo</td><td>Which logo appears at start: Dragend, Cirdan, a random one each time, or plain.</td></tr>
+<tr><td class="o">Font</td><td>The frontend&rsquo;s own font or one of the MiSTer fonts from <span class="pfad">/media/fat/font</span>.</td></tr>
+<tr><td class="o">Fine details</td><td>Small decorations: scrollbar, accent bars, divider. Off = a calmer picture.</td></tr>
+<tr><td class="o">Background image</td><td>Your own picture instead of the dark area. Put images into <span class="pfad">/media/fat/frontend/backgrounds</span>.</td></tr>
+<tr><td class="o">Shadow mask</td><td>Lays a CRT pattern over the picture &ndash; from MiSTer&rsquo;s own folder <span class="pfad">/media/fat/Shadow_Masks</span>.</td></tr>
+<tr><td class="o">Side / top-bottom margin</td><td>Distance to the screen edge. Raise it if your CRT cuts off a little at the edges.</td></tr>
+<tr><td class="o">Menu resolution: full / half</td><td>HDMI only: half resolution makes the frontend faster and the picture a little softer. After restart.</td></tr>
+<tr><td class="o">Selection glow</td><td>The selection pulses gently. Off = a fixed highlight.</td></tr>
+<tr><td class="o">Shrink covers: soft / sharp</td><td>Soft averages, sharp keeps the pixel look &ndash; often nicer on a CRT.</td></tr>
+<tr><td class="o">Foreign artwork/data</td><td>Use covers, year and descriptions from the Update All database. Only fills gaps, never replaces your own covers. Recommended: on.</td></tr>
+<tr><td class="o">Inherit cover from the base game</td><td>Hacks and translations without their own cover show the cover of the original game.</td></tr>
+</table>
+    <div class="tipp"><b>Rule of thumb:</b> anything marked &ldquo;after restart&rdquo; only changes the picture
+    after the MiSTer restarts. Everything else takes effect immediately.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">7/11 &nbsp;-&nbsp; SETTINGS 2/4</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">DISPLAY &amp; SOUND: LIST, MUSIC, STREAM</h1>
+
+    <div class="h2">THE LIST</div>
+<table class="opt">
+<tr><td class="o">Game list / main page view</td><td>The default view for all categories (F10 only tries them out).</td></tr>
+<tr><td class="o">Scroll speed</td><td>0.5x to 4x. Slower for reading, faster for flying through. At 3x and 4x a held button jumps several lines.</td></tr>
+<tr><td class="o">Fast scroll</td><td>Shorter delay while scrolling, at the cost of the occasional brief tear.</td></tr>
+<tr><td class="o">Cover while scrolling</td><td>The list shows the cover while you scroll instead of only when you stop.</td></tr>
+<tr><td class="o">Folders: first / after the games</td><td>Whether subfolders come before or after the games.</td></tr>
+<tr><td class="o">Favourites first</td><td>Your favorites are at the top of every list.</td></tr>
+<tr><td class="o">Game count on folders</td><td>Shows on each folder how many games are inside.</td></tr>
+<tr><td class="o">Button legend</td><td>The line at the bottom naming the most important buttons.</td></tr>
+<tr><td class="o">Hidden entries</td><td>Everything you have hidden &ndash; bring it back here.</td></tr>
+</table>
+    <div class="h2">MUSIC, SOUNDS, STREAM</div>
+<table class="opt">
+<tr><td class="o">Music</td><td>Background music in the menu on or off.</td></tr>
+<tr><td class="o">Music source</td><td>Your own MP3s from <span class="pfad">/media/fat/music</span> or internet radio (Rainwave, several stations).</td></tr>
+<tr><td class="o">Volume</td><td>In steps up to 100 %.</td></tr>
+<tr><td class="o">Navigation sounds</td><td>Little sounds when moving and selecting.</td></tr>
+<tr><td class="o">Equalizer bars / music title scroll</td><td>The dancing bars and the scrolling track title. Off = a calmer picture.</td></tr>
+<tr><td class="o">Stream overlay</td><td>For streamers: a web page with game, cover and achievements for OBS. After restart.</td></tr>
+<tr><td class="o">Screen mirror</td><td>Shows the frontend picture in a browser (needs the stream overlay). After restart.</td></tr>
+<tr><td class="o">Christmas decoration</td><td>Falling snow, a hat on the MiSTer title and a string of lights. <i>automatic</i> (Dec 1 to Jan 6), <i>always on</i> or <i>off</i>.</td></tr>
+</table>
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">8/11 &nbsp;-&nbsp; SETTINGS 3/4</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">OPTIONS, INPUT &amp; LANGUAGE</h1>
+
+    <div class="h2">SYSTEM &rarr; OPTIONS</div>
+<table class="opt">
+<tr><td class="o">CRT test pattern</td><td>A test picture for adjusting your CRT (geometry, colours).</td></tr>
+<tr><td class="o">Prepare cover thumbnails</td><td>Shrink all covers once in advance &ndash; afterwards everything runs smoothly. Do it once, repeat after adding new covers.</td></tr>
+<tr><td class="o">Write thumbnail job for PC</td><td>The same work, but a PC does the calculating (for very large collections).</td></tr>
+<tr><td class="o">Curated list</td><td>Shows only games found in the game database &ndash; tidy, but something may be missing.</td></tr>
+<tr><td class="o">Hide beta/proto/demo and Japan-only</td><td>Tidies up the lists. Off = you see everything in your folders.</td></tr>
+<tr><td class="o">Folders with a single game</td><td>On CD systems every game sits in its own folder &ndash; this puts it straight into the list.</td></tr>
+<tr><td class="o">Home page</td><td>Order and hide categories.</td></tr>
+<tr><td class="o">Zaparoo (NFC tags)</td><td>Start games with an NFC card &ndash; only if Zaparoo is installed.</td></tr>
+<tr><td class="o">Cores: version per system</td><td>If a system has several cores: which one is used.</td></tr>
+<tr><td class="o">Core overview</td><td>Which cores are installed and how old they are.</td></tr>
+<tr><td class="o">update_all</td><td>Starts MiSTer&rsquo;s update script, if it is installed.</td></tr>
+<tr><td class="o">Attract mode / delay</td><td>The cover screensaver, and after how long it starts.</td></tr>
+<tr><td class="o">Draw suspense</td><td>How long the draw in Zufalls-Zock takes.</td></tr>
+<tr><td class="o">Time zone</td><td>For the right time at the top of the screen and in the statistics.</td></tr>
+<tr><td class="o">Wait for NAS/network</td><td>If your games are on a network share: the frontend waits for it at boot.</td></tr>
+<tr><td class="o">Autostart</td><td>Starts the frontend together with the MiSTer. Off = you start it via Scripts &rarr; Frontend Start.</td></tr>
+</table>
+    <div class="h2">SYSTEM &rarr; INPUT &amp; LANGUAGE</div>
+<table class="opt">
+<tr><td class="o">Language</td><td>German or English.</td></tr>
+<tr><td class="o">Configure buttons / reset</td><td>Put every function on a button of your choice &ndash; and back to the default.</td></tr>
+<tr><td class="o">Swap Confirm/Cancel</td><td>Swaps A and B (like on Japanese consoles).</td></tr>
+<tr><td class="o">Controller test</td><td>Shows every button you press. To leave: hold any button for 2 seconds, or Esc.</td></tr>
+</table>
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">9/11 &nbsp;-&nbsp; SETTINGS 4/4</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">ACHIEVEMENTS, INFO AND MAINTENANCE</h1>
+
+    <div class="zwei">
+    <div>
+    <div class="h2">RETROACHIEVEMENTS</div>
+    <div class="txt">Shows whether RetroAchievements is set up, your <b>profile</b> (points, rank) and
+    the popup settings. RA is set up in the MiSTer itself &ndash; the frontend only reads along.</div>
+    </div>
+    <div>
+    <div class="h2">STATISTICS &amp; ACHIEVEMENTS</div>
+    <div class="txt">Top 10 (most played, most started), <b>my achievements</b>, the <b>trophy room</b>,
+    the <b>year in review</b> and the <b>play diary</b> &ndash; all from your play time.</div>
+    </div>
+    </div>
+    <div class="h2">SYSTEM &rarr; INFO</div>
+<table class="opt">
+<tr><td class="o">Help / Overview</td><td>All buttons at a glance, right in the frontend.</td></tr>
+<tr><td class="o">Run setup wizard again</td><td>The questions from the first start once more.</td></tr>
+<tr><td class="o">Secrets</td><td>Hidden things to discover yourself.</td></tr>
+<tr><td class="o">Credits</td><td>Who built this.</td></tr>
+<tr><td class="o">Check for updates</td><td>The frontend tells you when a new version is out. Nothing is installed on its own.</td></tr>
+</table>
+    <div class="h2">SYSTEM &rarr; MAINTENANCE</div>
+<table class="opt">
+<tr><td class="o">Open the MiSTer OSD</td><td>MiSTer&rsquo;s own menu for core settings and button mapping.</td></tr>
+<tr><td class="o">Watch for ROM changes / re-read automatically</td><td>Notices when you add or remove games and then re-reads the list.</td></tr>
+<tr><td class="o">Bundle multi-disc games</td><td>Disc 1, 2, 3 are one entry in the list.</td></tr>
+<tr><td class="o">Rescan game list</td><td>Read everything again &ndash; if new games are still missing.</td></tr>
+<tr><td class="o">Clear thumbnail cache</td><td>Deletes the prepared covers (separately for CRT and HDMI), e.g. to free up space.</td></tr>
+<tr><td class="o">JPEG working copies</td><td>While preparing thumbnails, puts a faster-to-read JPG copy next to each PNG cover.</td></tr>
+<tr><td class="o">Download box art / game info</td><td>Fetches missing covers, or year, genre and player count, from the internet.</td></tr>
+<tr><td class="o">Redraw display</td><td>Redraws the whole picture, in case something looks wrong.</td></tr>
+<tr><td class="o">Computer check</td><td>Checks whether everything is there for C64, Amiga, CPC and DOS (core, ROMs, files) &ndash; and tells you what is missing.</td></tr>
+<tr><td class="o">Restart MiSTer / Quit frontend</td><td>Restart, or back to the normal MiSTer menu.</td></tr>
+</table>
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">10/11 &nbsp;-&nbsp; COMPUTERS</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">THE COMPUTERS WITH GAMES</h1>
+
+    <div class="txt">Since version 5.1 four home computers have their own categories on the main page &ndash;
+    with a photo of the machine and the games on your SD card.</div>
+    <div class="rech">
+      <div class="rechner"><img src="_anleitung_assets/computer_c64.png"><div class="rt"><span class="rn">Commodore 64</span>
+      Games from <span class="pfad">games/C64</span> (e.g. the One-Load collection) start directly with the C64 core.</div></div>
+      <div class="rechner"><img src="_anleitung_assets/computer_amiga.png"><div class="rt"><span class="rn">Amiga 500</span>
+      When opening it you choose: <b>start AmigaVision</b> (you then pick the game in the
+      AmigaVision menu) or <b>ADF disks</b>, if any are installed.</div></div>
+      <div class="rechner"><img src="_anleitung_assets/computer_amstrad.png"><div class="rt"><span class="rn">Amstrad CPC</span>
+      Disk images from <span class="pfad">games/Amstrad</span> with the CPC core.</div></div>
+      <div class="rechner"><img src="_anleitung_assets/computer_ao486.png"><div class="rt"><span class="rn">DOS (ao486)</span>
+      The 0MHz collection for the ao486 core. If a game is missing files, the frontend tells you when starting it.</div></div>
+    </div>
+    <div class="h2">WHAT THE AMIGA NEEDS</div>
+    <div class="txt">The <b>Minimig core</b>, a <b>Kickstart ROM</b> and &ndash; for AmigaVision &ndash; the two
+    hard disk files <b>AmigaVision.hdf</b> and <b>AmigaVision-Saves.hdf</b>. You enter them once as hard
+    disks in the MiSTer OSD of the Amiga core. If the Amiga stops at the Kickstart screen, this is
+    usually what is missing.</div>
+    <div class="tipp"><b>Computer check:</b> <span class="pfad">System &rarr; Maintenance &rarr; Computer check</span>
+    goes through all four computers and names what is missing &ndash; core, ROM, hard disk or game files.</div>
+    <div class="tipp"><b>Keep a keyboard handy:</b> many computer games want a keyboard (space bar, F keys,
+    entering names). The frontend points this out when a game needs one.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">11/11 &nbsp;-&nbsp; HELP</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>Dragend v5.1 &ndash; Beginner&rsquo;s Guide</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">WHEN SOMETHING GOES WRONG</h1>
+
+<table class="opt">
+<tr><td class="o">Nothing shows up after installing</td><td>Wait a moment &ndash; the first start reads everything once. Then try <i>Scripts &rarr; Frontend Start</i> in the MiSTer menu.</td></tr>
+<tr><td class="o">A game says &ldquo;no artwork&rdquo;</td><td>Turn on <i>Foreign artwork</i> (page 6), load the <i>Game Artwork DBs</i> in Update All, or use <i>Download box art</i>.</td></tr>
+<tr><td class="o">Scrolling stutters</td><td>Run <i>Prepare cover thumbnails</i>. On HDMI, <i>Menu resolution: half</i> helps as well.</td></tr>
+<tr><td class="o">New games are missing</td><td>The ROM watcher usually notices by itself. Otherwise <i>Maintenance &rarr; Rescan game list</i>.</td></tr>
+<tr><td class="o">A game does not start</td><td>Is the right core installed? <i>Core overview</i> and <i>Cores: version per system</i> show it; for computers, the <i>Computer check</i>.</td></tr>
+<tr><td class="o">Picture cut off on the CRT</td><td>Raise <i>Side margin</i> and <i>Top/bottom margin</i>.</td></tr>
+<tr><td class="o">I want to go back to the MiSTer menu</td><td><i>Maintenance &rarr; Quit frontend</i>, or F12 / Mode for the OSD.</td></tr>
+<tr><td class="o">How do I update?</td><td>The frontend tells you about new versions. Then simply run <i>Scripts &rarr; Frontend Install</i> again &ndash; covers, music and settings stay.</td></tr>
+<tr><td class="o">I want to get rid of it</td><td><i>Scripts &rarr; Frontend Uninstall</i>. The MiSTer is as it was before.</td></tr>
+</table>
+    <div class="h2">IN AN EMERGENCY (VIA SSH)</div>
+    <div class="txt">If you connect to the MiSTer via SSH (e.g. with PuTTY), three commands help:</div>
+    <div class="codebox"><code>tail -50 /tmp/frontend.log</code> &nbsp;&ndash; what the frontend did last</div>
+    <div class="codebox"><code>kill $(cat /tmp/frontend.lock)</code> &nbsp;&ndash; stop a frontend that hangs</div>
+    <div class="codebox"><code>touch /media/fat/frontend/disable</code> &nbsp;&ndash; switch off autostart (emergency stop)</div>
+    <div class="tipp"><b>More details?</b> The full manual (<span class="pfad">docs/MANUAL_EN.md</span>), the
+    quick guide and the installation guide are in the same folder as this file and on the project page.</div>
+
+  </div>
+</div>
+
+</body>
+</html>

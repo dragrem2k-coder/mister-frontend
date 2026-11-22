@@ -93,6 +93,12 @@ import fe.settings as _SE                                # noqa: E402
 _SE.ANSICHTEN_BENUTZT_FILE = os.path.join(
     _tempfile.mkdtemp(prefix="harness_ansichten_"), "ansichten_benutzt")
 
+# BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
+# Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,
+# setzt WEIHNACHT.ERZWUNGEN = True (tools/test_weihnachten.py).
+import fe.weihnachten as _WEIHNACHT                      # noqa: E402
+_WEIHNACHT.ERZWUNGEN = False
+
 # Aufloesung, die die naechste Framebuffer-Instanz melden soll.
 SCREEN = [1920, 1080]
 

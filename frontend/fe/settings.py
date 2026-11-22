@@ -2533,6 +2533,50 @@ def cycle_scroll_tempo():
     return neu
 
 
+# BUILD 342: DIE WEIHNACHTS-DEKO. Nutzerwunsch: "fallender Schnee,
+# Automatik und Kleinigkeiten" - und "wer es nicht will sollte es in
+# system mit schalter an und ausschalten koennen".
+#
+#   auto  vom 1. Dezember bis zum 6. Januar (Standard)
+#   an    das ganze Jahr
+#   aus   nie
+#
+# Was die Deko zeichnet, steht in fe/weihnachten.py.
+WEIHNACHTEN_FILE = "/media/fat/frontend/weihnachten"
+WEIHNACHTEN_STUFEN = ("auto", "an", "aus")
+
+
+def load_weihnachten():
+    """"auto", "an" oder "aus". Unbekanntes in der Datei zaehlt als
+    "auto" - eine von Hand verstellte Datei soll die Deko weder
+    erzwingen noch verschlucken."""
+    def _lesen():
+        try:
+            with open(WEIHNACHTEN_FILE) as f:
+                val = f.read().strip().lower()
+        except OSError:
+            return "auto"
+        return val if val in WEIHNACHTEN_STUFEN else "auto"
+    return _hole(("weihnachten", WEIHNACHTEN_FILE), _lesen)
+
+
+@_nach_aenderung
+def cycle_weihnachten():
+    """auto -> an -> aus -> auto. Liefert den neuen Wert."""
+    jetzt = load_weihnachten()
+    neu = WEIHNACHTEN_STUFEN[(WEIHNACHTEN_STUFEN.index(jetzt) + 1)
+                             % len(WEIHNACHTEN_STUFEN)]
+    try:
+        d = os.path.dirname(WEIHNACHTEN_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(WEIHNACHTEN_FILE, "w") as f:
+            f.write(neu)
+    except OSError:
+        pass
+    return neu
+
+
 # 2. ORDNER VOR ODER NACH DEN SPIELEN.
 #
 # Bisher standen Ordner immer oben (fest verdrahtet in

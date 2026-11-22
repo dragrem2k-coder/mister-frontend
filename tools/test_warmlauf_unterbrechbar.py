@@ -33,6 +33,7 @@ GEPRUEFT WIRD:
      laufende Pause ist abfragbar (der Fehler im Bench L.4).
   9. Die Hauptschleife meldet EINGABE-STAU, und RUCKLER nennt die
      Ansicht (Build 323).
+ 10. Auch das Lesen des Ordners geht in Happen (Build 342).
 
 SEIT BUILD 323 baut _warmlauf_tick() nicht mehr selbst, sondern stoesst
 den VorarbeitFaden an - ein kaltes os.listdir() hatte die Hauptschleife
@@ -414,6 +415,53 @@ try:
     check("auf der Hauptseite die Ansicht der Hauptseite",
           f._ansicht_fuer_log() == f.aktuelle_ansicht_haupt(),
           f._ansicht_fuer_log())
+
+    # -----------------------------------------------------------------------
+    print()
+    print("Test 10: auch das Lesen des Ordners in Happen (Build 342)")
+    # -----------------------------------------------------------------------
+    # Bench 24, Abschnitt P: der laengste Happen war das os.listdir()
+    # VOR dem Eintragen (Genesis 450,8 ms bei 2229 Eintraegen).
+    gross = os.path.join(TMP, "gross")
+    os.makedirs(gross)
+    for i in range(1000):
+        open(os.path.join(gross, "Spiel %04d.png" % i), "w").close()
+    rufe = [0]
+
+    def _z():
+        rufe[0] += 1
+    namen = A._ordner_namen(gross, _z)
+    check("dieselben Namen wie os.listdir()",
+          sorted(namen) == sorted(os.listdir(gross)), len(namen))
+    check("zwischendurch alle LESE_HAPPEN Eintraege",
+          rufe[0] == (1000 - 1) // A.LESE_HAPPEN, rufe[0])
+    _echt_ld = os.listdir
+    try:
+        os.listdir = lambda p: ["ohne"]
+        check("ohne zwischendurch genau os.listdir()",
+              A._ordner_namen(gross) == ["ohne"])
+    finally:
+        os.listdir = _echt_ld
+
+    def _ab():
+        raise A.IndexUnterbrochen()
+    try:
+        A._ordner_namen(gross, _ab)
+        abgebrochen = False
+    except A.IndexUnterbrochen:
+        abgebrochen = True
+    check("eine Unterbrechung kommt beim Aufrufer an", abgebrochen)
+    try:
+        A._ordner_namen(os.path.join(TMP, "gibtsnicht"), _z)
+        fehler = None
+    except OSError as e:
+        fehler = e
+    check("ein fehlender Ordner ist ein OSError wie bei os.listdir()",
+          fehler is not None)
+    _qa = open(A.__file__, encoding="utf-8").read()
+    check("_art_index und _docs_index lesen ueber _ordner_namen()",
+          "_ordner_namen(" in nur_code(koerper(_qa, "_art_index"))
+          and "_ordner_namen(" in nur_code(koerper(_qa, "_docs_index")))
 finally:
     A.INDEX_WARM_WURZELN = _ALT_WURZELN
     A.INDEX_ABHOLER[0] = _ALT_ABHOLER

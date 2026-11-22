@@ -91,10 +91,14 @@ def _namensmap():
     global _NAMENSMAP
     if _NAMENSMAP is None:
         raus = {}
+        # Build 342: alle_fassungen() statt nur der Sprachen - in der
+        # Weihnachtszeit heisst Zufalls-Zock "Wichtel-Zock" (siehe
+        # UMLEITUNG in fe/translations.py), und wer die Kategorie
+        # verschoben oder ausgeblendet hat, soll das auch im Dezember
+        # behalten.
         for schl in BESONDERE:
-            for _sprache, text in (TR.TRANSLATIONS.get(schl) or {}).items():
-                if isinstance(text, str) and text:
-                    raus[text] = schl
+            for text in TR.alle_fassungen(schl):
+                raus[text] = schl
         _NAMENSMAP = raus
     return _NAMENSMAP
 

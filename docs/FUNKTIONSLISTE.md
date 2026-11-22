@@ -67,7 +67,7 @@ gerade geht.
 - `Jahresrückblick`
 - `Spieltagebuch`
 
-### Anzeige & Sound (34 Eintraege)
+### Anzeige & Sound (35 Eintraege)
 
 - `Menü-Video: HDMI -> auf CRT wechseln (Neustart)`
 - `Farbschema: Dunkel (Standard) -> nächstes`
@@ -96,6 +96,7 @@ gerade geht.
 - `Cover vom Basis-Spiel erben: AN -> ausschalten (Hacks ohne eigenes Cover zeigen das des Originals)`
 - `Menü-Auflösung: voll -> auf halb stellen (schnelleres HDMI, weicheres Bild, nach Neustart)`
 - `Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)`
+- `Weihnachts-Deko: automatisch (1.12. - 6.1.) -> nächste`
 - `Equalizer-Balken: AN -> ausschalten (testen ob es beim HDMI-Scrollen hilft)`
 - `Musik-Titel-Laufschrift: AN -> ausschalten (fest statt scrollend)`
 - `Stream-Overlay: AUS -> einschalten (wirkt nach Neustart)`
@@ -329,6 +330,7 @@ setzt die Einstellung dagegen gefahrlos auf die Vorgabe zurueck.
 - `schrift`
 - `scroll_tempo`
 - `theme`
+- `weihnachten`
 - `ziehung_spannung`
 
 ---
@@ -410,6 +412,8 @@ Quelltext selbst beschrieben ist.
 - **schriften** - MiSTers eigene OSD-Schriften, in Ordnern durchblaettert (Build 228)
 - **seasonal** - Saisonale Deko (Easter Egg): kleine, rein optische Jahreszeiten- Anzeige am 24.12./31.12
 - **versteckt** - Ausgeblendete Eintraege (Build 256)
+- **weihnacht_bilder** - Bilder der Weihnachts-Deko (Build 342) - ERZEUGT, nicht von Hand bearbeiten
+- **weihnachten** - Die Weihnachts-Deko (Build 342)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
 - **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
 

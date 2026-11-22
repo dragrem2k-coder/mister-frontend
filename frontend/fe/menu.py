@@ -30,7 +30,7 @@ from fe.settings import (
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     boot_logo_wahl, boot_logo_anzeigename,
     load_ziehung_spannung,
-    load_scroll_tempo, ordner_zuerst, favoriten_zuerst,
+    load_scroll_tempo, ordner_zuerst, favoriten_zuerst, load_weihnachten,
     ordner_zahlen_an,
     tastenlegende_an,
     romwacht_an,
@@ -182,6 +182,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # Beschriftung nennt ihren Wert - dasselbe Muster wie bei der
     # Ziehung darunter, damit man nichts durchprobieren muss.
     _tempo = load_scroll_tempo()
+    # Build 342: die Weihnachts-Deko, drei Stufen (fe/weihnachten.py).
+    weihnacht_label = t("sys_weihnachten",
+                        t("weihnachten_" + load_weihnachten()))
     scroll_tempo_label = t("sys_scroll_tempo",
                            ("%gx" % _tempo).replace(".", ","))
     ordner_label = t("sys_ordner_zuerst" if ordner_zuerst()
@@ -521,6 +524,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         display_items.append((fb_size_label, "fb_size", None))
     display_items += [
         (pulse_label, "pulse_effect", None),
+        # Build 342: steht bei den anderen Effekten - Schnee, Muetze und
+        # Lichterkette sind genau so "Schmuck" wie Puls und Equalizer.
+        (weihnacht_label, "weihnachten", None),
         (eq_label, "eq_effect", None),
         (track_marquee_label, "track_marquee", None),
         (stream_label, "stream_overlay", None),

@@ -4,6 +4,7 @@
 
 🇩🇪 [Deutsch](README.md) · 📖 [Manual](docs/MANUAL_EN.md) ·
 📄 [Manual as PDF](docs/Dragend_Manual_EN.pdf) ·
+🔰 [For beginners (PDF)](docs/Dragend_Beginners_EN.pdf) ·
 📝 [Changelog](CHANGELOG_EN.md)
 
 A game browser for the MiSTer FPGA: cover art, game info, gamepad and
@@ -50,7 +51,9 @@ everything else is in the [changelog](CHANGELOG_EN.md):
   choose** and **RetroAchievements awards** right in the list.
 - **Box art download without a third-party mirror:** whatever Update
   All has already delivered is detected and not downloaded again. New:
-  a **beginner's guide** as a PDF (German).
+  a **beginner's guide** as a PDF
+  ([English](docs/Dragend_Beginners_EN.pdf),
+  [German](docs/Dragend_Einsteiger.pdf)).
 
 ## New in v5.0
 

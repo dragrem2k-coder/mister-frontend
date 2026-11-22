@@ -185,6 +185,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8r-3. Vier Kleinigkeiten an der Liste
    - 8r-4. Einträge ausblenden
    - 8r-5. Die Tastenlegende
+   - 8r-6. Die Weihnachts-Deko
    - 8s. ROMs in ZIP-Archiven
    - 8s-2. Mehrteilige Spiele
    - 8s-3. Die Anleitung zum Spiel
@@ -2336,6 +2337,36 @@ Abschalten im Systemmenü unter *Anzeige & Sound → Tastenlegende*.
 Vorgabe an: sie ist für die da, die noch nicht wissen, welche Taste
 was tut.
 
+## 8r-6. Die Weihnachts-Deko (Build 342)
+
+Vom **1. Dezember bis zum 6. Januar** schmückt sich das Frontend von
+selbst:
+
+- **Fallender Schnee** auf der Hauptseite und in den Listen — aber nur,
+  solange du nichts drückst. Mit der ersten Taste ist er weg, und er
+  kommt erst eine gute halbe Sekunde nach der letzten wieder. Beim
+  Scrollen, in Fenstern und im Attract-Modus fällt keiner. Auf HDMI
+  runde Flocken in drei Tiefen, auf der Röhre bewusst Pixel-Schnee mit
+  weniger Flocken.
+- Eine **warmweiße Lichterkette** im Rand über dem Titel. Wer den
+  oberen Rand auf 0 gestellt hat, bekommt keine — sie würde sonst in
+  den Titel hängen.
+- Eine **Weihnachtsmütze**, die oben links am „M" von „MiSTer" hängt —
+  in allen sechs Ansichten der Hauptseite.
+- Aus **Zufalls-Zock** wird **Wichtel-Zock**. Ausgeblendet oder
+  verschoben bleibt die Kategorie dabei, wo du sie hingestellt hast.
+
+Einstellen im Systemmenü unter *Anzeige & Sound → Weihnachts-Deko*:
+**automatisch (1.12. – 6.1.)** (Vorgabe), **immer an** oder **aus**.
+Die Einstellung steht in `/media/fat/frontend/weihnachten`.
+
+**Kostet sie Tempo?** Kaum. Mütze und Lichterkette werden einmal
+gerechnet und danach nur noch hingelegt; beim Scrollen auf der
+Hauptseite kostet die Mütze nichts Messbares. Der Schnee bewegt nur
+die kleinen Rechtecke um die Flocken, nie das ganze Bild, und er
+wartet dabei nicht auf den Bildwechsel — eine Taste wird also nicht
+später gelesen. Der Bench misst grundsätzlich ohne Deko.
+
 ## 8s. ROMs in ZIP-Archiven
 
 Liegen ROMs in ZIP-Archiven, werden sie ganz normal gelistet. Ein
@@ -3207,6 +3238,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Menü-Auflösung: voll / halb / viertel (nur HDMI) | `fb_size` |
 | Markierungs-Schimmer: AN/AUS | `pulse_effect` |
 | Equalizer-Balken: AN/AUS | `eq_effect` |
+| Weihnachts-Deko: automatisch / immer an / aus | `weihnachten` |
 | Musik-Titel-Laufschrift: AN/AUS | `track_marquee` |
 | Stream-Overlay: AN/AUS (Neustart) | `stream_overlay` |
 | Bildschirmspiegel: AN/AUS (Neustart) | `screen_mirror` |

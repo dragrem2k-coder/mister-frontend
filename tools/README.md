@@ -11554,3 +11554,120 @@ vollstaendigen fliegt Ungesehenes raus.
 Neu `tools/test_nas_einlesen.py`. Verfaelscht (Zip-Treffer aus, Ergebnis
 nach Fertigwerden einsortiert, nur ein Faden, Faedenzahl ohne Netzpruefung)
 - jedes Mal rot.
+
+## Nachtrag Build 342 - die Weihnachts-Deko
+
+**Stand:** 22.11.2026, `Dragend_Build_342.zip` (build_id
+`2026-11-22-342`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch nach zwei Runden Beispielbildern: "das ist gut bitte so
+machen, wer es nicht will sollte es in system mit schalter an und
+ausschalten koennen". Dazu die Einsteiger-Anleitung auf Englisch und
+Abschnitt P aus Bench 24.
+
+### Was gezeichnet wird (fe/weihnachten.py)
+
+- **Schnee:** `Schnee` - 55 Flocken auf HDMI (rund in drei Tiefen, ein
+  Viertel der nahen als Kristall), 28 auf der Roehre (Pixel-Schnee).
+  Jede Flocke merkt sich beim Zeichnen ihren Untergrund; `wischen()`
+  schreibt ihn zurueck, aber NUR dort, wo noch genau die Flocke steht -
+  was Laufschrift, Uhr oder Equalizer in derselben Runde uebermalt
+  haben, bleibt. Geflippt werden alte und neue Rechtecke in einem
+  `flip_rechtecke(..., skip_vsync=True)`: die Bedingung des Rechteck-Flips
+  (ausserhalb der Rechtecke Puffer = Schirm) bleibt erfuellt, und die
+  Leerlaufrunde wartet nicht bis zu 16 ms auf den Bildwechsel.
+- **Muetze und Lichterkette:** Bilder mit Deckkraft, vorgerechnet von
+  `PC-Tools/weihnacht_bilder.py` (Pillow, vierfach ueberabgetastet, die
+  Zeichnung aus den freigegebenen Beispielen) nach
+  `fe/weihnacht_bilder.py` - als Modul, weil fe/*.py auf jedem Weg
+  installiert wird, ein neuer Bildordner dagegen vier Skripte braeuchte.
+  Gemischt wird ohne Punktschleife: je Deckkraftstufe ein
+  `bytes.translate()` und ein Und mit einer Maske auf grossen
+  Ganzzahlen, 16 Stufen, kein Ueberlauf ins Nachbarbyte (Byte-Summe
+  hoechstens 255). Punkt fuer Punkt gegen die Formel geprueft.
+- **Zweimal malen:** der Titel wird beim schnellen Teil-Neuaufbau neu
+  geschrieben, aber nur in seinen Zeichenzellen. `malen()` merkt sich
+  das zuletzt Geschriebene und seinen Untergrund: unveraenderte Punkte
+  bekommen den alten Untergrund, veraenderte gelten als neu - sonst
+  dunkeln die weichen Raender mit jedem Schritt nach. Dazu ein kleiner
+  Zwischenspeicher "Untergrund -> Ergebnis": im Normalfall kostet die
+  Muetze beim Scrollen nichts Messbares.
+- **Lichterkette:** nur im Rand ueber dem Titel (`kette_plan()`), die
+  Birnen samt Lichthof enden darueber - der Teil-Neuaufbau der Kopfzeile
+  faengt erst bei oy an und schneidet nichts an. Bei weniger als 8
+  Punkten Rand keine Kette.
+
+### Wann (frontend.py)
+
+- `_schnee_tick()` als LETZTES in der Leerlaufrunde von next_action().
+  Nur Seite 0/1, kein Fenster, keine Navigation, kein Attract, keine
+  Meldung, 0,6 s nach der letzten Taste.
+- `_schnee_weg()` vor `return act`, vor der vorgemerkten Aktion, am
+  Anfang von draw(), vor dem Nachzeichnen, vor Update-Fenstern und vor
+  dem Attract-Modus. Wer zeichnet, zeichnet damit nie auf Schnee.
+- `_weihnacht_pruefen()` einmal je Minute und nach dem Umschalten:
+  setzt die UMLEITUNG (fe/translations.py) und benennt die Kategorie in
+  self.cats an Ort und Stelle um (`_zufallszock_umbenennen()`), ohne
+  build_categories() - das wuerde einen Scan anstossen und den Nutzer
+  aus dem Menue werfen.
+- `kopf_deko()` direkt nach dem Titel in `_draw_page_cats_impl()` (im
+  schnellen Weg nur die Muetze) und in `_kat_kopf()` (die anderen fuenf
+  Ansichten, dort immer nach fb.clear()).
+- `--bench` setzt `WEIHNACHT.ERZWUNGEN = False`, ebenso
+  `tools/_harness.py` - im Dezember misst und vergleicht alles wie im
+  Juni. Von aussen geht auch `DRAGEND_WEIHNACHTEN=aus/an`.
+
+### Wichtel-Zock
+
+`t()` schaut in `UMLEITUNG` (ausserhalb der Zeit leer: ein dict.get
+mehr). `alle_fassungen()` liefert alle Texte eines Schluessels ueber
+Sprachen und Jahreszeiten - fe/hauptseite.py (Reihenfolge, Ausblenden)
+und fe/art.py (Sysart) erkennen damit beide Namen.
+
+### Bench P: auch das Lesen in Happen
+
+Laengster Happen in Bench 24: Genesis 450,8 ms bei 2229 Eintraegen,
+MegaCD 337,8 ms bei 491. Das Eintragen war schon in Happen (Build 321);
+uebrig war das eine `os.listdir()` davor. `_ordner_namen()` in
+fe/art.py liest ueber `os.scandir()` und ruft alle `LESE_HAPPEN` = 256
+Eintraege zwischendurch() - genutzt von `_art_index()` und
+`_docs_index()`. Ohne zwischendurch genau `os.listdir()`. Ob es auf dem
+Geraet reicht, zeigt der naechste Bench in Abschnitt P.
+
+Abschnitt K (Galerie/Coverflow, Aussparung 0 von 20) ist ein
+Messabschnitt mit Gewinn unter 1 ms je Schritt - nicht angefasst.
+
+### Einsteiger-Anleitung auf Englisch
+
+`docs/einsteiger_source_en.html` -> `docs/Dragend_Beginners_EN.pdf`,
+dieselben elf Seiten, Menuenamen aus den englischen Uebersetzungen.
+Beide Anleitungen nennen die Weihnachts-Deko und Wichtel-Zock.
+
+### Altlasten aus Build 340
+
+Sechs in Build 340 umbenannte bzw. geloeschte Dateien lagen noch im
+Repo - ein ZIP kann nichts loeschen, und `git add -A` sieht eine Datei,
+die im Arbeitsordner liegen bleibt, nicht als geloescht. Die genaue
+`git rm`-Zeile steht in der Antwort zu diesem Build (die alten Namen
+duerfen im Repo nicht mehr vorkommen, siehe
+`tools/test_namen_entfernt.py`). Der Test hatte sie nicht gefunden,
+weil er `git ls-files` fragt und in der Arbeitskopie, in der Build 340
+entstand, die Dateien schon entfernt waren.
+
+### Pad-Zittern
+
+Nicht gebaut, nur eingeordnet: das sind die Analogsticks, die um die
+Mitte herum kleine Werte melden. Seit Build 321 kostet das keinen
+Tastendruck mehr. Eine Totzone im Kernel (EVIOCSABS fuzz/flat) wuerde
+auch im Spiel gelten - deshalb nicht.
+
+### Pruefungen
+
+Neu `tools/test_weihnachten.py` (Zeitraum, Schalter, Mischen gegen die
+Formel, wiederholbares Malen, Kette ueber dem Titel, Schnee raeumt sich
+weg - auch bei Uebermalung, Puffer = Schirm im echten Frontend, alle
+sechs Ansichten, schneller Weg bitgleich, Wichtel-Zock hin und zurueck,
+Menue, Bench). Test 10 in `tools/test_warmlauf_unterbrechbar.py`.
+`tools/test_kategorie_warmlauf.py` zaehlt jetzt auch os.scandir() als
+Verzeichnisdurchlauf.

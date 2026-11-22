@@ -338,7 +338,7 @@ from fe.settings import (
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
     feinheiten_an, toggle_feinheiten,
     # Build 256: die vier Kleinigkeiten an der Liste.
-    load_scroll_tempo, cycle_scroll_tempo,
+    load_scroll_tempo, cycle_scroll_tempo, cycle_weihnachten,
     ordner_zuerst, toggle_ordner_zuerst,
     favoriten_zuerst, toggle_favoriten_zuerst,
     ordner_zahlen_an, toggle_ordner_zahlen,
@@ -735,6 +735,7 @@ SYSTEM_ACCENT = {
 }
 
 from fe.seasonal import seasonal_decoration
+import fe.weihnachten as WEIHNACHT
 
 # NEUES FEATURE (siehe ausfuehrliche Begruendung bei display_name() in
 # fe/naming.py - dieselbe Ueberlegung): accent_for() ist ebenfalls eine
@@ -1553,6 +1554,7 @@ from fe.timekeeping import (
 # ----------------------------------------------------------------------------
 
 from fe.translations import TRANSLATIONS, t, set_language, current_lang
+from fe.translations import alle_fassungen as TR_alle_fassungen
 
 
 from fe.menu import system_items, FRONTEND_VERSION
@@ -2165,6 +2167,14 @@ class Frontend:
         # Fortschrittsanzeige auch F9 nachschicken - siehe
         # _einlesen_lebenszeichen().
         self._im_start = True
+        # Build 342: Weihnachten VOR dem ersten Aufbau entscheiden - der
+        # Name von Zufalls-Zock/Wichtel-Zock wird dort in self.cats
+        # geschrieben. Siehe _weihnacht_pruefen().
+        self._weihnacht_an = WEIHNACHT.aktiv()
+        WEIHNACHT.umleitung_setzen(self._weihnacht_an)
+        self._weihnacht_naechste = time.monotonic() + self.WEIHNACHT_TAKT
+        self._schnee = None
+        self._schnee_zeit = 0.0
         try:
             self.build_categories()
         finally:
@@ -6449,6 +6459,9 @@ class Frontend:
         # Titel, der beim Scrollen stehenbleibt, waere ein neuer Fehler
         # anstelle des alten.
         _th = time.monotonic()
+        # Build 342: wer neu zeichnet, zeichnet auf schneefreiem Grund -
+        # siehe _schnee_weg().
+        self._schnee_weg()
         self._sync_track_marquee()
         if self._hausarbeit_jetzt(_th):
             _teile = []
@@ -7338,6 +7351,11 @@ class Frontend:
                 self._restore_spuren(list(_spuren.values()))
         fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
         fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s, C_DIM, C_BG)
+        # Build 342: Muetze und Lichterkette (nur in der Weihnachtszeit,
+        # siehe fe/weihnachten.py). Beim schnellen Teil-Neuaufbau nur die
+        # Muetze: der Titel darunter wurde eben neu geschrieben, die
+        # Kette darueber hat niemand angefasst.
+        WEIHNACHT.kopf_deko(fb, ox, oy, s, kette=not _pgc_fast)
 
         # Easter Egg (Nutzerwunsch): kleine Jahreszeiten-Deko oben rechts,
         # nur am 24.12./31.12. (siehe seasonal_decoration()) - rein
@@ -11573,6 +11591,9 @@ class Frontend:
         fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
         fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s,
                 C_DIM, C_BG)
+        # Build 342: siehe fe/weihnachten.py - die Kopfzeile wird hier
+        # nur nach fb.clear() gezeichnet, also immer auf leerem Grund.
+        WEIHNACHT.kopf_deko(fb, ox, oy, s)
 
     def _draw_cats_raster(self, message, flip):
         """Ansicht B der Hauptseite: alle Abzeichen als Raster.
@@ -13768,6 +13789,7 @@ class Frontend:
         vorgemerkt = getattr(self, "_vorgemerkte_aktion", None)
         if vorgemerkt is not None:
             self._vorgemerkte_aktion = None
+            self._schnee_weg()
             return vorgemerkt
         while True:
             self._sync_track_marquee()
@@ -13794,6 +13816,11 @@ class Frontend:
                 candidates = [pulse_interval]
                 if need_mq or track_needs:
                     candidates.append(0.18)
+                # Build 342: fallender Schnee will gut 20 Bilder je
+                # Sekunde - nur solange er tatsaechlich faellt.
+                _sn = getattr(self, "_schnee", None)
+                if _sn is not None and _sn.gezeichnet:
+                    candidates.append(WEIHNACHT.SCHNEE_TAKT)
                 if self._track_mq_name:
                     candidates.append(eq_interval)
                 timeout = min(candidates)
@@ -13866,6 +13893,8 @@ class Frontend:
                 # run(). Danach von vorn.
                 self._leerlauf_vorher = getattr(self, "_leerlauf_max", None)
                 self._leerlauf_max = None
+                # Build 342: der Aufrufer zeichnet gleich - ohne Schnee.
+                self._schnee_weg()
                 return act
 
             # BUILD 325: DAS OVERLAY AUCH IM LEERLAUF. Die Hauptschleife
@@ -13941,6 +13970,7 @@ class Frontend:
             pending_update = getattr(self, "_update_popup_pending", None)
             if pending_update:
                 self._update_popup_pending = None
+                self._schnee_weg()
 
                 # BUGFIX (Nutzer-Rueckmeldung: "keine Info, dass ein
                 # Update verfuegbar ist"): draw(message=...) verwirft
@@ -14043,6 +14073,7 @@ class Frontend:
             pending_build = getattr(self, "_build_popup_pending", None)
             if pending_build and not self.confirm_update:
                 self._build_popup_pending = None
+                self._schnee_weg()
                 if self.attract_mode:
                     self.attract_mode = False
                 self._last_input_time = time.monotonic()
@@ -14089,11 +14120,17 @@ class Frontend:
                     self._last_input_time = time.monotonic()
                     self.draw(message=t("on_this_day_popup", years_ago, label))
 
+            # Build 342: einmal je Minute nachsehen, ob die Weihnachtszeit
+            # angefangen oder aufgehoert hat.
+            if time.monotonic() >= getattr(self, "_weihnacht_naechste", 0.0):
+                self._weihnacht_pruefen()
             if self.attract_mode:
+                self._schnee_weg()
                 if time.monotonic() >= self._attract_change_next:
                     self._advance_attract()
             elif (self._attract_enabled_cached()
                   and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
+                self._schnee_weg()
                 self._enter_attract_mode()
             else:
                 # Beim schnellen Scrollen (kurz nach einer Eingabe) noch
@@ -14295,6 +14332,7 @@ class Frontend:
                         and time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     ART._deferred_something = False
                     _lt0 = time.monotonic()
+                    self._schnee_weg()
                     self._nachzeichnen_vorbereiten()
                     if self.page == 1:
                         self.draw_page_items()
@@ -14561,7 +14599,113 @@ class Frontend:
                                                   # Vsync-Ausreisser zuverlaessig
                                 LOG("PERF tick: %.1f ms (marquee=%s dynamic=%s)"
                                     % (_dtick * 1000, redraw_marquee, redraw_dynamic))
+                # Build 342: der Schnee kommt als LETZTES - auf alles,
+                # was in dieser Runde gezeichnet wurde.
+                self._schnee_tick(any_dialog, nav_active)
             self.music.tick()
+
+    # ------------------------------------------------------------------
+    # BUILD 342: DIE WEIHNACHTS-DEKO
+    #
+    # Was gezeichnet wird und wie, steht in fe/weihnachten.py. Hier steht
+    # nur, WANN: Muetze und Lichterkette gehoeren zum Titel der
+    # Hauptseite (_draw_page_cats_impl(), _kat_kopf()), der Schnee
+    # gehoert dem Leerlauf in next_action().
+    #
+    # DIE REGEL FUER DEN SCHNEE: er faellt nur, solange nichts anderes
+    # passiert. Jede Taste, jedes draw(), das Nachzeichnen, ein Fenster,
+    # der Attract-Modus - alles das raeumt ihn vorher weg
+    # (_schnee_weg()). Dadurch zeichnet nie jemand auf Schnee, und
+    # niemand muss etwas von ihm wissen. Was in der Leerlaufrunde selbst
+    # gezeichnet wird (Laufschrift, Uhr, Equalizer), erkennt Schnee.wischen()
+    # daran, dass dort nicht mehr die Flocke steht.
+    # ------------------------------------------------------------------
+    WEIHNACHT_TAKT = 60.0          # so oft wird nach dem Datum gesehen
+
+    def _weihnacht_pruefen(self, sofort=False):
+        """Hat die Weihnachtszeit angefangen oder aufgehoert (oder wurde
+        der Schalter umgelegt)? Dann Wichtel-Zock umbenennen und die
+        Seite neu zeichnen."""
+        self._weihnacht_naechste = time.monotonic() + self.WEIHNACHT_TAKT
+        neu = WEIHNACHT.aktiv()
+        if neu == getattr(self, "_weihnacht_an", False):
+            return False
+        self._weihnacht_an = neu
+        WEIHNACHT.umleitung_setzen(neu)
+        self._schnee_weg()
+        self._schnee = None
+        self._zufallszock_umbenennen()
+        LOG("Weihnachts-Deko: %s" % ("an" if neu else "aus"))
+        self._force_full_redraw = True
+        if not sofort:
+            self.draw()
+        return True
+
+    def _zufallszock_umbenennen(self):
+        """Den Namen der Kategorie in self.cats an die Jahreszeit
+        anpassen - an Ort und Stelle, ohne build_categories(): das
+        wuerde einen Scan anstossen und den Nutzer aus dem Menue
+        werfen, in dem er gerade den Schalter umgelegt hat."""
+        alle = TR_alle_fassungen("zufallszock_title")
+        for i, (name, node, sk) in enumerate(self.cats):
+            if sk is None and name in alle:
+                self.cats[i] = (t("zufallszock_title"), _wrap_flat(
+                    [(t("sys_zufallszock_action"), "zufallszock_draw",
+                      None)]), None)
+                return True
+        return False
+
+    def _schnee_moeglich(self, any_dialog, nav_active):
+        """Darf JETZT Schnee fallen? Hauptseite und Listen, kein
+        Fenster, kein Attract, und seit der letzten Taste ist etwas
+        Ruhe eingekehrt."""
+        if not getattr(self, "_weihnacht_an", False):
+            return False
+        if any_dialog or nav_active or self.attract_mode:
+            return False
+        if self.page not in (0, 1):
+            return False
+        if self._prominent_message or self._popup_message:
+            return False
+        return (time.monotonic() - self._last_input_time
+                >= WEIHNACHT.SCHNEE_RUHE)
+
+    def _schnee_tick(self, any_dialog, nav_active):
+        """Ein Schritt Schnee: alte Flocken weg, neue hin, beides in
+        EINEM Flip ueber die kleinen Rechtecke. Hoechstens alle
+        SCHNEE_TAKT Sekunden."""
+        if not self._schnee_moeglich(any_dialog, nav_active):
+            self._schnee_weg()
+            return
+        jetzt = time.monotonic()
+        fb = self.fb
+        sn = self._schnee
+        if sn is None or (sn.W, sn.H) != (fb.width, fb.height):
+            self._schnee_weg()
+            sn = self._schnee = WEIHNACHT.Schnee(
+                fb.width, fb.height, _skala(fb.width, fb.height))
+            self._schnee_zeit = jetzt
+        if sn.gezeichnet and jetzt - self._schnee_zeit < WEIHNACHT.SCHNEE_TAKT:
+            return
+        sn.schritt(jetzt - self._schnee_zeit)
+        self._schnee_zeit = jetzt
+        alt = sn.wischen(fb)
+        neu = sn.zeichnen(fb)
+        # Ohne Warten auf den Bildwechsel: ein paar Flocken reissen nicht
+        # sichtbar, und das Warten kostete in jeder Leerlaufrunde bis zu
+        # 16 ms, in denen keine Taste gelesen wird.
+        if alt or neu:
+            fb.flip_rechtecke(alt + neu, skip_vsync=True)
+
+    def _schnee_weg(self):
+        """Allen Schnee vom Bild nehmen - Puffer UND Schirm. Billig, wenn
+        keiner liegt."""
+        sn = getattr(self, "_schnee", None)
+        if sn is None or not sn.gezeichnet:
+            return
+        alt = sn.wischen(self.fb)
+        if alt:
+            self.fb.flip_rechtecke(alt, skip_vsync=True)
 
     @staticmethod
     def _wrap(text, maxc, max_lines=2):
@@ -27959,6 +28103,13 @@ class Frontend:
                             cycle_attract_delay()
                             self._attract_delay_check_next = 0.0   # sofort neu einlesen
                             self._refresh_system_category()
+                        elif kind == "weihnachten":
+                            # Build 342: auto -> an -> aus. Die Seite
+                            # selbst zeichnet der Rueckweg ins Menue neu,
+                            # Wichtel-Zock wird sofort umbenannt.
+                            cycle_weihnachten()
+                            self._weihnacht_pruefen(sofort=True)
+                            self._refresh_system_category()
                         elif kind == "scroll_tempo":
                             # Build 256. Gelesen wird der Wert bei
                             # jedem Wiederholschritt neu (siehe
@@ -29646,6 +29797,12 @@ if __name__ == "__main__":
     # _T_BOOT oben schon zugewiesen wurde - und der faellt beim Import
     # auf, also in jedem einzelnen Test.
     _T_BOOT = _t_boot
+    # Build 342: der Bench misst im Dezember dasselbe wie im Juni -
+    # ohne Schnee, Muetze und Lichterkette (fe/weihnachten.py). Bewusst
+    # mit count() geschrieben und nicht wie die Abfrage weiter unten:
+    # tools/test_bench.py findet den Bench-Zweig an deren Wortlaut.
+    if sys.argv.count("--bench"):
+        WEIHNACHT.ERZWUNGEN = False
     try:
         _fe = Frontend()
         _startdauer = time.monotonic() - _t_boot

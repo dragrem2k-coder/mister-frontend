@@ -16,7 +16,7 @@ import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
 import operator
 import itertools
 from fe.log import LOG
-from fe.translations import t
+from fe.translations import t, alle_fassungen
 
 # Systembibliotheken fuer Bilder (Build 115). Bewusst mit Netz und
 # doppeltem Boden geladen: fehlt das Modul oder laesst sich keine
@@ -4839,6 +4839,35 @@ def _happen_gen(namen, zwischendurch):
         yield n
 
 
+# BUILD 342: auch das LESEN des Ordners in Happen. Bench 24 (Build 341,
+# Abschnitt P) zeigte den laengsten Happen ausgerechnet bei kleinen
+# Verzeichnissen: Genesis 450,8 ms bei 2229 Eintraegen, MegaCD 337,8 ms
+# bei 491. Das ist nicht das Eintragen - das war schon in Happen -,
+# sondern das eine os.listdir() davor, das einen ganzen Ordner der
+# fremden Datenbank am Stueck von der Karte liest (dort liegen Tausende
+# Bilder, von denen nur ein Teil Cover sind). os.scandir() liest
+# dieselben Eintraege portionsweise; dazwischen kommt jetzt alle
+# LESE_HAPPEN Eintraege der zwischendurch-Aufruf.
+LESE_HAPPEN = 256
+
+
+def _ordner_namen(ordner, zwischendurch=None):
+    """Die Namen in `ordner`, wie os.listdir() - mit zwischendurch()
+    alle LESE_HAPPEN Eintraege. Ohne zwischendurch genau os.listdir().
+    Fehler (OSError) gehen an den Aufrufer wie bei os.listdir(); bricht
+    zwischendurch() ab (IndexUnterbrochen), schliesst der with-Block
+    das halb gelesene Verzeichnis."""
+    if zwischendurch is None:
+        return os.listdir(ordner)
+    namen = []
+    with os.scandir(ordner) as eintraege:
+        for i, e in enumerate(eintraege):
+            if i and not i % LESE_HAPPEN:
+                zwischendurch()
+            namen.append(e.name)
+    return namen
+
+
 def _index_ergaenzen(idx, namen, wert_fn, zwischendurch=None):
     """Die zwei Ausweich-Schreibweisen als LUECKENFUELLER nachtragen:
     erst ohne fuehrende Nummer, dann der Vergleichsname.
@@ -4933,7 +4962,8 @@ def _art_index(base_dir, syskey, zwischendurch=None):
             # Vielfaches (siehe _skaliert_dekodierbar()). Wer das fuer
             # ein bestimmtes Cover nicht will, loescht die .jpg daneben;
             # das PNG bleibt ja liegen.
-            alle = os.listdir(os.path.join(base_dir, syskey))
+            alle = _ordner_namen(os.path.join(base_dir, syskey),
+                                 zwischendurch)
             names = [fn for fn in alle if fn.endswith(".art")]
             _jpeg = sorted(fn for fn in alle
                            if fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg"))
@@ -5442,7 +5472,7 @@ def _docs_index(syskey, bildart="boxart", zwischendurch=None):
                 else basis
             _ordner_merken(ordner)                       # Build 298
             try:
-                namen = [fn for fn in os.listdir(ordner)
+                namen = [fn for fn in _ordner_namen(ordner, zwischendurch)
                          if fn.rsplit(".", 1)[-1].lower()
                          in ("jpg", "jpeg", "png")]
             except OSError:
@@ -6091,7 +6121,10 @@ def _category_art_key(name, syskey):
     # aber hier oben noch fehlte): gleiches Prinzip, fester
     # sprachunabhaengiger Schluessel "ZUFALLSZOCK" - Bilddatei liegt unter
     # SYSART_BASE/ZUFALLSZOCK.art.
-    if name == t("zufallszock_title"):
+    # Build 342: beide Fassungen - in der Weihnachtszeit heisst die
+    # Kategorie "Wichtel-Zock" (UMLEITUNG in fe/translations.py), und
+    # der gespeicherte Name kann aus der anderen Jahreszeit stammen.
+    if name in alle_fassungen("zufallszock_title"):
         return "ZUFALLSZOCK"
     # NEU (Nutzerwunsch: "fuer Arcade, Computer und System im Hauptmenue
     # kleine Sysart erstellen, da steht noch kein Artwork vorhanden") -

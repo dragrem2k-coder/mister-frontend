@@ -234,10 +234,18 @@ def _betreten_zaehlen(ansicht):
     """Eine Kategorie betreten und die Verzeichnisdurchlaeufe zaehlen."""
     konto = [0]
     echt = os.listdir
+    echt_sd = os.scandir
 
     def _ld(p, *a, **k):
         konto[0] += 1
         return echt(p, *a, **k)
+
+    # Build 342: der Zeichenweg liest einen Ordner jetzt ueber
+    # os.scandir() in Happen (siehe _ordner_namen() in fe/art.py) - ein
+    # Durchlauf ist ein Durchlauf, egal auf welchem Weg.
+    def _sd(p, *a, **k):
+        konto[0] += 1
+        return echt_sd(p, *a, **k)
 
     fe.page = 1
     fe.cat_i = 0
@@ -246,11 +254,13 @@ def _betreten_zaehlen(ansicht):
     fe.scroll = 0
     fe.ansicht_setzen(ansicht)
     os.listdir = _ld
+    os.scandir = _sd
     try:
         fe._force_full_redraw = True
         fe.draw()
     finally:
         os.listdir = echt
+        os.scandir = echt_sd
     return konto[0]
 
 
