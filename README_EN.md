@@ -332,6 +332,30 @@ tuned very closely to one machine that gets used every day.
 
 ---
 
+## Measured on the MiSTer
+
+Our own numbers instead of "fast" and "lightweight": measured with the
+built-in bench (below) on a DE10-Nano at 1920×1080, with **41,401 games
+in 31 categories** (bench 24, build 341).
+
+| What | Time |
+|---|---|
+| Start to the **first picture** | **0.73 s** — 0.47 s of it is waiting for the MiSTer (console switch) |
+| Start to the **categories being ready** | **1.87 s** — 0.045 ms per game |
+| Scroll step, **main page** (median) | list 21.7 ms · grid 21.9 ms · gallery 27.0 ms · tile wall 19.9 ms |
+| Scroll step, **game list** with covers (median) | list 37.9 ms · grid 18.9 ms · gallery 32.1 ms · coverflow 39.1 ms |
+| **Full picture** of a game list with 2,139 entries | 100 ms (list), 65 ms (coverflow) |
+
+**Memory** and **returning from a game** are measured by the bench from
+build 343 on (sections S and T). The frontend measures every real
+return itself — it cannot be simulated. The numbers will be added here
+as soon as they come from the device.
+
+To be honest about it: Dragend runs in Python, without a single extra
+dependency. A compiled program starts faster and needs less memory. In
+return Dragend changes nothing on the MiSTer — no main program of its
+own, no kernel, no image — and still comes back by itself after a game.
+
 ## Measure it yourself: `--bench`
 
 From build 177 the frontend can measure itself — one fixed,
@@ -344,9 +368,9 @@ python3 /media/fat/frontend/frontend.py --bench
 ```
 
 The report goes to the console and to `/tmp/dragend_bench.txt`. It
-takes two to four minutes depending on the device and now has eleven
-sections — each one exists because a number was missing that a
-decision needed:
+takes two to four minutes depending on the device and now has twenty
+sections (A to T) — each one exists because a number was missing that
+a decision needed. The most important ones:
 
 | | |
 |---|---|
@@ -361,6 +385,9 @@ decision needed:
 | **I Short rows versus long** | Why the rectangle flip pays off, and from what area filling belongs in C |
 | **J What a scroll step is made of** | Every item separately: restore, copy, flip, text, cards, cover — and the **rest**. If that stays large, an item is still missing |
 | **K Which fill calls** | Every outermost fill call with size, count and time, twice per view: with a cover and with the cover skipped (the way fast scrolling behaves). The largest item stands next to what its area explains under the cost model |
+| **R Opening a category** | Opening the largest list: preparing it and the first picture — first time, prepared anew, fully warm (build 343) |
+| **S Returning from a core** | From the measurements of real games: from the detected menu to the first picture, broken down, and from the exit button (build 343) |
+| **T Memory** | What the frontend occupies — after start-up, after the bench, peak, and while a game is running (build 343) |
 
 Sections J and K are the reason anything here got faster at all: they
 name the **largest single item, with a name and a number**, instead of

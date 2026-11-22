@@ -333,6 +333,31 @@ die eigene, täglich genutzte Hardware abgestimmt.
 
 ---
 
+## Gemessen auf dem MiSTer
+
+Eigene Zahlen statt „schnell" und „leicht": gemessen mit dem
+eingebauten Bench (unten) auf einem DE10-Nano bei 1920×1080, mit
+**41 401 Spielen in 31 Kategorien** (Bench 24, Build 341).
+
+| Was | Zeit |
+|---|---|
+| Start bis zum **ersten Bild** | **0,73 s** — davon 0,47 s Warten auf MiSTer (Umschalten der Konsole) |
+| Start bis die **Kategorien bereitstehen** | **1,87 s** — 0,045 ms je Spiel |
+| Scrollschritt **Hauptseite** (Median) | Liste 21,7 ms · Raster 21,9 ms · Galerie 27,0 ms · Kachelwand 19,9 ms |
+| Scrollschritt **Spieleliste** mit Cover (Median) | Liste 37,9 ms · Raster 18,9 ms · Galerie 32,1 ms · Coverflow 39,1 ms |
+| **Volles Bild** einer Spieleliste mit 2 139 Einträgen | 100 ms (Liste), 65 ms (Coverflow) |
+
+**Speicher** und **Rückkehr aus einem Spiel** misst der Bench ab
+Build 343 (Abschnitte S und T). Die Rückkehr misst das Frontend dabei
+bei jedem echten Spiel selbst — sie lässt sich nicht nachstellen. Die
+Zahlen kommen hierher, sobald sie vom Gerät vorliegen.
+
+Ehrlich dazu: Dragend läuft in Python, ohne eine einzige zusätzliche
+Abhängigkeit. Ein fertig übersetztes Programm startet schneller und
+braucht weniger Speicher. Dafür ändert Dragend am MiSTer nichts —
+kein eigenes Main-Programm, kein Kernel, kein Image — und kommt nach
+dem Spiel trotzdem von selbst zurück.
+
 ## Selbst nachmessen: `--bench`
 
 Ab Build 177 kann das Frontend sich selbst vermessen — ein fester,
@@ -346,8 +371,9 @@ python3 /media/fat/frontend/frontend.py --bench
 
 Der Bericht erscheint auf der Konsole und landet zusätzlich in
 `/tmp/dragend_bench.txt`. Er dauert je nach Gerät zwei bis vier Minuten
-und besteht inzwischen aus elf Abschnitten — jeder ist entstanden, weil
-eine Zahl fehlte, die eine Entscheidung gebraucht hätte:
+und besteht inzwischen aus zwanzig Abschnitten (A bis T) — jeder ist
+entstanden, weil eine Zahl fehlte, die eine Entscheidung gebraucht
+hätte. Die wichtigsten:
 
 | | |
 |---|---|
@@ -362,6 +388,9 @@ eine Zahl fehlte, die eine Entscheidung gebraucht hätte:
 | **I Kurze Zeilen gegen lange** | Warum der Rechteck-Flip lohnt, und ab welcher Fläche das Füllen nach C gehört |
 | **J Woraus besteht ein Scrollschritt** | Jeder Posten einzeln: Wiederherstellen, Kopieren, Flip, Text, Karten, Cover — und der **Rest**. Bleibt der groß, fehlt noch ein Posten |
 | **K Welche Füllaufrufe** | Jeder äußerste Füllaufruf mit Maß, Anzahl und Zeit, je Ansicht zweimal: mit Cover und mit übersprungenem Cover (so, wie es sich beim Schnellscrollen verhält). Der größte Posten steht neben dem, was seine Fläche nach dem Kostenmodell erklärt |
+| **R Kategorie öffnen** | Die größte Liste öffnen: aufbereiten und erstes Bild — erstes Mal, neu aufbereitet, ganz warm (Build 343) |
+| **S Rückkehr aus dem Core** | Aus den Messungen bei echten Spielen: vom erkannten Menü bis zum ersten Bild, aufgeteilt, und ab der Ausstiegs-Taste (Build 343) |
+| **T Speicher** | Was das Frontend belegt — nach dem Start, nach dem Bench, Spitze, und während ein Spiel läuft (Build 343) |
 
 Die Abschnitte J und K sind der Grund, warum hier überhaupt etwas
 schneller geworden ist: sie nennen den **größten Einzelposten mit Namen

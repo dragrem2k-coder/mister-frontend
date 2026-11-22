@@ -11671,3 +11671,77 @@ sechs Ansichten, schneller Weg bitgleich, Wichtel-Zock hin und zurueck,
 Menue, Bench). Test 10 in `tools/test_warmlauf_unterbrechbar.py`.
 `tools/test_kategorie_warmlauf.py` zaehlt jetzt auch os.scandir() als
 Verzeichnisdurchlauf.
+
+## Nachtrag Build 343 - gemessen statt behauptet
+
+**Stand:** 22.11.2026, `Dragend_Build_343.zip` (build_id
+`2026-11-22-343`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Anlass: ein Vergleich mit einem anderen Frontend, den der Nutzer
+vorgelegt hat. Bei Dragend stand dort "kein belastbarer Messwert" -
+beim Speicher, bei der Rueckkehr aus einem Core und beim Oeffnen eines
+grossen Ordners. Zwei davon konnte der Bench bisher wirklich nicht.
+
+### fe/messwerte.py
+
+- `speicher()`: VmRSS (belegt), VmHWM (Spitze), RssAnon (eigene Daten)
+  aus `/proc/self/status`; `system_speicher()` aus `/proc/meminfo`.
+  Ohne Linux ein leeres dict, nie ein Fehler.
+- `rueckkehr_merken()` / `rueckkehr_laden()`:
+  `/media/fat/frontend/rueckkehr_zeiten.json`, die letzten 20, geschrieben
+  ueber `.tmp` + `os.replace()`. Kaputte Datei oder fremde Eintraege ->
+  leere Liste bzw. weg.
+- `rueckkehr_zeile()`: die Logzeile, an einer Stelle fuer Log und Bench.
+
+### Die Rueckkehr wird im echten Betrieb gemessen
+
+Der Bench kann keinen Core starten, ohne sich selbst zu beenden - also
+misst `run_core()` jede echte Rueckkehr (`_rueckkehr_merken()`):
+
+    gesamt      Menue erkannt -> erstes Bild
+    nacharbeit  OBS, RA-Waechter, Spielzeit/Tagebuch speichern
+    pause       die feste Sekunde (time.sleep(1.0), UNVERAENDERT)
+    listen      Musik, Weiterspielen/Zuletzt gespielt, Overlay
+    konsole     back_to_frontend() ohne das Zeichnen
+    zeichnen    das erste Bild (back_to_frontend() misst es selbst)
+
+Dazu `ab_ausstieg_ms` bei Pad-Kombination/F1 (ab dem Druck) und
+`speicher_im_core_kb` (gemessen, sobald der Core laeuft). Ein Fehler in
+der Messung wird geschluckt und ins Log geschrieben - die Rueckkehr
+selbst darf nie daran haengen.
+
+Die feste Sekunde ist bewusst NICHT angefasst: sie hat keinen Kommentar,
+und ohne Messung waere jede Aenderung geraten. Abschnitt S zeigt jetzt,
+welchen Anteil sie hat; dann wird entschieden.
+
+### Bench 25
+
+- **R Kategorie oeffnen:** die groesste Liste direkt in einer Kategorie
+  (`_groesste_kategorie()`), Seite 0 -> 1 und erstes Bild in der
+  eingestellten Ansicht: erstes Mal, Liste neu aufbereitet (Median von
+  3), alles warm (Median von 3). Seite, Kategorie, Pfad und Auswahl
+  werden danach wiederhergestellt.
+- **S Rueckkehr aus dem Core:** aus der Datei - Median und laengste je
+  Abschnitt, Zeit ab der Ausstiegs-Taste, die letzten fuenf. Ohne
+  Messung steht dort, was zu tun ist.
+- **T Speicher:** beim Start des Bench (vor Abschnitt A gemessen),
+  jetzt (ganz am Ende, deshalb laeuft T als letztes), Spitze, Linux
+  gesamt/frei, waehrend eines Spiels (aus der Rueckkehr-Datei).
+
+### README
+
+"Gemessen auf dem MiSTer" in README.md und README_EN.md mit den Zahlen
+aus Bench 24 (Build 341, 41 401 Spiele): erstes Bild 0,73 s (davon
+0,47 s Warten auf MiSTer), Kategorien bereit 1,87 s, Scrollschritte je
+Ansicht (Median aus Abschnitt J), volles Bild der Spieleliste. Speicher
+und Rueckkehr kommen dazu, sobald Bench 25 vom Geraet vorliegt.
+
+### Pruefungen
+
+Neu `tools/test_messwerte.py`: Lesen mit Beispieldateien, die
+Rueckkehr-Datei (Obergrenze, keine .tmp-Reste, kaputt, fremd), ein
+echter `run_core()`-Durchlauf mit nachgestelltem Core (Abschnitte
+ergeben die Gesamtzeit, Pause 1000 ms, erstes Bild 80 ms, Zeit ab der
+Taste, Logzeile), eine Messung, die schiefgeht, und die Bench-Abschnitte
+R, S, T.

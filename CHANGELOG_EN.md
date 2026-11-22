@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Measured, not claimed.** The README now gives our own numbers from
+  a DE10-Nano with 41,401 games: 0.73 s to the first picture, 1.87 s
+  until the categories are ready, a scroll step 19 to 39 ms. New in the
+  bench (number 25): **R** measures opening the largest category, **S**
+  returning from a game and **T** memory. The frontend measures every
+  real return itself and writes it to the log (`RUECKKEHR:`) — with
+  every step up to the first picture (build 343).
 - **New: the Christmas decoration.** From December 1 to January 6 snow
   falls over the main page and the lists while idle, a warm-white
   string of lights hangs above the title, a Santa hat hangs from the

@@ -400,6 +400,7 @@ Quelltext selbst beschrieben ist.
 - **hauptseite** - Die Hauptseite selbst bestimmen - Reihenfolge und Sichtbarkeit der Kategorien (Build 250)
 - **hintergrund** - Ein eigenes Hintergrundbild statt der einfarbigen Flaeche (Build 235)
 - **masken** - MiSTers eigene Shadow Masks - gelesen, nicht mitgeliefert (Build 226)
+- **messwerte** - Messwerte aus dem echten Betrieb (Build 343)
 - **mister_favs** - MiSTers
 - **obs_websocket** - Minimaler OBS-WebSocket-v5-Client (reine Python-Standardbibliothek, kein "websockets"-Paket verfuegbar auf dem MiSTer) - fuer genau
 - **padtest** - Der Controller-Test unter System -> Eingabe & Sprache (Build 335)

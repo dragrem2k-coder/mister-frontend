@@ -49,6 +49,8 @@ import tempfile
 import time
 import zlib
 
+import fe.messwerte as MESS    # Build 343, Abschnitte S und T
+
 # 4 ab Build 216 (Abschnitt J), 3 ab Build 215 (Abschnitt I),
 # 2 ab Build 214 (Abschnitt H). Die Nummer steht im Kopf
 # jedes Berichts, damit zwei Berichte vergleichbar SIND und nicht nur so
@@ -92,7 +94,11 @@ import zlib
 # 24 ab Build 323: Abschnitt Q (Hauptseite durchblaettern, das Fenster
 # wandert mit) ist neu - Abschnitt J pendelt mit Absicht innerhalb des
 # Fensters und hat diesen Schritt nie gemessen.
-BENCH_VERSION = 24
+# 25 ab Build 343: Abschnitte R (Kategorie oeffnen), S (Rueckkehr aus
+# dem Core, aus den Messungen im echten Betrieb) und T (Speicher) sind
+# neu. Anlass: ein Vergleich mit einem anderen Frontend, in dem bei
+# Dragend genau dort "kein belastbarer Messwert" stand.
+BENCH_VERSION = 25
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -5642,12 +5648,184 @@ def _abschnitt_q(b, fe, S, A, fm):
     b("   die Ansicht ('Ansicht=...').")
 
 
+# ======================================================================
+# BUILD 343: KATEGORIE OEFFNEN (R), RUECKKEHR AUS DEM CORE (S), SPEICHER (T)
+# ======================================================================
+def _mb(kb):
+    return "%7.1f MB" % (kb / 1024.0) if isinstance(kb, (int, float)) \
+        else "      -   "
+
+
+def _abschnitt_t(b, fe, speicher_start=None):
+    """Speicher - so, wie der Kernel ihn diesem Prozess zuschreibt
+    (/proc/self/status). Am ENDE des Bench gefragt, damit "jetzt" alle
+    Zwischenspeicher enthaelt, die das Durchblaettern gefuellt hat;
+    "beim Start des Bench" ist der Stand direkt nach dem Aufbau.
+
+    Waehrend ein Spiel laeuft, kann der Bench nicht messen - diesen Wert
+    schreibt run_core() bei jedem echten Spielstart mit in die
+    Rueckkehr-Datei (fe/messwerte.py)."""
+    b("")
+    b("-" * 62)
+    b(" T  Speicher (Build 343)")
+    b("-" * 62)
+    jetzt = MESS.speicher()
+    if not jetzt:
+        b("   -- /proc/self/status nicht lesbar, nichts zu messen")
+        return
+    start = speicher_start or {}
+
+    def z(name, wert):
+        b("   %-40s %s" % (name, wert))
+    z("belegt beim Start des Bench", _mb(start.get("belegt")))
+    z("belegt jetzt (nach allen Abschnitten)", _mb(jetzt.get("belegt")))
+    z("  davon eigene Daten (ohne Programmcode)", _mb(jetzt.get("anonym")))
+    z("Spitze seit dem Start", _mb(jetzt.get("spitze")))
+    sysm = MESS.system_speicher()
+    if sysm:
+        b("   Linux auf diesem MiSTer: gesamt %s, frei %s"
+          % (_mb(sysm.get("gesamt")).strip(),
+             _mb(sysm.get("verfuegbar")).strip()))
+    im_core = [e.get("speicher_im_core_kb") for e in MESS.rueckkehr_laden()
+               if isinstance(e.get("speicher_im_core_kb"), (int, float))]
+    if im_core:
+        z("waehrend eines Spiels (letzte von %d)" % len(im_core),
+          _mb(im_core[-1]))
+    else:
+        z("waehrend eines Spiels", "-- noch keine Messung:")
+        b("      einmal ein Spiel starten und beenden, dann den Bench")
+        b("      noch einmal laufen lassen (siehe Abschnitt S)")
+    b("")
+    b("   ZU LESEN ALS: das Frontend bleibt waehrend des Spiels im")
+    b("   Speicher - es wartet auf den Ausstieg (Pad-Kombination, F1),")
+    b("   zaehlt die Spielzeit und ist danach ohne Neustart sofort da.")
+    b("   Den Cores nimmt das nichts weg: Linux bekommt auf dem MiSTer")
+    b("   nur seinen eigenen Teil des Speichers, die Cores haben ihren")
+    b("   Bereich ausserhalb davon.")
+
+
+def _abschnitt_s(b):
+    """Rueckkehr aus dem Core - aus den Messungen, die run_core() bei
+    jeder ECHTEN Rueckkehr ablegt. Nachstellen laesst sich das nicht:
+    der Bench kann keinen Core starten, ohne sich selbst zu beenden."""
+    b("")
+    b("-" * 62)
+    b(" S  Rueckkehr aus dem Core (Build 343)")
+    b("-" * 62)
+    alle = MESS.rueckkehr_laden()
+    if not alle:
+        b("   -- noch keine Messung. Seit Build 343 misst das Frontend")
+        b("      jede Rueckkehr aus einem Spiel selbst. Einmal ein Spiel")
+        b("      starten und beenden, dann den Bench wiederholen.")
+        return
+    b("   Messungen                                %d (die letzten %d"
+      " werden gemerkt)" % (len(alle), MESS.RUECKKEHR_MAX))
+
+    def zeile(name, schl, werte=None):
+        werte = werte if werte is not None else alle
+        w = [e.get(schl) for e in werte
+             if isinstance(e.get(schl), (int, float))]
+        if not w:
+            return
+        b("   %-34s Median %6.0f ms, laengste %6.0f ms"
+          % (name, MESS.median(w), max(w)))
+    zeile("Menue erkannt -> erstes Bild", "gesamt_ms")
+    zeile("  Nacharbeit (Spielzeit, OBS, RA)", "nacharbeit_ms")
+    zeile("  feste Pause fuer MiSTer", "pause_ms")
+    zeile("  Musik, Listen, Overlay", "listen_ms")
+    zeile("  Bildschirm uebernehmen", "konsole_ms")
+    zeile("  erstes Bild zeichnen", "zeichnen_ms")
+    taste = [e for e in alle if isinstance(e.get("ab_ausstieg_ms"),
+                                           (int, float))]
+    if taste:
+        zeile("Ausstiegs-Taste -> erstes Bild (%d)" % len(taste),
+              "ab_ausstieg_ms", taste)
+    b("   die letzten:")
+    for e in alle[-5:]:
+        try:
+            wann = time.strftime("%d.%m. %H:%M", time.localtime(e["zeit"]))
+        except Exception:                                # noqa: BLE001
+            wann = "?"
+        b("      %s  %5d ms  (%s)" % (wann, e.get("gesamt_ms", 0),
+                                      e.get("weg", "?")))
+    b("")
+    b("   ZU LESEN ALS: 'Menue erkannt' ist der Moment, in dem das")
+    b("   Frontend sieht, dass MiSTer wieder im Menue ist - es sieht")
+    b("   alle 0,7 s nach. Beim Ausstieg ueber Pad-Kombination oder F1")
+    b("   zaehlt die letzte Zeile ab dem Druck selbst. Die feste Pause")
+    b("   ist eine Sekunde, in der MiSTer nach dem Core umschaltet.")
+
+
+def _abschnitt_r(b, fe, S):
+    """Eine Kategorie oeffnen - die groesste, so wie sie der Nutzer
+    oeffnet: Liste aufbereiten (sortieren, filtern, Ordner davor) und das
+    erste Bild in der eingestellten Ansicht. Drei Zahlen, weil sie
+    verschiedenes sagen:
+
+      erstes Mal     so, wie es der Bench vorfindet
+      Liste neu      die Liste wird neu aufbereitet, die Cover liegen
+                     schon im Speicher - das Oeffnen selbst
+      alles warm     nichts neu aufzubereiten - nur das Zeichnen"""
+    b("")
+    b("-" * 62)
+    b(" R  Kategorie oeffnen (Build 343)")
+    b("-" * 62)
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   -- keine Kategorie mit Eintraegen gefunden")
+        return
+    node = fe.cats[kat_i][1]
+    _s = (fe.page, fe.cat_i, list(getattr(fe, "nav_path", []) or []),
+          getattr(fe, "item_i", 0), getattr(fe, "scroll", 0))
+    try:
+        ansicht = fe.aktuelle_ansicht() if hasattr(fe, "aktuelle_ansicht") \
+            else "?"
+    except Exception:                                    # noqa: BLE001
+        ansicht = "?"
+    b("   %s, %d Eintraege, Ansicht %s" % (kat_name, kat_n, ansicht))
+
+    def oeffnen(neu_aufbereiten):
+        if neu_aufbereiten:
+            node.pop("_display_items_cache", None)
+            if hasattr(fe, "_anzeige_geaendert"):
+                fe._anzeige_geaendert()
+        fe.page = 0
+        fe.cat_i = kat_i
+        t0 = time.perf_counter()
+        fe.page = 1
+        fe.nav_path = []
+        fe.item_i = 0
+        fe.scroll = 0
+        fe._force_full_redraw = True
+        fe.fb.mark_full_redraw()
+        fe.draw()
+        return (time.perf_counter() - t0) * 1000.0
+    try:
+        erst = oeffnen(True)
+        neu = [oeffnen(True) for _ in range(3)]
+        warm = [oeffnen(False) for _ in range(3)]
+        b("   erstes Mal                               %8.1f ms" % erst)
+        b("   Liste neu aufbereitet (Median von 3)     %8.1f ms"
+          % MESS.median(neu))
+        b("   alles warm, nur zeichnen (Median von 3)  %8.1f ms"
+          % MESS.median(warm))
+    finally:
+        (fe.page, fe.cat_i, fe.nav_path, fe.item_i, fe.scroll) = _s
+    b("")
+    b("   ZU LESEN ALS: gemessen wird die groesste Liste DIREKT in einer")
+    b("   Kategorie (Ordner zaehlen als ein Eintrag). Die Spiele liegen")
+    b("   schon im Speicher - eingelesen werden sie beim Start")
+    b("   (Abschnitt A), nicht beim Oeffnen.")
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
     Modul importiert das Frontend nicht, sonst haette man zwei
     Ladewege fuer dieselbe Datei."""
     b = Bericht(log)
+    # Build 343: Speicher direkt nach dem Aufbau, fuer Abschnitt R.
+    speicher_start = MESS.speicher()
     spiele = _kopf(b, fe, A, fm, mister_last)
     _abschnitt_a(b, fe, spiele, startdauer)
     try:
@@ -5730,6 +5908,22 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
             _abschnitt_q(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT Q ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd9 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd9):
+            _abschnitt_r(b, fe, S)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT R ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_s(b)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT S ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    # T zuletzt: "belegt jetzt" soll alles enthalten, was der Bench
+    # gefuellt hat.
+    try:
+        _abschnitt_t(b, fe, speicher_start)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT T ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

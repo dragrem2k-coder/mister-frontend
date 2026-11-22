@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Gemessen statt behauptet.** Die README nennt jetzt eigene Zahlen vom
+  DE10-Nano mit 41 401 Spielen: 0,73 s bis zum ersten Bild, 1,87 s bis
+  die Kategorien stehen, ein Scrollschritt 19 bis 39 ms. Neu im Bench
+  (Nummer 25): **R** misst das Öffnen der größten Kategorie, **S** die
+  Rückkehr aus einem Spiel und **T** den Speicher. Die Rückkehr misst
+  das Frontend bei jedem echten Spiel selbst und schreibt sie ins Log
+  (`RUECKKEHR:`) — mit allen Abschnitten bis zum ersten Bild (Build 343).
 - **Neu: die Weihnachts-Deko.** Vom 1. Dezember bis zum 6. Januar fällt
   im Leerlauf Schnee über Hauptseite und Listen, über dem Titel hängt
   eine warmweiße Lichterkette, am „M" von „MiSTer" eine

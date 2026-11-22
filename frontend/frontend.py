@@ -736,6 +736,7 @@ SYSTEM_ACCENT = {
 
 from fe.seasonal import seasonal_decoration
 import fe.weihnachten as WEIHNACHT
+import fe.messwerte as MESS
 
 # NEUES FEATURE (siehe ausfuehrliche Begruendung bei display_name() in
 # fe/naming.py - dieselbe Ueberlegung): accent_for() ist ebenfalls eine
@@ -18086,6 +18087,11 @@ class Frontend:
             self.music.resume_after_core()
             self.back_to_frontend()
             return
+        # Build 343: was das Frontend belegt, WAEHREND das Spiel laeuft -
+        # es bleibt im Speicher, um den Ausstieg zu erkennen und danach
+        # sofort wieder da zu sein. Gemessen jetzt, gemerkt mit der
+        # Rueckkehr (siehe fe/messwerte.py, Bench Abschnitt R/S).
+        _rk_speicher = MESS.speicher().get("belegt")
         # NEUES FEATURE (Nutzerwunsch: "das Frontend muesste registrieren,
         # wann ein Spiel startet, und OBS entsprechend umschalten") - ERST
         # HIER, nachdem der Core nachweislich lief (started=True oben),
@@ -18140,8 +18146,11 @@ class Frontend:
                 target=self._watch_ra_achievements_during_play,
                 args=(None, ra_watch_stop), daemon=True,
                 kwargs={"label": label, "syskey": syskey}).start()
+        # Build 343: Weg und Zeitpunkt des Ausstiegs fuer die Messung.
+        _rk_weg, _rk_ausstieg = "menu", None
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
+            _rk_weg = res or "menu"
             # "f10" gibt es seit Build 77 nicht mehr (siehe KEYMAP in
             # fe/input.py) - der Ausstieg laeuft ueber F1 (sofort) oder
             # Esc (laenger halten), beide melden "hid_combo".
@@ -18154,6 +18163,7 @@ class Frontend:
                                   "zurueck ins Menue",
                      "pad_combo": "Start+Select+L+R am Pad erkannt - "
                                   "zurueck ins Menue"}[res])
+                _rk_ausstieg = time.monotonic()
                 launch_core(MENU_RBF)
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
@@ -18163,6 +18173,7 @@ class Frontend:
         # ueber combo/hid_combo oben) - EINE Stelle statt an jedem
         # der beiden Ausstiegspfade einzeln, da beide hier zusammen-
         # laufen. Komplett wirkungslos, falls nicht konfiguriert.
+        _rk_menue = time.monotonic()
         if self.stream:
             self.stream.obs_switch_to_frontend()
         if ra_watch_stop:
@@ -18185,7 +18196,9 @@ class Frontend:
         check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start,
                                           label=label, syskey=syskey)
         self._playtime_cache = load_playtime()
+        _rk_pause = time.monotonic()
         time.sleep(1.0)
+        _rk_listen = time.monotonic()
         self.music.resume_after_core()
         # BUGFIX (Nutzer-Rueckmeldung: "Weiterspielen und Zuletzt gezockt
         # funktioniert bei mir doch nicht so richtig ... Tetris zeigt er
@@ -18201,7 +18214,10 @@ class Frontend:
         if hasattr(self, "stream") and self.stream:
             self._stream_sig = None
             self._publish_stream()
+        _rk_btf = time.monotonic()
         self.back_to_frontend()
+        self._rueckkehr_merken(_rk_menue, _rk_pause, _rk_listen, _rk_btf,
+                               _rk_weg, _rk_ausstieg, _rk_speicher)
         # NACH back_to_frontend() (das mit einem normalen draw() endet),
         # damit die Einblendung diesen Redraw ueberschreibt statt sofort
         # wieder zu verschwinden.
@@ -25042,6 +25058,50 @@ class Frontend:
             LOG("F9-Nachlauf: Frist war schon abgelaufen, nichts "
                 "gewartet (die Arbeit dazwischen hat gereicht)")
 
+    def _rueckkehr_merken(self, t_menue, t_pause, t_listen, t_btf, weg,
+                          t_ausstieg, speicher_im_core):
+        """Build 343: eine echte Rueckkehr aus einem Core messen, ins Log
+        schreiben und fuer den Bench merken (fe/messwerte.py).
+
+        Die Abschnitte, alle in ms:
+          nacharbeit  OBS, RA-Waechter, Spielzeit und Tagebuch speichern
+          pause       die feste Sekunde, die MiSTer zum Umschalten bekommt
+          listen      Musik, Weiterspielen/Zuletzt gespielt, Overlay
+          konsole     Bildschirm uebernehmen, Pad holen
+          zeichnen    das erste Bild
+        "gesamt" zaehlt ab dem Moment, in dem das Frontend das Menue
+        ERKANNT hat; wann MiSTer es wirklich geladen hat, weiss nur
+        MiSTer. Beim Ausstieg ueber die Tastenkombination gibt es
+        zusaetzlich die Zeit ab dem Druck - das ist die, die man spuert.
+
+        Eine Messung darf die Rueckkehr nie stoeren: jeder Fehler hier
+        wird geschluckt."""
+        try:
+            jetzt = time.monotonic()
+            zeichnen = getattr(self, "_btf_zeichnen_ms", 0.0) or 0.0
+
+            def ms(a, b_):
+                return int(round((b_ - a) * 1000.0))
+            e = {
+                "gesamt_ms": ms(t_menue, jetzt),
+                "nacharbeit_ms": ms(t_menue, t_pause),
+                "pause_ms": ms(t_pause, t_listen),
+                "listen_ms": ms(t_listen, t_btf),
+                "konsole_ms": max(0, ms(t_btf, jetzt) - int(round(zeichnen))),
+                "zeichnen_ms": int(round(zeichnen)),
+                "weg": weg,
+            }
+            if t_ausstieg is not None:
+                e["ab_ausstieg_ms"] = ms(t_ausstieg, jetzt)
+            if speicher_im_core:
+                e["speicher_im_core_kb"] = int(speicher_im_core)
+            LOG(MESS.rueckkehr_zeile(e))
+            MESS.rueckkehr_merken(e)
+            return e
+        except Exception as ex:                          # noqa: BLE001
+            LOG("RUECKKEHR: Messung fehlgeschlagen (%s)" % ex)
+            return None
+
     def back_to_frontend(self):
         self.enter_console_mode()
         self.set_cursor_blink(False)
@@ -25049,7 +25109,11 @@ class Frontend:
         self.fb.refresh_geometry()
         self.inp.flush()
         self.inp.grab(True)
+        # Build 343: wie lange das erste Bild dauert - fuer die
+        # Rueckkehr-Messung in run_core() (_rueckkehr_merken()).
+        _t_bild = time.monotonic()
         self.draw()
+        self._btf_zeichnen_ms = (time.monotonic() - _t_bild) * 1000.0
         # NEU (Build 158, Nutzer-Rueckmeldung: "wenn ich ueber frontend
         # ein Script zum Beispiel Frontend_install ausgefuehrt hab
         # ploppte der Welcome to misterfpga mit Login: auch auf").
