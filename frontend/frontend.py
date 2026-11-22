@@ -25160,6 +25160,33 @@ class Frontend:
             LOG("SPIEL: Speicher freigeben fehlgeschlagen (%s)" % e)
             return 0
 
+    def _vorfuehrung_zeigen(self, messung=None):
+        """Die Vorfuehrung zeigen (Build 345) - aus dem Menue (System ->
+        Info) und fuer --show/--demo. Danach steht alles, wie es war:
+        Seite, Position, Ansichten, Farbschema. Ein Fehler darin darf
+        das Frontend nicht mitnehmen."""
+        try:
+            import fe.bench as _BENCH
+            import fe.vorfuehrung as _VORF
+            fm = sys.modules[type(self).__module__]
+            return _VORF.lauf(self, fm, sys.modules["fe.settings"], _BENCH,
+                              sys.modules["fe.menu"],
+                              sys.modules["fe.masken"],
+                              sys.modules["fe.schriften"],
+                              sys.modules["fe.art"], log=LOG,
+                              messung=messung)
+        except Exception:                                # noqa: BLE001
+            LOG("Vorfuehrung:\n" + traceback.format_exc())
+            return False
+        finally:
+            try:
+                self.inp.flush()
+            except Exception:                            # noqa: BLE001
+                pass
+            self._last_input_time = time.monotonic()
+            self._force_full_redraw = True
+            self.fb.mark_full_redraw()
+
     # BUILD 344: so lange bekommt MiSTer nach dem erkannten Menue, bevor
     # Musik und F9 kommen - siehe run_core().
     RUECKKEHR_PAUSE = 1.0
@@ -28797,6 +28824,11 @@ class Frontend:
                         elif kind == "help":
                             self.draw_help_screen()
                             self.draw()
+                        elif kind == "vorfuehrung":
+                            # Build 345: die Vorfuehrung aus dem Menue -
+                            # ohne SSH. Siehe fe/vorfuehrung.py.
+                            self._vorfuehrung_zeigen()
+                            self.draw()
                         elif kind == "setup_wizard":
                             self.run_setup_wizard()
                             self.draw()
@@ -29840,9 +29872,10 @@ if __name__ == "__main__":
     # wer sich vertippt, bekommt drei Zeilen und sonst nichts.
     _OPTIONEN = {
         "--bench": "eine feste, wiederholbare Messung ausgeben",
-        "--show": "zeigen, was drin ist, wie es eingestellt ist "
-                  "und wie schnell es laeuft",
-        "--demo": "vier Minuten Vorfuehrung auf dem Bildschirm",
+        "--show": "Textbericht (was drin ist, wie es eingestellt ist, "
+                  "wie schnell es laeuft), dann die Vorfuehrung",
+        "--demo": "die Vorfuehrung auf dem Bildschirm - sechs Kapitel, "
+                  "auch unter System -> Info",
         "--help": "diese Liste zeigen",
         "-h": "diese Liste zeigen",
     }
@@ -29994,6 +30027,8 @@ if __name__ == "__main__":
     try:
         _fe = Frontend()
         _startdauer = time.monotonic() - _t_boot
+        # Build 345: fuer die Vorfuehrung (Kapitel 4 nennt die Startzeit).
+        _fe._startdauer = _startdauer
         LOG("Start-Dauer bis Kategorien-Menue bereit: %.2fs" % _startdauer)
         if "--bench" in sys.argv:
             # NEU (Build 177). Eine feste, wiederholbare Messung statt
@@ -30098,10 +30133,16 @@ if __name__ == "__main__":
             # mal, was du kannst" meint, will es dort sehen. Der Text
             # bleibt trotzdem auf der Konsole - zum Mitschicken taugt
             # eine Textdatei besser als ein Foto.
-            try:
-                SHOW.auf_schirm(_fe, _text, sys.modules[__name__], log=LOG)
-            except Exception:                            # noqa: BLE001
-                LOG("--show auf dem Schirm:\n" + traceback.format_exc())
+            #
+            # BUILD 345: AUF DEM FERNSEHER LAEUFT JETZT DIE VORFUEHRUNG
+            # (fe/vorfuehrung.py) statt der durchgeblaetterten Textseiten
+            # - Nutzerwunsch: "show mit demo zusammengefuehrt ...
+            # thematische Praesentationsseiten". Die eben gemessenen
+            # Zahlen werden mitgegeben, damit nicht zweimal gemessen wird.
+            print("")
+            print("Vorfuehrung laeuft auf dem Bildschirm "
+                  "(Esc oder B halten beendet) ...")
+            _fe._vorfuehrung_zeigen(messung=SHOW.LETZTE_MESSUNG[0])
             _fe._beenden()
             sys.exit(0)
         if "--demo" in sys.argv:
@@ -30114,17 +30155,16 @@ if __name__ == "__main__":
             # --show BERICHTET, --demo ZEIGT. Gezeichnet wird dabei
             # nichts Eigenes - es laeuft das echte Frontend, bewegt
             # wird nur der Zeiger.
-            import fe.bench as BENCH
-            import fe.demo as DEMO
+            #
+            # BUILD 345: --demo und --show zeigen dieselbe Vorfuehrung
+            # (fe/vorfuehrung.py) - die Stationen von fe/demo.py sind
+            # darin die Live-Teile. --show schreibt zusaetzlich den
+            # Textbericht.
             print("")
             print("Vorfuehrung laeuft auf dem Bildschirm "
-                  "(jede Taste bricht ab) ...")
-            try:
-                DEMO.lauf(_fe, sys.modules[__name__],
-                          sys.modules["fe.settings"], BENCH, log=LOG)
-            except Exception:                            # noqa: BLE001
-                LOG("--demo:\n" + traceback.format_exc())
-                print("(Vorfuehrung abgebrochen - Details im Log)")
+                  "(Esc oder B halten beendet) ...")
+            if not _fe._vorfuehrung_zeigen():
+                print("(Vorfuehrung beendet - Details im Log)")
             _fe._beenden()
             sys.exit(0)
         _fe.run()

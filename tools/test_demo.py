@@ -312,8 +312,11 @@ check("--demo steht in der Optionsliste", '"--demo":' in qf)
 check("und wird ausgefuehrt", 'if "--demo" in sys.argv:' in qf)
 check("danach wird beendet",
       "_fe._beenden()" in qf.split('if "--demo" in sys.argv:')[1][:1400])
+# Build 345: --demo zeigt die Vorfuehrung (fe/vorfuehrung.py), deren
+# Live-Teile die Stationen hier sind; gesichert in _vorfuehrung_zeigen().
 check("und ein Absturz nimmt das Frontend nicht mit",
-      "--demo:" in qf and "Vorfuehrung abgebrochen" in qf)
+      "_fe._vorfuehrung_zeigen()" in qf.split('if "--demo" in sys.argv:')[1]
+      and 'LOG("Vorfuehrung:\\n" + traceback.format_exc())' in qf)
 
 # ---------------------------------------------------------------------------
 print()

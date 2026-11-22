@@ -184,8 +184,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **`update_all` from the menu** | Launches the existing script; the label names the last run (“23 days ago”) |
 | **Core browser** | Pick the core build per system, with a warning when `update_all` has deleted the chosen file |
 | **Core updates: what’s new** | After an `update_all` run: which cores are new, changed or gone. Its log is **not** parsed — what is compared is the state of the core folders before and after, which is correct whatever version of `update_all` you have |
-| **Report on itself** | `--show` says what is installed, how it is configured and how fast it runs — on the TV and as a file in `/tmp` |
-| **Demo mode** | `--demo` shows the frontend off by itself for four minutes — views, settings and the **real screens**: search, context menu, random pick, trophy room, milestones, top 10, year review, diary, help, CRT test pattern |
+| **Report on itself** | `--show` writes down what is installed, how it is configured and how fast it runs — as a file in `/tmp` — and then runs the presentation |
+| **Presentation** | System → Info → Presentation (or `--demo`): Dragend in six chapters — presentation pages and the **real screens**: collection, every colour scheme as a mini interface, settings in six groups, the speed of each view **measured on the device**, your numbers. Right/A next, left/B back, hold B to end |
 | **Package check** | A half-applied update ends in an instruction, not a crash |
 
 All of it in detail: **[Manual](docs/MANUAL_EN.md)**.

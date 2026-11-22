@@ -97,6 +97,10 @@ _QB = open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
            encoding="utf-8").read()
 _QS = open(os.path.join(_REPO, "frontend", "fe", "show.py"),
            encoding="utf-8").read()
+# Build 345: die Tempo-Messung fuer --show und die Vorfuehrung steht
+# jetzt in fe/vorfuehrung.py (tempo_messen), fe/show.py ruft sie nur.
+_QV = open(os.path.join(_REPO, "frontend", "fe", "vorfuehrung.py"),
+           encoding="utf-8").read()
 _QN = open(os.path.join(_REPO, "frontend", "fe", "anleitung.py"),
            encoding="utf-8").read()
 
@@ -487,16 +491,23 @@ check("in fe/bench.py laeuft keine Schleife mehr ueber S.ANSICHTEN",
       "Namen gemessen")
 check("und in fe/show.py auch nicht",
       "in S.ANSICHTEN" not in nur_code(_QS))
+check("und in fe/vorfuehrung.py auch nicht",
+      "in S.ANSICHTEN" not in nur_code(_QV))
 # Build 323: "mindestens vier" statt "genau vier" - Abschnitt Q ist eine
 # fuenfte Schleife ueber die Ansichten der Hauptseite, und sie fragt
 # genau diese Funktion. Dass KEINE Schleife an ihr vorbeigeht, sichern
 # die beiden Pruefungen darueber ("in S.ANSICHTEN" kommt nicht vor).
 check("alle Schleifen fragen dieselbe Funktion",
       _bcode.count("in ansichten_der_seite(") >= 4
-      and nur_code(_QS).count("in BENCH.ansichten_der_seite(") == 1,
-      "bench %d, show %d"
+      and nur_code(_QV).count("in BENCH.ansichten_der_seite(") == 1
+      and "tempo_messen(" in nur_code(_QS),
+      "bench %d, vorfuehrung %d"
       % (_bcode.count("in ansichten_der_seite("),
-         nur_code(_QS).count("in BENCH.ansichten_der_seite(")))
+         nur_code(_QV).count("in BENCH.ansichten_der_seite(")))
+check("die Vorfuehrung stellt Ansichten nur ueber ansicht_einstellen()",
+      "ansicht_setzen(" not in nur_code(_QV)
+      and "ansicht_haupt_setzen(" not in nur_code(_QV)
+      and "BENCH.ansicht_einstellen(" in nur_code(_QV))
 check("gesetzt wird nur noch ueber ansicht_einstellen()",
       _bcode.count("fe.ansicht_haupt_setzen(ansicht)") == 1
       and _bcode.count("fe.ansicht_setzen(ansicht)") == 1,

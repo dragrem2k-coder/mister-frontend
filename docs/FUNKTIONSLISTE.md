@@ -133,8 +133,9 @@ gerade geht.
 - `Bestätigen/Abbrechen vertauschen: AUS -> einschalten`
 - `Controller-Test`
 
-### Info (5 Eintraege)
+### Info (6 Eintraege)
 
+- `Vorführung: Dragend in sechs Kapiteln`
 - `Hilfe / Übersicht`
 - `Einrichtung erneut starten`
 - `Geheimnisse`
@@ -413,6 +414,7 @@ Quelltext selbst beschrieben ist.
 - **schriften** - MiSTers eigene OSD-Schriften, in Ordnern durchblaettert (Build 228)
 - **seasonal** - Saisonale Deko (Easter Egg): kleine, rein optische Jahreszeiten- Anzeige am 24.12./31.12
 - **versteckt** - Ausgeblendete Eintraege (Build 256)
+- **vorfuehrung** - Die Vorfuehrung: Dragend in sechs Kapiteln (Build 345)
 - **weihnacht_bilder** - Bilder der Weihnachts-Deko (Build 342) - ERZEUGT, nicht von Hand bearbeiten
 - **weihnachten** - Die Weihnachts-Deko (Build 342)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)

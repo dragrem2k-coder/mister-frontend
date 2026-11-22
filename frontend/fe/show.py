@@ -216,14 +216,25 @@ def _einstellungen(b, MENU):
     b("")
 
 
+# Build 345: die Messung von _tempo(), damit die Vorfuehrung danach
+# nicht noch einmal misst (--show zeigt beides nacheinander).
+LETZTE_MESSUNG = [None]
+
+
 def _tempo(b, fe, S, BENCH, schritte=20):
-    """WIE SCHNELL - in ms und in Schritten je Sekunde.
+    """WIE SCHNELL - in ms, Schritten je Sekunde und Zeilen beim Halten.
 
     Gemessen mit DERSELBEN Schrittfunktion wie Abschnitt J des Bench
-    (fe/bench.py: schritt_funktion/fenster_spanne). Zwei Fassungen
-    desselben Schritts waeren zwei Gelegenheiten auseinanderzulaufen -
-    und genau daran ist Abschnitt J in Build 218 schon einmal
-    gescheitert."""
+    (fe/bench.py: schritt_funktion/fenster_spanne), seit Build 345 ueber
+    fe/vorfuehrung.py: tempo_messen() - die Vorfuehrung zeigt dieselben
+    Zahlen als Balken.
+
+    BUILD 345: KEIN VERGLEICH MIT 16,7 MS MEHR. Hier stand "ein Bild
+    braucht bei 60 Hz 16,7 ms - was darunter liegt, laeuft fluessig".
+    Das war eine pauschale Bewertung, und eine falsche: ein Scrollschritt
+    braucht keine 60 Bilder je Sekunde. Verglichen wird jetzt mit dem,
+    was beim HALTEN einer Taste wirklich passiert."""
+    import fe.vorfuehrung as VORF
     b(_linie())
     b(" WIE SCHNELL ES SCROLLT")
     b(_linie())
@@ -232,65 +243,31 @@ def _tempo(b, fe, S, BENCH, schritte=20):
         b("   -- kein Framebuffer, uebersprungen")
         b("")
         return
-    b("   Ein Scrollschritt, alles warm, %d Schritte je Ansicht."
-      % schritte)
-    b("   'Schritte/s' ist das, was beim Gedrueckthalten ankommt.")
+    b("   Ein Scrollschritt, alles warm, %d Schritte je Ansicht." % schritte)
     b("")
-    b("   %-22s %10s %12s" % ("", "je Schritt", "Schritte/s"))
-
-    merk_page = getattr(fe, "page", 0)
-    merk_cat = getattr(fe, "cat_i", 0)
-    merk_item = getattr(fe, "item_i", 0)
+    b("   %-22s %9s %9s %12s" % ("", "Schritt", "moeglich", "gehalten"))
     try:
-        kat_i, kat_n, kat_name = BENCH._groesste_kategorie(fe)
-        for seite, name in ((0, "Hauptseite"), (1, "Spieleliste")):
-            fe.page = seite
-            if seite == 1:
-                if kat_i is None:
-                    continue
-                fe.cat_i = kat_i
-                fe.nav_path = []
-            # Build 319: die Ansichten DIESER Seite, und nur die, die
-            # das Frontend auf diesem Bild auch wirklich zeigt - siehe
-            # BENCH.ansichten_der_seite().
-            for ansicht in BENCH.ansichten_der_seite(S, seite):
-                try:
-                    if BENCH.ansicht_einstellen(fe, seite,
-                                                ansicht) != ansicht:
-                        continue
-                except Exception:                        # noqa: BLE001
-                    continue
-                schritt = BENCH.schritt_funktion(fe, seite)
-                try:
-                    # Zweimal warmlaufen: beim ersten Durchgang werden
-                    # Miniaturen gerechnet, erst beim zweiten liegt
-                    # alles im RAM. Ohne das misst dieser Abschnitt das
-                    # Rechnen von Covern.
-                    for _r in range(2):
-                        for i in range(schritte):
-                            schritt(i)
-                except Exception:                        # noqa: BLE001
-                    b("   %-22s -- uebersprungen" % (name + " " + ansicht))
-                    continue
-                fenster = BENCH.fenster_spanne(fe, seite)
-                t0 = time.monotonic()
-                for i in range(schritte):
-                    schritt(i % fenster)
-                ms = (time.monotonic() - t0) * 1000.0 / schritte
-                b("   %-22s %7.1f ms %9.0f" % (name + " " + ansicht, ms,
-                                               1000.0 / max(0.01, ms)))
-        if kat_i is not None:
-            b("")
-            b("   gemessen in: %s (%s Eintraege)" % (kat_name,
-                                                     _menge(kat_n)))
-    finally:
-        fe.page = merk_page
-        fe.cat_i = merk_cat
-        fe.item_i = merk_item
+        messung, (kat_name, kat_n) = VORF.tempo_messen(fe, S, BENCH,
+                                                       schritte=schritte)
+    except Exception as e:                               # noqa: BLE001
+        b("   -- nicht messbar (%s)" % type(e).__name__)
+        b("")
+        return
+    LETZTE_MESSUNG[0] = messung
+    for m in messung:
+        name = ("Hauptseite " if m["seite"] == 0 else "Spieleliste ") \
+            + m["ansicht"]
+        b("   %-22s %6.1f ms %6.0f/s %7.0f Zeilen/s"
+          % (name, m["ms"], m["schritte_s"], m["zeilen_s"]))
+    if kat_name:
+        b("")
+        b("   gemessen in: %s (%s Eintraege)" % (kat_name, _menge(kat_n)))
     b("")
-    b("   Zum Einordnen: ein Bild braucht bei 60 Hz 16,7 ms. Was")
-    b("   darunter liegt, laeuft fluessig; was darueber liegt, merkt")
-    b("   man beim Gedrueckthalten - und genau daran wird gearbeitet.")
+    b("   Zum Einordnen: 'moeglich' ist, wie viele Schritte das Bild je")
+    b("   Sekunde schafft. 'gehalten' ist, was bei gehaltener Taste")
+    b("   ankommt - die Wiederholung kommt nie schneller, als gezeichnet")
+    b("   wird (sonst liefe die Liste nach dem Loslassen weiter), und auf")
+    b("   3x und 4x springt ein Schritt mehrere Zeilen.")
     b("")
 
 

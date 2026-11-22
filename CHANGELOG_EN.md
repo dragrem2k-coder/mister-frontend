@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **The presentation: Dragend in six chapters.** `--show` and `--demo`
+  are now one presentation: Welcome, Your game collection, Design and
+  settings, How fast is Dragend?, Your Dragend, The result. Presentation
+  pages alternate with the real screens (lists, search, context menu,
+  random pick, views, help, trophy room, top 10 …). Every available
+  colour scheme appears as a mini interface, the active one marked; the
+  settings are shown in six groups with count and current value. Speed
+  is **measured on the device** – milliseconds per step, possible steps
+  per second and lines per second while holding, using the same maths as
+  the real controls, with no blanket rating. Controls: right/A next,
+  left/B back, up/down scroll, Select restart, hold B or Esc to end; the
+  first key switches from automatic to manual. Start it via System →
+  Info → Presentation. Nothing on the card is changed – colour scheme
+  and views are as before afterwards. `--show` still also writes the
+  text report to `/tmp`.
+
 - **Faster back from a game.** Bench 25 measured 2.0 s from the menu to
   the first picture. Saving play time and lists now runs inside the
   pause the MiSTer gets after a core instead of before it; the first

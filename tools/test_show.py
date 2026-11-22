@@ -187,9 +187,14 @@ print("Test 3: DERSELBE Scrollschritt wie im Bench")
 # Pfads - 132,87 ms statt des echten Schritts.
 check("der Schritt steht EINMAL da", hasattr(BENCH, "schritt_funktion"))
 check("und die Fensterspanne auch", hasattr(BENCH, "fenster_spanne"))
-check("--show benutzt beide",
-      "BENCH.schritt_funktion(fe, seite)" in quelle
-      and "BENCH.fenster_spanne(fe, seite)" in quelle)
+# Build 345: gemessen wird in fe/vorfuehrung.py (tempo_messen) - der
+# Bericht und die Vorfuehrung zeigen dieselben Zahlen.
+_qv = open(os.path.join(_REPO, "frontend", "fe", "vorfuehrung.py"),
+           encoding="utf-8").read()
+check("--show benutzt beide (ueber tempo_messen der Vorfuehrung)",
+      "VORF.tempo_messen(" in quelle
+      and "BENCH.schritt_funktion(fe, seite)" in _qv
+      and "BENCH.fenster_spanne(fe, seite)" in _qv)
 qb = open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
           encoding="utf-8").read()
 _j = qb.split("def _abschnitt_j")[1]
@@ -351,10 +356,12 @@ check("ein Zeichenfehler nimmt nichts mit",
       SHOW.auf_schirm(_fe3, text2, sekunden=0.1) is False,
       "der Bericht auf der Konsole steht da schon")
 
+# Build 345: auf dem Fernseher laeuft die Vorfuehrung, mit den eben
+# gemessenen Zahlen.
 check("der Aufruf steht in frontend.py",
-      "SHOW.auf_schirm(_fe, _text, sys.modules[__name__]" in qf)
+      "_fe._vorfuehrung_zeigen(messung=SHOW.LETZTE_MESSUNG[0])" in qf)
 check("und ist gegen Abstuerze gesichert",
-      "--show auf dem Schirm" in qf,
+      'LOG("Vorfuehrung:\\n" + traceback.format_exc())' in qf,
       "eine Vorfuehrung darf das Frontend nicht mitnehmen")
 
 print()

@@ -11834,3 +11834,102 @@ fuer die Rueckkehr dieselbe Zusage wie fuer den Start - Restfrist vor
 Konsole, Pad und sichtbarem Bild. `tools/test_konsole_wache.py` sucht
 den Nachfass-Termin in der ganzen Funktion statt in den ersten 1400
 Zeichen.
+
+## Nachtrag Build 345 - die Vorfuehrung
+
+**Stand:** 22.11.2026, `Dragend_Build_345.zip` (build_id
+`2026-11-22-345`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+`--show` und `--demo` sind zusammengefuehrt: eine Praesentation in sechs
+Kapiteln, neu in `frontend/fe/vorfuehrung.py`.
+
+### Ablauf
+
+25 Schritte, Praesentationsseiten (`Seite`) im Wechsel mit
+Live-Stationen auf den echten Bildschirmen (die Stationen aus
+`fe/demo.py`):
+
+    01 Willkommen
+    02 Deine Spielesammlung      Hauptliste, Liste, Suche, Kontextmenue,
+                                 Zufalls-Zock
+    03 Gestaltung und Einst.     alle Schemata, Raster/Galerie, Anzeige,
+                                 Hilfe
+    04 Wie schnell ist Dragend?  Messung, dann die Ergebnisseite
+    05 Dein Dragend              Trophaeenraum, Meilensteine, Top 10,
+                                 Jahresrueckblick, Tagebuch
+    06 Das Ergebnis              Zusammenfassung und Schlusssatz
+
+Der Fortschrittsbalken (ein Segment je Kapitel) steht nur auf den
+Seiten. Die Leinwand skaliert mit der Hoehe (`H // 360`, 1 bis 3); bei
+weniger als 640 Pixeln Breite bleiben Titel klein und lange Schluessel
+bekommen eine eigene Zeile.
+
+### Geschwindigkeit - gemessen, nicht benotet
+
+`tempo_messen()` stellt nacheinander Haupt- und Listenseite in jede
+Ansicht, zeichnet je 12 Schritte und misst die Millisekunden pro
+Schritt. Daraus mit denselben Funktionen wie die echte Bedienung
+(`inp._tempo_anwenden`, `inp._sprung_merken`): moegliche Schritte pro
+Sekunde und Zeilen pro Sekunde beim Halten. Keine 60-Hz- oder
+16,7-ms-Note (der Test prueft Seiten und Textbericht). Seite, Kategorie, Position und
+Navigationspfad stehen danach wie vorher. `--show` nutzt dieselbe
+Messung fuer den Textbericht und gibt sie an die Vorfuehrung weiter
+(`SHOW.LETZTE_MESSUNG`).
+
+### Einstellungen und Schemata
+
+`GRUPPEN` ordnet jede Menue-Aktion genau EINER von sechs Gruppen zu
+(Darstellung, Navigation, Spielebibliothek, Performance, Bedienung,
+System); `tools/test_vorfuehrung.py` scheitert, sobald eine neue Aktion
+keine Gruppe hat. Die Seite zaehlt aus dem echten Systemmenue und zeigt
+die aktuellen Werte. Die Schema-Vorschau zeigt nur freigeschaltete
+Schemata als Mini-Oberflaeche (Geheimes wird nur gezaehlt), das aktive
+markiert. Die Live-Station wendet Schemata mit `apply_theme()` an, ohne
+zu speichern, und stellt das eigene danach wieder her (Zeilen-Caches
+werden geleert).
+
+### Tasten
+
+rechts/A weiter, links/B zurueck (auf Seite 1: Ende), hoch/runter
+blaettern, Select von vorn, Esc oder B 0,9 s halten (`EVIOCGKEY` am
+Geraet) beendet. Die erste Taste schaltet von Automatik auf
+Handbetrieb. Wirft die Eingabe einen Fehler, wird sie nicht weiter
+gefragt und die Vorfuehrung laeuft von selbst zu Ende - `fe.inp` wird
+dabei NICHT angefasst.
+
+### Nichts auf der Karte
+
+`SitzungUnberuehrt` legt waehrend der Vorfuehrung UND waehrend jeder
+Messung (also auch der von `--show`) `ansicht_benutzt_merken` still -
+genau den Namen, den `ansicht_setzen()` aufruft (seine
+`__globals__`, auf dem Geraet `__main__`) - und stellt danach die
+Ansichten je Kategorie und die Hauptansicht zurueck. Farbschema, Seite,
+Position und Scrollstand stehen danach ebenfalls wie vorher. Fehler landen im Log
+(`Vorfuehrung:` mit Traceback), das Frontend zeichnet danach neu.
+
+### Einstieg
+
+System -> Info -> Vorfuehrung (kind `vorfuehrung`, Uebersetzung
+`sys_vorfuehrung`). `--show`: Textbericht wie bisher, dann die
+Vorfuehrung. `--demo`: die Vorfuehrung. `fe/demo.py` merkt sich in
+`LETZTE_TASTE`, welche Taste eine Station abgebrochen hat.
+
+### Pruefungen
+
+`tools/test_vorfuehrung.py` neu: jede Aktion in genau einer Gruppe,
+Gruppen aus dem echten Menue, alle Seiten in vier Aufloesungen
+(1920x1080 bis 320x240, schmal nichts abgeschnitten), die Messung (ehrlich,
+abbrechbar, Zustand danach wie vorher), die Tasten, ein ganzer
+Durchlauf ohne Taste (nichts geschrieben, alles wie vorher), mit
+Tasten, klemmende Eingabe, nur freigeschaltete Schemata, Menue und
+Startoptionen, der Einstieg aus dem Frontend (ein Fehler darin wird
+gefangen). Die Messung wird auf Stufe 3x geprueft, damit "gehalten"
+sich von der blossen Untergrenze unterscheidet; der Durchlauf ohne
+Taste beginnt mit leerer Merkdatei, damit jeder Eintrag auffiele. `tools/test_show.py` und `tools/test_demo.py` auf den
+neuen Einstieg angepasst. `tools/test_zeigerspeicher.py`: die Schleife
+ueber die Ansichten steht jetzt in `fe/vorfuehrung.py` (genau eine, ueber
+`BENCH.ansichten_der_seite()`, gesetzt nur ueber
+`BENCH.ansicht_einstellen()`); `fe/show.py` ruft `tempo_messen()`.
+Die Messung setzt die Sprungweite der echten Eingabe
+(`_sprung_je_akt`) nach dem Ablesen zurueck.

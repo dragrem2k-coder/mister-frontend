@@ -233,6 +233,13 @@ def _titelkarte(fe, fm, titel, zeilen, sekunden):
 TAKT = 0.05
 _UHRPROBE = 200
 
+# BUILD 345: WELCHE TASTE ABGEBROCHEN HAT. Die Vorfuehrung
+# (fe/vorfuehrung.py) benutzt diese Stationen und braucht nicht nur "es
+# wurde gedrueckt", sondern WAS - weiter, zurueck, von vorn, Ende. Die
+# eigene Vorfuehrung hier aendert sich dadurch nicht: jede Taste bricht
+# weiterhin ab.
+LETZTE_TASTE = [None]
+
 
 def _warten(fe, sekunden):
     """Warten und dabei auf eine Taste hoeren. False = abbrechen."""
@@ -245,7 +252,9 @@ def _warten(fe, sekunden):
             time.sleep(TAKT)
             continue
         try:
-            if inp.read_action(timeout=TAKT) is not None:
+            akt = inp.read_action(timeout=TAKT)
+            if akt is not None:
+                LETZTE_TASTE[0] = akt
                 return False
         except Exception:                                # noqa: BLE001
             # Einmal klemmen reicht - wer wiederholt mit einem Fehler
@@ -296,7 +305,9 @@ def _scrollen(fe, BENCH, seite, sekunden):
             return True
         if inp is not None:
             try:
-                if inp.read_action(timeout=0.01) is not None:
+                akt = inp.read_action(timeout=0.01)
+                if akt is not None:
+                    LETZTE_TASTE[0] = akt
                     return False
             except Exception:                            # noqa: BLE001
                 inp = None
@@ -556,8 +567,10 @@ class _Hand:
                     return akt
             if self._echt is not None:
                 try:
-                    if self._echt.read_action(timeout=TAKT) is not None:
+                    _akt = self._echt.read_action(timeout=TAKT)
+                    if _akt is not None:
                         self.abbruch = True
+                        LETZTE_TASTE[0] = _akt
                         return "back"
                     continue
                 except Exception:                        # noqa: BLE001

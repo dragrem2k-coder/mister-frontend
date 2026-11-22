@@ -268,6 +268,9 @@ TRANSLATIONS = {
     "diary_yesterday": {"en": "Yesterday", "de": "Gestern"},
     "sys_diary_action": {"en": "Game diary", "de": "Spieltagebuch"},
     "sys_help_action": {"en": "Help / Overview", "de": "Hilfe / Übersicht"},
+    # Build 345: die Vorfuehrung (fe/vorfuehrung.py).
+    "sys_vorfuehrung": {"en": "Presentation: Dragend in six chapters",
+                        "de": "Vorführung: Dragend in sechs Kapiteln"},
     "boot_default_title": {"en": "MISTER FRONTEND", "de": "MISTER FRONTEND"},
     "help_title": {"en": "HELP / OVERVIEW", "de": "HILFE / UEBERSICHT"},
     "help_section_nav": {"en": "Navigation", "de": "Navigation"},

@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Die Vorführung: Dragend in sechs Kapiteln.** `--show` und `--demo`
+  sind jetzt eine Präsentation: Willkommen, Deine Spielesammlung,
+  Gestaltung und Einstellungen, Wie schnell ist Dragend?, Dein Dragend,
+  Das Ergebnis. Präsentationsseiten wechseln mit den echten Bildschirmen
+  (Listen, Suche, Kontextmenü, Zufalls-Zock, Ansichten, Hilfe,
+  Trophäenraum, Top 10 …). Alle verfügbaren Farbschemata erscheinen als
+  Mini-Oberfläche, das aktive markiert; die Einstellungen stehen in sechs
+  Gruppen mit Anzahl und aktuellem Wert. Die Geschwindigkeit wird **am
+  Gerät gemessen** – Millisekunden je Schritt, mögliche Schritte pro
+  Sekunde und Zeilen pro Sekunde beim Halten, mit denselben Rechnungen
+  wie die echte Bedienung, ohne pauschale Note. Bedienung: rechts/A
+  weiter, links/B zurück, hoch/runter blättern, Select von vorn, B
+  halten oder Esc beendet; die erste Taste schaltet von Automatik auf
+  Handbetrieb. Start über System → Info → Vorführung. Es wird nichts auf
+  der Karte geändert – Farbschema und Ansichten stehen danach wie vorher.
+  `--show` schreibt zusätzlich weiter den Textbericht nach `/tmp`.
+
 - **Schneller zurück aus dem Spiel.** Bench 25 hatte 2,0 s vom Menü bis
   zum ersten Bild gemessen. Jetzt läuft das Speichern von Spielzeit und
   Listen in der Pause, die MiSTer nach dem Core bekommt, statt davor;

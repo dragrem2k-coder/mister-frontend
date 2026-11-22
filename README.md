@@ -182,8 +182,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **`update_all` aus dem Menü** | Startet das vorhandene Skript; die Beschriftung nennt den letzten Lauf („vor 23 Tagen“) |
 | **Core-Browser** | Je System die Core-Fassung wählen, mit Warnung, wenn die gewählte Datei von `update_all` gelöscht wurde |
 | **Core-Updates: was ist neu** | Nach einem `update_all`-Lauf: welche Cores neu sind, geändert oder weg. Das Protokoll von `update_all` wird dafür **nicht** gelesen — verglichen wird der Stand der Core-Ordner vorher und nachher, und der ist richtig, egal in welcher Fassung `update_all` vorliegt |
-| **Bericht über sich selbst** | `--show` sagt, was drin ist, wie es eingestellt ist und wie schnell es läuft — auf dem Fernseher und als Datei in `/tmp` |
-| **Vorführung** | `--demo` führt das Frontend vier Minuten lang selbst vor — Ansichten, Einstellungen und die **echten Bildschirme**: Suche, Kontextmenü, Zufalls-Zock, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe, CRT-Testbild |
+| **Bericht über sich selbst** | `--show` schreibt auf, was drin ist, wie es eingestellt ist und wie schnell es läuft — als Datei in `/tmp` — und zeigt danach die Vorführung |
+| **Vorführung** | System → Info → Vorführung (oder `--demo`): Dragend in sechs Kapiteln — Präsentationsseiten und die **echten Bildschirme**: Sammlung, alle Farbschemata als Mini-Oberfläche, Einstellungen in sechs Gruppen, die **am Gerät gemessene** Geschwindigkeit je Ansicht, deine Zahlen. Rechts/A weiter, links/B zurück, B halten beendet |
 | **Paket-Prüfung** | Ein halb eingespieltes Update endet in einer Anleitung, nicht in einem Absturz |
 
 Alles ausführlich: **[Handbuch](docs/HANDBUCH.md)**.

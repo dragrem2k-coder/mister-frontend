@@ -612,6 +612,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_padtest"), "padtest", None),
         ),
         t("sys_group_info"): folder(
+            # Build 345: die Vorfuehrung - Dragend in sechs Kapiteln,
+            # mit Weiter/Zurueck (fe/vorfuehrung.py).
+            (t("sys_vorfuehrung"), "vorfuehrung", None),
             (t("sys_help_action"), "help", None),
             (t("sys_setup_wizard"), "setup_wizard", None),
             (t("sys_secrets_action"), "secrets", None),
