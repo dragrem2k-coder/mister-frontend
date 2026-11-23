@@ -44,6 +44,10 @@ FRAGEN_AB_FILE = os.path.join(ORDNER, "wertung_fragen_ab")
 LISTE_AUS_FLAG = os.path.join(ORDNER, "wertung_liste_aus")
 NUR_SPASS_FLAG = os.path.join(ORDNER, "wertung_nur_spielspass")
 STEMPEL_AUS_FLAG = os.path.join(ORDNER, "wertung_stempel_aus")
+# Build 347: Zweitmeinung (Vorgabe AUS) und Monatsheft (Vorgabe AN).
+ZWEIT_AN_FLAG = os.path.join(ORDNER, "wertung_zweitmeinung")
+HEFT_AUS_FLAG = os.path.join(ORDNER, "wertung_heft_aus")
+CSV_DATEI = os.path.join(ORDNER, "bewertungen.csv")
 
 VERSION = 1
 FRAGEN_AB_STUFEN = (5, 10, 20)       # Minuten Spielzeit
@@ -67,6 +71,11 @@ ALLE_PROZENTE = ("spass", "grafik", "sound", "musik", "effekte",
                  "steuerung", "credit")
 SCHWIERIGKEITEN = ("leicht", "mittel", "knackig", "unfair")
 SPIELER = ("1", "1-2", "2")
+# Build 347: das Kurzfazit - ein Satz aus einer festen Liste, mit dem
+# Pad waehlbar, ohne Tastatur. Gilt auch fuer die Zweitmeinung.
+FAZITE = ("pflicht", "fans", "zu_zweit", "gut_gealtert", "nostalgie",
+          "zu_schwer", "finger_weg")
+CHARTS = 5
 ARCADE = "ARCADE"
 
 
@@ -169,6 +178,24 @@ def toggle_nur_spielspass():
 
 def stempel_an():
     return an() and not _flag(STEMPEL_AUS_FLAG)
+
+
+def zweitmeinung_an():
+    return an() and _flag(ZWEIT_AN_FLAG)
+
+
+def toggle_zweitmeinung():
+    _flag_setzen(ZWEIT_AN_FLAG, not _flag(ZWEIT_AN_FLAG))
+    return _flag(ZWEIT_AN_FLAG)
+
+
+def heft_an():
+    return an() and not _flag(HEFT_AUS_FLAG)
+
+
+def toggle_heft():
+    _flag_setzen(HEFT_AUS_FLAG, not _flag(HEFT_AUS_FLAG))
+    return not _flag(HEFT_AUS_FLAG)
 
 
 def toggle_stempel():
@@ -374,6 +401,14 @@ def speichern(syskey, label, werte, kind=None, arg=None, heute=None):
         e["schwierigkeit"] = werte["schwierigkeit"]
     if werte.get("spieler") in SPIELER:
         e["spieler"] = werte["spieler"]
+    # Build 347: Kurzfazit und Zweitmeinung.
+    if werte.get("fazit") in FAZITE:
+        e["fazit"] = werte["fazit"]
+    zweit = runden(werte.get("zweit"))
+    if zweit is not None:
+        e["zweit"] = zweit
+        if werte.get("zweit_fazit") in FAZITE:
+            e["zweit_fazit"] = werte["zweit_fazit"]
     kind = kind or alt.get("kind")
     arg = arg if arg is not None else alt.get("arg")
     if kind:
@@ -444,3 +479,143 @@ def testarchiv(systemname, hits_name):
             "folders": {},
             "items": [z[2] for z in sorted(je_system[sk], key=_reihe)]}
     return {"folders": ordner, "items": []}
+
+
+# ======================================================================
+# BUILD 347: DAMALS GEGEN HEUTE, DAS MONATSHEFT, DER EXPORT
+# ======================================================================
+def datum_lesbar(iso):
+    """'2026-11-22' -> '22.11.2026'; Unlesbares bleibt, wie es ist."""
+    teile = str(iso or "").split("-")
+    if len(teile) == 3 and all(x.isdigit() for x in teile):
+        return "%s.%s.%s" % (teile[2], teile[1], teile[0])
+    return str(iso or "")
+
+
+def damals_heute(eintrag):
+    """((datum, wert) der ersten, (datum, wert) der letzten Wertung) -
+    nur wenn sich der Spielspass seither geaendert hat, sonst None."""
+    verlauf = [v for v in (eintrag or {}).get("verlauf") or ()
+               if isinstance(v, (list, tuple)) and len(v) == 2]
+    if len(verlauf) < 2:
+        return None
+    erst, letzt = verlauf[0], verlauf[-1]
+    if runden(erst[1]) == runden(letzt[1]):
+        return None
+    return (erst[0], runden(erst[1])), (letzt[0], runden(letzt[1]))
+
+
+def _monat(iso):
+    teile = str(iso or "").split("-")
+    try:
+        return int(teile[0]), int(teile[1])
+    except (ValueError, IndexError):
+        return None
+
+
+def monate():
+    """Alle Monate mit mindestens einer Wertung, juengster zuerst."""
+    gesehen = set()
+    for e in alle().values():
+        for v in e.get("verlauf") or ():
+            m = _monat(v[0] if v else None)
+            if m:
+                gesehen.add(m)
+    return sorted(gesehen, reverse=True)
+
+
+def monatsheft(jahr, monat):
+    """Was in einem Monat bewertet wurde. Ein dict:
+        neu      - zum ERSTEN Mal bewertet, bester zuerst
+        nach     - in dem Monat neu bewertet, aber schon frueher getestet
+        spiel    - das Spiel des Monats (bester Wert des Monats) oder None
+        hits     - wie viele davon ab HIT_AB
+        gurke    - das schwaechste unter GURKE_UNTER oder None
+        charts   - die besten CHARTS aller bis Monatsende bewerteten
+    Jeder Eintrag ist (wert im Monat, label, syskey)."""
+    ziel = (jahr, monat)
+    neu, nach, charts = [], [], []
+    for e in alle().values():
+        verlauf = [v for v in e.get("verlauf") or ()
+                   if isinstance(v, (list, tuple)) and len(v) == 2]
+        if not verlauf:
+            continue
+        erst = _monat(verlauf[0][0])
+        im_monat = [v for v in verlauf if _monat(v[0]) == ziel]
+        bis_dahin = [v for v in verlauf if _monat(v[0]) and
+                     _monat(v[0]) <= ziel]
+        zeile_label = e.get("label") or ""
+        if bis_dahin:
+            charts.append((runden(bis_dahin[-1][1]) or 0, zeile_label,
+                           e.get("syskey") or ""))
+        if not im_monat:
+            continue
+        z = (runden(im_monat[-1][1]) or 0, zeile_label, e.get("syskey") or "")
+        (neu if erst == ziel else nach).append(z)
+
+    def _reihe(z):
+        return (-z[0], z[1].lower())
+    neu.sort(key=_reihe)
+    nach.sort(key=_reihe)
+    charts.sort(key=_reihe)
+    alle_monat = sorted(neu + nach, key=_reihe)
+    gurken = [z for z in alle_monat if z[0] < GURKE_UNTER]
+    return {"neu": neu, "nach": nach,
+            "spiel": alle_monat[0] if alle_monat else None,
+            "hits": sum(1 for z in alle_monat if z[0] >= HIT_AB),
+            "gurke": gurken[-1] if gurken else None,
+            "charts": charts[:CHARTS]}
+
+
+CSV_SPALTEN = ("system", "spiel", "spass", "grafik", "sound", "musik",
+               "effekte", "steuerung", "credit", "schwierigkeit",
+               "spieler", "fazit", "zweit", "zweit_fazit", "stempel",
+               "datum", "erste_wertung", "spielzeit_h")
+
+
+def csv_zeilen(systemname, sekunden_fn, texte):
+    """Die Zeilen des Exports (ohne Kopf), sortiert nach System und
+    Spielspass. texte(art, wert) liefert die Beschriftung fuer
+    Schwierigkeit, Spieler, Fazit und Stempel."""
+    zeilen = []
+    for e in alle().values():
+        sk = e.get("syskey") or ""
+        sek = sekunden_fn(e.get("label") or "") or 0
+        st = stempel(e, sek)
+        verlauf = e.get("verlauf") or []
+        zeile = {
+            "system": systemname(sk), "spiel": e.get("label") or "",
+            "schwierigkeit": texte("schwierigkeit", e.get("schwierigkeit")),
+            "spieler": texte("spieler", e.get("spieler")),
+            "fazit": texte("fazit", e.get("fazit")),
+            "zweit_fazit": texte("fazit", e.get("zweit_fazit")),
+            "stempel": texte("stempel", st),
+            "datum": datum_lesbar(e.get("datum")),
+            "erste_wertung": datum_lesbar(verlauf[0][0]) if verlauf else "",
+            "spielzeit_h": ("%.1f" % (sek / 3600.0)).replace(".", ",")
+            if sek else "",
+        }
+        for k in ALLE_PROZENTE + ("zweit",):
+            w = runden(e.get(k))
+            zeile[k] = "" if w is None else str(w)
+        zeilen.append(zeile)
+    zeilen.sort(key=lambda z: (z["system"].lower(),
+                               -int(z["spass"] or 0), z["spiel"].lower()))
+    return zeilen
+
+
+def csv_schreiben(kopf, zeilen, pfad=None):
+    """Der Export als CSV fuer Excel und Co.: Semikolon, UTF-8 mit BOM
+    (sonst zeigt Excel die Umlaute falsch), ueber .tmp geschrieben.
+    Liefert den Pfad."""
+    import csv
+    pfad = pfad or CSV_DATEI
+    os.makedirs(os.path.dirname(pfad), exist_ok=True)
+    tmp = pfad + ".tmp"
+    with open(tmp, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow([kopf[k] for k in CSV_SPALTEN])
+        for z in zeilen:
+            w.writerow([z.get(k, "") for k in CSV_SPALTEN])
+    os.replace(tmp, pfad)
+    return pfad

@@ -1304,6 +1304,9 @@ from fe.art import (
     # Build 325: siehe stream_state() und _meta_im_hintergrund().
     meta_bereit, metadaten_ganz_vorwaermen,
     docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
+    # Build 347: die gemerkten leeren Bildordner - als Funktion, nicht
+    # ueber ART (die Instanz, siehe darunter).
+    leere_bildordner_vergessen,
     # BUILD 294: die drei Bildarten. Direkt als Funktionen und NICHT
     # ueber ART - ART ist die ArtCache-INSTANZ (siehe "ART = ArtCache()"
     # in fe/art.py), nicht das Modul. "ART.docs_bildart(...)" sieht
@@ -4250,13 +4253,34 @@ class Frontend:
         if _wert:
             fakten.append((t("info_wertung"), t(
                 "info_wertung_wert", WT.runden(_wert.get("spass")) or 0)))
-            _teile = ["%s %d%%" % (self._wertung_name(k), _wert[k])
-                      for k in WT.ALLE_PROZENTE[1:] if k in _wert]
+            # Build 347: je Kategorie eine eigene Zeile - in einer
+            # gemeinsamen wurden sie in der Spalte abgeschnitten.
+            for _k in WT.ALLE_PROZENTE[1:]:
+                if _k in _wert:
+                    fakten.append((self._wertung_name(_k),
+                                   "%d%%" % _wert[_k]))
             for _k in ("schwierigkeit", "spieler"):
                 if _wert.get(_k):
-                    _teile.append(self._wertung_beschriftung(_k, _wert[_k]))
-            if _teile:
-                fakten.append((t("info_wertung_teile"), "  ".join(_teile)))
+                    fakten.append((self._wertung_name(_k),
+                                   self._wertung_beschriftung(_k, _wert[_k])))
+            # Build 347: Kurzfazit, Zweitmeinung, damals gegen heute.
+            if _wert.get("fazit"):
+                fakten.append((t("info_fazit"),
+                               self._wertung_fazit_name(_wert["fazit"])))
+            _zweit = WT.runden(_wert.get("zweit"))
+            if _zweit is not None and WT.zweitmeinung_an():
+                _z = "%d%%" % _zweit
+                if _wert.get("zweit_fazit"):
+                    _z += ": " + self._wertung_fazit_name(_wert["zweit_fazit"])
+                fakten.append((t("info_zweit"), _z))
+                fakten.append((t("info_schnitt"), "%d%%" % int(
+                    ((WT.runden(_wert.get("spass")) or 0) + _zweit) / 2.0
+                    + 0.5)))
+            _dh = WT.damals_heute(_wert)
+            if _dh:
+                # Kurz - die Daten stehen im Wertungskasten.
+                fakten.append((t("info_verlauf"), "%d%% -> %d%%" % (
+                    _dh[0][1], _dh[1][1])))
             if WT.stempel_an():
                 _stempel = WT.stempel(_wert, sekunden)
         if sekunden > 0 or starts > 0:
@@ -4727,7 +4751,15 @@ class Frontend:
         "wertung_liste": WT.toggle_in_listen,
         "wertung_kategorien": WT.toggle_nur_spielspass,
         "wertung_stempel": WT.toggle_stempel,
+        "wertung_zweit": WT.toggle_zweitmeinung,       # Build 347
+        "wertung_heft": WT.toggle_heft,                 # Build 347
     }
+    # Build 347: Zeilen des Kastens, die Prozent tragen, und die, die
+    # aus einer festen Liste waehlen.
+    WERTUNG_PROZENT = WT.ALLE_PROZENTE + ("zweit",)
+    WERTUNG_LISTEN = {"schwierigkeit": WT.SCHWIERIGKEITEN,
+                      "spieler": WT.SPIELER, "fazit": WT.FAZITE,
+                      "zweit_fazit": WT.FAZITE}
     # Feste Ampelfarben - die Balken sollen in jedem Farbschema sagen,
     # was sie sagen.
     WERTUNG_FARBEN = {"rot": (200, 64, 56), "gelb": (214, 176, 48),
@@ -4978,9 +5010,139 @@ class Frontend:
         erg = self.wertungskasten(eintrag[0], eintrag[1], arg, sk)
         self._wertung_fertig(erg, sk, eintrag[0])
 
+    def _wertung_csv_speichern(self):
+        """Das Testarchiv als CSV (Build 347). Liefert die Meldung."""
+        if not WT.alle():
+            return t("csv_leer")
+
+        def _sek(label):
+            return self._wertung_zeit(label)[0]
+
+        def _text(art, wert):
+            if not wert:
+                return ""
+            if art == "stempel":
+                return self._wertung_stempel_name(wert)
+            return self._wertung_beschriftung(art, wert)
+        kopf = {}
+        for k in WT.CSV_SPALTEN:
+            if k in self.WERTUNG_PROZENT or k in self.WERTUNG_LISTEN:
+                kopf[k] = self._wertung_name(k)
+            else:
+                kopf[k] = self._csv_kopf(k)
+        try:
+            zeilen = WT.csv_zeilen(self._wertung_systemname, _sek, _text)
+            pfad = WT.csv_schreiben(kopf, zeilen)
+        except Exception:                                # noqa: BLE001
+            LOG("CSV-Export:\n" + traceback.format_exc())
+            return t("csv_fehler")
+        LOG("CSV-Export: %d Spiele nach %s" % (len(zeilen), pfad))
+        return t("csv_gespeichert", pfad, len(zeilen))
+
+    @staticmethod
+    def _csv_kopf(spalte):
+        return t("csv_" + spalte)
+
+    def monatsheft_bildschirm(self, monat=None):
+        """Das eigene Heft (Build 347): eine Seite je Monat - Spiel des
+        Monats, neu und nach getestet, Hits, Gurke, die Charts.
+        Links/Rechts blaettert, jede andere Taste geht zurueck."""
+        monate = WT.monate()
+        if not monate:
+            self._force_full_redraw = True
+            self.draw(message=t("heft_leer"))
+            self.inp.read_action(timeout=3.0)
+            return
+        k = monate.index(monat) if monat in monate else 0
+        while True:
+            self._monatsheft_zeichnen(monate[k])
+            akt = self.inp.read_action(timeout=None)
+            if akt == "left" and k + 1 < len(monate):
+                k += 1                       # aelter
+            elif akt == "right" and k > 0:
+                k -= 1                       # neuer
+            elif akt in ("left", "right"):
+                continue
+            else:
+                return
+
+    def _monatsheft_zeichnen(self, monat):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        heft = WT.monatsheft(*monat)
+        fb.clear(C_BG)
+        titel = t("heft_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, 3 * s)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        ausgabe = t("heft_ausgabe", monat[1], monat[0])
+        if len(titel) * 8 * ts + (len(ausgabe) + 2) * 8 * s <= W - 2 * ox:
+            fb.text(W - ox - len(ausgabe) * 8 * s,
+                    oy + 10 * ts - 10 * s, ausgabe, s, C_ACCENT, C_BG)
+            y = oy + 10 * ts + 2 * s
+        else:
+            y = oy + 10 * ts + 2 * s
+            fb.text(ox, y, ausgabe[:maxc], s, C_ACCENT, C_BG)
+            y += 12 * s
+        fb.rect(ox, y, W - 2 * ox, max(2, s), C_ACCENT)
+        y += 8 * s
+        spiel = heft["spiel"]
+        if spiel:
+            fb.text(ox, y, t("heft_spiel")[:maxc], s, C_DIM, C_BG)
+            y += 12 * s
+            wert, label, _sk = spiel
+            zeile = "%s  %d%%" % (display_name(label), wert)
+            gs = self._fit_scale(zeile, W - 2 * ox, 2 * s)
+            farbe = self.WERTUNG_FARBEN.get(WT.farbstufe(wert), C_TITLE)
+            fb.text(ox, y, zeile[:max(8, (W - 2 * ox) // (8 * gs))], gs,
+                    farbe, C_BG)
+            y += 10 * gs + 6 * s
+        teile = [t("heft_neu", len(heft["neu"])),
+                 t("heft_nach", len(heft["nach"])),
+                 t("heft_hits", heft["hits"])]
+        if heft["gurke"]:
+            teile.append(t("heft_gurke", display_name(heft["gurke"][1])))
+        zeile = ""
+        for teil in teile:
+            probe = (zeile + "   " + teil) if zeile else teil
+            if len(probe) > maxc and zeile:
+                fb.text(ox, y, zeile, s, C_TEXT, C_BG)
+                y += 12 * s
+                probe = teil
+            zeile = probe
+        if zeile:
+            fb.text(ox, y, zeile[:maxc], s, C_TEXT, C_BG)
+            y += 16 * s
+        hint = t("heft_hinweis")
+        sc = s - 1 if s > 1 else 1
+        unten = H - oy - len(self._hinweis_zeilen(hint, sc)) * 11 * sc \
+            - 4 * s
+        if heft["charts"] and y + 24 * s <= unten:
+            fb.text(ox, y, t("heft_charts")[:maxc], s, C_TITLE, C_BG)
+            y += 13 * s
+            for n_, (wert, label, _sk) in enumerate(heft["charts"], 1):
+                if y + 10 * s > unten:
+                    break
+                prozent = "%3d%%" % wert
+                platz = maxc - len(prozent) - 5
+                fb.text(ox, y, ("%d. %s" % (n_, display_name(label)))
+                        [:max(4, platz)], s, C_TEXT, C_BG)
+                fb.text(W - ox - len(prozent) * 8 * s, y, prozent, s,
+                        self.WERTUNG_FARBEN.get(WT.farbstufe(wert),
+                                                C_TEXT), C_BG)
+                y += 11 * s
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+
     def _wertung_zeilen(self, syskey, vorhanden):
         kats = list(WT.kategorien(syskey))
-        zeilen = kats + (["schwierigkeit", "spieler"] if kats else [])
+        zeilen = kats + (["schwierigkeit", "spieler", "fazit"] if kats
+                         else [])
+        if WT.zweitmeinung_an():
+            zeilen += ["zweit", "zweit_fazit"]
         zeilen.append("spass")
         if vorhanden:
             zeilen.append("loeschen")
@@ -4992,8 +5154,9 @@ class Frontend:
         alt = WT.wertung(syskey, label) or {}
         sek, starts = self._wertung_zeit(label)
         werte = dict((k, WT.runden(alt.get(k))) for k in WT.ALLE_PROZENTE)
-        werte["schwierigkeit"] = alt.get("schwierigkeit")
-        werte["spieler"] = alt.get("spieler")
+        for _k in ("schwierigkeit", "spieler", "fazit", "zweit_fazit"):
+            werte[_k] = alt.get(_k)
+        werte["zweit"] = WT.runden(alt.get("zweit"))
         if spass is not None:
             werte["spass"] = WT.runden(spass)
         if werte["spass"] is None:
@@ -5002,7 +5165,7 @@ class Frontend:
         i = zeilen.index("spass")
         while True:
             self._wertungskasten_zeichnen(label, syskey, zeilen, i, werte,
-                                          sek)
+                                          sek, WT.damals_heute(alt))
             akt = self.inp.read_action(timeout=None)
             if akt in ("back", "exit"):
                 return None
@@ -5024,14 +5187,13 @@ class Frontend:
                     return "gespeichert"
                 return None
 
-    @staticmethod
-    def _wertung_wert_aendern(zeile, wert, hoch):
-        if zeile in WT.ALLE_PROZENTE:
+    @classmethod
+    def _wertung_wert_aendern(cls, zeile, wert, hoch):
+        if zeile in cls.WERTUNG_PROZENT:
             if wert is None:
                 return 50
             return WT.runden(wert + (WT.SCHRITT if hoch else -WT.SCHRITT))
-        reihe = {"schwierigkeit": WT.SCHWIERIGKEITEN,
-                 "spieler": WT.SPIELER}.get(zeile)
+        reihe = cls.WERTUNG_LISTEN.get(zeile)
         if not reihe:
             return wert
         stufen = (None,) + tuple(reihe)
@@ -5047,18 +5209,25 @@ class Frontend:
     def _wertung_stempel_name(stempel):
         return t("wertung_stempel_" + stempel)
 
+    @staticmethod
+    def _wertung_fazit_name(fazit):
+        return t("wertung_fazit_" + fazit)
+
     def _wertung_beschriftung(self, zeile, wert):
-        if zeile in WT.ALLE_PROZENTE:
+        if zeile in self.WERTUNG_PROZENT:
             return "  -" if wert is None else "%3d%%" % wert
         if wert is None:
             return t("wertung_leer")
+        if zeile in ("fazit", "zweit_fazit"):
+            return self._wertung_fazit_name(wert)
         if zeile == "schwierigkeit":
             return t("wertung_" + wert)
         if zeile == "spieler":
             return t("wertung_spieler_" + wert)
         return str(wert)
 
-    def _wertungskasten_zeichnen(self, label, syskey, zeilen, i, werte, sek):
+    def _wertungskasten_zeichnen(self, label, syskey, zeilen, i, werte, sek,
+                                 verlauf=None):
         fb = self.fb
         W, H = fb.width, fb.height
         s = _skala(W, H)
@@ -5070,36 +5239,74 @@ class Frontend:
         titel = t("wertung_titel")
         ts = self._fit_scale(titel, W - 2 * ox, s + 1)
         fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        # Der Stempel steht rechts neben dem Titel - eine Zeile gespart,
+        # die auf der Roehre fehlen wuerde (Build 347).
+        if WT.stempel_an():
+            st = WT.stempel({"spass": werte.get("spass")}, sek)
+            if st:
+                stp = "* %s *" % self._wertung_stempel_name(st)
+                if len(titel) * 8 * ts + (len(stp) + 2) * 8 * s \
+                        <= W - 2 * ox:
+                    fb.text(W - ox - len(stp) * 8 * s,
+                            oy + (10 * ts - 8 * s) // 2, stp, s, C_ACCENT,
+                            C_BG)
         y = oy + 10 * ts + 6 * s
         fb.text(ox, y, display_name(label or "")[:maxc], s, C_TEXT, C_BG)
         y += 12 * s
-        fb.text(ox, y, self._wertung_systemname(syskey)[:maxc], s, akzent,
-                C_BG)
+        sysname = self._wertung_systemname(syskey)
+        fb.text(ox, y, sysname[:maxc], s, akzent, C_BG)
+        # Damals gegen heute (Build 347) rechts daneben, wenn es passt.
+        if verlauf:
+            (d0, w0), (d1, w1) = verlauf
+            dh = "%d%% (%s) -> %d%% (%s)" % (w0, WT.datum_lesbar(d0), w1,
+                                             WT.datum_lesbar(d1))
+            if len(sysname) + len(dh) + 2 > maxc:
+                dh = "%d%% -> %d%%" % (w0, w1)
+            if len(sysname) + len(dh) + 2 <= maxc:
+                fb.text(W - ox - len(dh) * 8 * s, y, dh, s, C_DIM, C_BG)
         y += 16 * s
         namen = {z: (t("wertung_loeschen") if z == "loeschen"
-                     else t("wertung_" + z)) for z in zeilen}
+                     else self._wertung_name(z)) for z in zeilen}
         lw = min(maxc // 2, max(len(n) for n in namen.values()) + 1)
         wert_x = ox + lw * 8 * s
         text_w = 5 * 8 * s                     # " 100%"
         bar_w = W - ox - wert_x - text_w - 2 * s
-        zeile_h = 14 * s
+        # Die Zeilenhoehe richtet sich nach dem Platz bis zum Hinweis -
+        # mit Zweitmeinung und Fazit sind es bis zu elf Zeilen, und auf
+        # 320x240 muessen sie samt Hinweis hineinpassen.
+        hint = t("wertung_hinweis")
+        sc = s - 1 if s > 1 else 1
+        hint_h = len(self._hinweis_zeilen(hint, sc)) * 11 * sc + 4 * s
+        platz = H - oy - hint_h - y
+        trenner = 3 * s * sum(1 for z in zeilen if z in ("spass", "loeschen"))
+        zeile_h = max(9 * s, min(14 * s, (platz - trenner)
+                                 // max(1, len(zeilen))))
+        rand = max(1, (zeile_h - 8 * s) // 2)
         spur = fb._darken(C_TEXT, 0.25)
-        for j, z in enumerate(zeilen):
+        for j_, z in enumerate(zeilen):
             if z in ("spass", "loeschen"):
-                fb.rect(ox, y - 3 * s, W - 2 * ox, max(1, s // 2 or 1), spur)
+                fb.rect(ox, y - rand, W - 2 * ox, max(1, s // 2), spur)
                 y += 3 * s
-            sel = j == i
-            bg = C_PANEL if sel else C_BG
+            sel = j_ == i
+            # Nutzermeldung (Build 347): "ich sehe nicht, auf welcher
+            # Bewertung ich gerade stehe" - C_PANEL war auf C_BG kaum zu
+            # unterscheiden. Jetzt ein Band in der Akzentfarbe mit einer
+            # vollen Markierung links, und der Name hell.
+            sel_bg = fb._darken(C_ACCENT, 0.45)
+            bg = sel_bg if sel else C_BG
             if sel:
-                fb.rect(ox - 2 * s, y - 3 * s, W - 2 * ox + 4 * s,
-                        8 * s + 6 * s, C_PANEL)
-            farbe_name = C_TITLE if z == "spass" else C_TEXT
+                _x0 = max(0, ox - 4 * s)
+                fb.rect(_x0, y - rand, W - ox + 2 * s - _x0,
+                        8 * s + 2 * rand, sel_bg)
+                fb.rect(_x0, y - rand, max(2, 2 * s), 8 * s + 2 * rand,
+                        C_ACCENT)
+            farbe_name = C_TITLE if (z == "spass" or sel) else C_TEXT
             fb.text(ox, y, namen[z][:lw if z != "loeschen" else maxc], s,
                     farbe_name, bg)
             if z != "loeschen":
                 w = werte.get(z)
                 txt = self._wertung_beschriftung(z, w)
-                if z in WT.ALLE_PROZENTE:
+                if z in self.WERTUNG_PROZENT:
                     if bar_w >= 16 * s:
                         fb.rect(wert_x, y + 2 * s, bar_w, 4 * s, spur)
                         if w:
@@ -5108,20 +5315,15 @@ class Frontend:
                                     self.WERTUNG_FARBEN.get(
                                         WT.farbstufe(w), C_ACCENT))
                     fb.text(W - ox - len(txt) * 8 * s, y, txt, s,
-                            C_TITLE if z == "spass" else C_TEXT, bg)
-                else:
-                    fb.text(wert_x, y, txt[:max(1, maxc - lw)], s, C_TEXT,
+                            C_TITLE if (z == "spass" or sel) else C_TEXT,
                             bg)
+                else:
+                    fb.text(wert_x, y, txt[:max(1, maxc - lw)], s,
+                            C_TITLE if sel else C_TEXT, bg)
             y += zeile_h
-        if WT.stempel_an():
-            st = WT.stempel({"spass": werte.get("spass")}, sek)
-            if st:
-                stp = "* %s *" % t("wertung_stempel_" + st)
-                fb.text(max(ox, W - ox - len(stp) * 8 * s), y + 2 * s,
-                        stp[:maxc], s, C_ACCENT, C_BG)
         # Der volle Hinweis - _hinweis_unten() bricht ihn auf der Roehre
         # auf bis zu drei Zeilen um; die Zeilen oben lassen den Platz.
-        self._hinweis_unten(t("wertung_hinweis"), s - 1 if s > 1 else 1)
+        self._hinweis_unten(hint, sc)
         fb.flip()
 
     def _anzeige_geaendert(self):
@@ -28711,6 +28913,11 @@ class Frontend:
                             self.page = 0
                         elif kind == "rescan":
                             self.draw("Rescanning game list ...")
+                            # Build 347: "neu einlesen" heisst auch, die
+                            # als leer gemerkten Bildordner neu zu fragen
+                            # (siehe LEER_MERKER_FILE in fe/art.py).
+                            leere_bildordner_vergessen()
+                            docs_caches_leeren()
                             self.build_categories(force_rescan=True)
                             self.cat_i = self.item_i = 0
                             self.scroll = self.cat_scroll = 0
@@ -28827,6 +29034,21 @@ class Frontend:
                             self._anzeige_geaendert()
                             self._sync_testarchiv_category()
                             self._refresh_system_category()
+                        elif kind == "wertung_monatsheft":
+                            # Build 347: das eigene Heft.
+                            try:
+                                self.monatsheft_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("Monatsheft CRASH:\n"
+                                    + traceback.format_exc())
+                            self._force_full_redraw = True
+                            self.draw()
+                            continue
+                        elif kind == "wertung_csv":
+                            # Build 347: das Testarchiv fuer Excel & Co.
+                            self._force_full_redraw = True
+                            self.draw(message=self._wertung_csv_speichern())
+                            continue
                         elif kind == "multidisc":
                             # Der Schalter steckt im Fingerabdruck -
                             # die Liste wird also beim naechsten

@@ -135,10 +135,13 @@ print("Test 2: die Schalter bei EIN")
 check("einschalten legt die Flag-Datei an",
       WT.toggle_an() is True and os.path.exists(WT.AN_FLAG))
 kinds = [k for _l, k, _a in stats_items()]
-check("das Systemmenue zeigt alle sechs Schalter",
+check("das Systemmenue zeigt alle Schalter (Build 347: acht) und zwei "
+      "Aktionen",
       [k for k in kinds if k.startswith("wertung")]
       == ["wertungen", "wertung_fragen", "wertung_fragen_ab",
-          "wertung_liste", "wertung_kategorien", "wertung_stempel"], kinds)
+          "wertung_liste", "wertung_kategorien", "wertung_stempel",
+          "wertung_zweit", "wertung_heft", "wertung_monatsheft",
+          "wertung_csv"], kinds)
 check("Vorgaben bei EIN: fragen, ab 5 Minuten, in Listen, alle "
       "Kategorien, Stempel",
       WT.fragen() and WT.fragen_ab_minuten() == 5 and WT.in_listen()
@@ -160,7 +163,8 @@ WT.toggle_nur_spielspass()
 check("jede Menueaktion hat einen Schalter im Frontend",
       set(fm.Frontend.WERTUNG_SCHALTER) == {
           "wertungen", "wertung_fragen", "wertung_fragen_ab",
-          "wertung_liste", "wertung_kategorien", "wertung_stempel"})
+          "wertung_liste", "wertung_kategorien", "wertung_stempel",
+          "wertung_zweit", "wertung_heft"})
 fq = open(H.FRONTEND_PY, encoding="utf-8").read()
 check("das Frontend behandelt sie (und frischt Liste und Archiv auf)",
       "elif kind in self.WERTUNG_SCHALTER:" in fq
@@ -358,7 +362,8 @@ ok, sk = mit_tasten(fe, ["select", "up", "right", "ok"],
                     fe._wertung_nach_spiel, lab2, "SNES", "/x.mgl", 3600)
 e = WT.wertung("SNES", lab2)
 check("Select oeffnet den ganzen Kasten (mit dem Wert aus der Leiste)",
-      ok is True and e and e["spass"] == 75 and e.get("spieler") == "1", e)
+      ok is True and e and e["spass"] == 75 and e.get("fazit") == "pflicht",
+      e)
 fm.load_recent = lambda: []
 ok, sk = mit_tasten(fe, ["ok"], fe._wertung_nach_spiel, "Invade-a-Load",
                     None, "/x.mgl", 3600)
@@ -389,18 +394,18 @@ print("Test 8: der Wertungskasten")
 check("Zeilen Konsole",
       fe._wertung_zeilen("SNES", False)
       == ["grafik", "sound", "steuerung", "schwierigkeit", "spieler",
-          "spass"])
+          "fazit", "spass"])
 check("Zeilen Computer mit Loeschen",
       fe._wertung_zeilen("C64", True)
-      == ["grafik", "musik", "effekte", "schwierigkeit", "spieler", "spass",
-          "loeschen"])
+      == ["grafik", "musik", "effekte", "schwierigkeit", "spieler", "fazit",
+          "spass", "loeschen"])
 WT.toggle_nur_spielspass()
 check("nur Spielspass", fe._wertung_zeilen("SNES", False) == ["spass"])
 WT.toggle_nur_spielspass()
-erg, _sk = mit_tasten(fe, ["up", "right", "up", "right", "right", "up",
+erg, _sk = mit_tasten(fe, ["up", "up", "right", "up", "right", "right", "up",
                            "right", "right", "up", "up", "right", "select",
-                           "down", "down", "down", "down", "down", "left",
-                           "ok"],
+                           "down", "down", "down", "down", "down", "down",
+                           "left", "ok"],
                       fe.wertungskasten, "Kasten", "game",
                       ["/k", ".sfc", "SNES"], "SNES")
 e = WT.wertung("SNES", "Kasten")
@@ -485,6 +490,134 @@ check("die Wertungen schreiben nur unter /media/fat/frontend",
       WT.DATEI.endswith("bewertungen.json")
       and '"/media/fat/frontend/bewertungen.json"' in wq
       and "/media/fat/docs" not in wq and "retroachievements" not in wq)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: Kurzfazit, Zweitmeinung, damals/heute, Monatsheft, CSV")
+# ---------------------------------------------------------------------------
+check("Zweitmeinung AUS (Vorgabe): keine Zeilen dafuer",
+      "zweit" not in fe._wertung_zeilen("SNES", False))
+WT.toggle_zweitmeinung()
+check("Zweitmeinung AN: zwei Zeilen vor dem Spielspass",
+      fe._wertung_zeilen("SNES", False)[-3:]
+      == ["zweit", "zweit_fazit", "spass"]
+      and fe._wertung_zeilen("SNES", False) != [])
+WT.toggle_nur_spielspass()
+check("nur Spielspass + Zweitmeinung",
+      fe._wertung_zeilen("SNES", False) == ["zweit", "zweit_fazit", "spass"])
+WT.toggle_nur_spielspass()
+e = WT.speichern("SNES", "Fazit", {"spass": 80, "fazit": "gut_gealtert",
+                                   "zweit_fazit": "zu_schwer"})
+check("Zweit-Fazit nur mit Zweitmeinung, Fazit gemerkt",
+      e["fazit"] == "gut_gealtert" and "zweit_fazit" not in e
+      and "zweit" not in e)
+e = WT.speichern("SNES", "Fazit", {"spass": 80, "fazit": "quatsch",
+                                   "zweit": 74, "zweit_fazit": "zu_schwer"})
+check("ungueltiges Fazit faellt weg, Zweitmeinung mit Fazit",
+      "fazit" not in e and e["zweit"] == 74
+      and e["zweit_fazit"] == "zu_schwer")
+check("Fazit waehlen: vorwaerts, rueckwaerts, leer",
+      fe._wertung_wert_aendern("fazit", None, True) == WT.FAZITE[0]
+      and fe._wertung_wert_aendern("fazit", None, False) == WT.FAZITE[-1]
+      and fe._wertung_wert_aendern("fazit", WT.FAZITE[-1], True) is None
+      and fe._wertung_wert_aendern("zweit", None, True) == 50)
+WT.speichern("SNES", "Verlauf", {"spass": 80}, heute="2026-10-01")
+check("damals/heute: nur eine Wertung -> nichts",
+      WT.damals_heute(WT.wertung("SNES", "Verlauf")) is None)
+WT.speichern("SNES", "Verlauf", {"spass": 92}, heute="2026-11-20")
+check("damals/heute: erste gegen letzte",
+      WT.damals_heute(WT.wertung("SNES", "Verlauf"))
+      == (("2026-10-01", 80), ("2026-11-20", 92)))
+WT.speichern("SNES", "Hin und her", {"spass": 80}, heute="2026-09-01")
+WT.speichern("SNES", "Hin und her", {"spass": 90}, heute="2026-10-01")
+WT.speichern("SNES", "Hin und her", {"spass": 80}, heute="2026-11-01")
+check("damals/heute: wieder beim alten Wert -> nichts",
+      WT.damals_heute(WT.wertung("SNES", "Hin und her")) is None)
+WT.loeschen("SNES", "Hin und her")
+check("Datum lesbar", WT.datum_lesbar("2026-11-20") == "20.11.2026"
+      and WT.datum_lesbar("kaputt") == "kaputt")
+for lab_, w_, d_ in (("Neu A", 90, "2026-11-02"), ("Neu B", 20, "2026-11-03"),
+                     ("Alt", 70, "2026-09-01")):
+    WT.speichern("SNES", lab_, {"spass": w_}, heute=d_)
+h = WT.monatsheft(2026, 11)
+namen_neu = [z[1] for z in h["neu"]]
+check("Monatsheft: neu getestet im Monat",
+      "Neu A" in namen_neu and "Neu B" in namen_neu
+      and "Alt" not in namen_neu and "Verlauf" not in namen_neu)
+check("Monatsheft: nachgetestet",
+      [z[1] for z in h["nach"]] == ["Verlauf"], h["nach"])
+_im_monat = h["neu"] + h["nach"]
+check("Monatsheft: Spiel des Monats ist der beste Wert des Monats",
+      h["spiel"][0] == max(z[0] for z in _im_monat), h["spiel"])
+check("Monatsheft: Hits gezaehlt, Gurke ist die schwaechste unter 30",
+      h["hits"] == sum(1 for z in _im_monat if z[0] >= WT.HIT_AB)
+      and h["gurke"][1] == "Neu B", (h["hits"], h["gurke"]))
+check("Monatsheft: Charts hoechstens fuenf, bester zuerst",
+      len(h["charts"]) <= WT.CHARTS
+      and h["charts"] == sorted(h["charts"], key=lambda z: -z[0]))
+h9 = WT.monatsheft(2026, 9)
+check("Monatsheft eines frueheren Monats kennt die spaeteren nicht",
+      [z[1] for z in h9["charts"]] == ["Alt"] and h9["spiel"][1] == "Alt",
+      h9["charts"])
+m_ = WT.monate()
+check("Monate: juengster zuerst",
+      m_ == sorted(m_, reverse=True) and (2026, 9) in m_)
+meldung = fe._wertung_csv_speichern()
+inhalt = open(WT.CSV_DATEI, "rb").read()
+text = inhalt.decode("utf-8-sig")
+check("CSV geschrieben: BOM, Semikolon, deutscher Kopf",
+      inhalt.startswith(b"\xef\xbb\xbf")
+      and text.splitlines()[0].startswith("System;Spiel;Spielspa")
+      and str(WT.CSV_DATEI) in meldung, meldung)
+check("CSV: eine Zeile je Spiel, Fazit als Text",
+      len(text.splitlines()) == len(WT.alle()) + 1
+      and "Zu schwer" in text)
+check("CSV: ueber .tmp, nichts liegen geblieben",
+      not os.path.exists(WT.CSV_DATEI + ".tmp"))
+_alle = WT.alle
+WT.alle = lambda: {}
+check("CSV ohne Wertungen: nur eine Meldung",
+      fe._wertung_csv_speichern() == fm.t("csv_leer"))
+WT.alle = _alle
+check("Monatsheft im Menue nur bei AN",
+      "wertung_monatsheft" in [k for _l, k, _a in stats_items()])
+WT.toggle_heft()
+check("Monatsheft AUS: kein Menuepunkt",
+      "wertung_monatsheft" not in [k for _l, k, _a in stats_items()])
+WT.toggle_heft()
+for b_, h_ in ((1920, 1080), (320, 240)):
+    H.set_screen(b_, h_)
+    fe3 = H.make_frontend(page=1)
+    try:
+        _r, sk3 = mit_tasten(fe3, ["left", "left", "right", "back"],
+                             fe3.monatsheft_bildschirm)
+        fe3._wertungskasten_zeichnen(
+            "Ein Name", "SNES", fe3._wertung_zeilen("SNES", True), 0,
+            {"spass": 92, "zweit": 74, "fazit": "pflicht"}, 0,
+            (("2026-10-01", 80), ("2026-11-20", 92)))
+        ok3 = sk3.gefragt == 4
+    except Exception as e_:                              # noqa: BLE001
+        ok3 = e_
+    check("Monatsheft blaettert, Kasten mit allen Zeilen zeichnet "
+          "(%dx%d)" % (b_, h_), ok3 is True, ok3)
+H.set_screen(1280, 720)
+fe = H.make_frontend(page=1)
+fe.item_i = 1
+lab = fe._display_items()[1][0]
+WT.speichern("SNES", lab, {"spass": 92, "fazit": "pflicht", "zweit": 70,
+                           "zweit_fazit": "fans"}, "game",
+             fe._display_items()[1][2])
+try:
+    mit_tasten(fe, ["back"], fe.spiel_info_bildschirm)
+    sb = True
+except Exception as e_:                                  # noqa: BLE001
+    sb = e_
+check("Steckbrief mit Fazit, Zweitmeinung und Schnitt", sb is True, sb)
+fq2 = fq[fq.index("    def spiel_info_bildschirm("):]
+fq2 = fq2[:fq2.index("\n    def ", 10)]
+check("Steckbrief rechnet den Schnitt und kennt damals/heute",
+      't("info_schnitt")' in fq2 and "WT.damals_heute(_wert)" in fq2)
+WT.toggle_zweitmeinung()
 
 print()
 if fails:

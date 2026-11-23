@@ -101,11 +101,19 @@ import fe.wertungen as _WT                              # noqa: E402
 _WT_ORDNER = _tempfile.mkdtemp(prefix="harness_wertungen_")
 _WT.DATEI = os.path.join(_WT_ORDNER, "bewertungen.json")
 for _n in ("AN_FLAG", "FRAGEN_AUS_FLAG", "FRAGEN_AB_FILE", "LISTE_AUS_FLAG",
-           "NUR_SPASS_FLAG", "STEMPEL_AUS_FLAG"):
+           "NUR_SPASS_FLAG", "STEMPEL_AUS_FLAG",
+           # Build 347
+           "ZWEIT_AN_FLAG", "HEFT_AUS_FLAG", "CSV_DATEI"):
     setattr(_WT, _n, os.path.join(_WT_ORDNER,
                                   os.path.basename(getattr(_WT, _n))))
 _WT.schalter_neu_lesen()
 _WT.vergessen()
+
+# BUILD 347: die gemerkten leeren Bildordner (fe/art.py) in eine eigene
+# Datei - gemerkt wird ohnehin nur unter /media/.
+import fe.art as _ART_LEER                               # noqa: E402
+_ART_LEER.LEER_MERKER_FILE = os.path.join(_WT_ORDNER, "art_leer.json")
+_ART_LEER._leer[0] = None
 
 # BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
 # Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,

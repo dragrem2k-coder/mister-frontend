@@ -909,6 +909,17 @@ and then only again when it has changed. The log (`/tmp/frontend.log`) has
 one line per system, `Einlesen: <system> - N Eintraege, X ms`, which shows
 where the time goes.
 
+**Empty image folders are remembered (Build 347).** For the third-party
+cover database Dragend also looks next to the ROMs – on a USB disk,
+asking for an `Artwork` folder that does not exist there cost up to 0.4
+seconds (Bench 26), because the whole ROM folder has to be read for it.
+Dragend now remembers missing or image-less folders in
+`/media/fat/frontend/art_leer.json` and does not ask again at the next
+start. If the folder above changes, it asks again. Because Windows does
+not record that change on FAT drives, Dragend checks once more in the
+background about 20 seconds after start; new images then show up by
+themselves. `Rescan game list` forgets all of these notes.
+
 ## 8g. Themes/color schemes
 
 In the System menu: "Color scheme" cycles through three color schemes in
@@ -1436,6 +1447,32 @@ II", switch off with `Rating in lists`) and on the game info page
 **The test archive:** its own category on the main page as soon as there
 is a rating – a folder "All hits" (85% and up, across all systems) and
 one folder per system, each sorted by fun. Games start from there like from any list.
+
+**Verdict (Build 347):** a row in the box with a sentence from a fixed
+list – A must!, For fans, Best with two, Aged well, Pure nostalgia, Too
+hard, Hands off. Shown on the game info page.
+
+**Second opinion (Build 347):** like the second reviewer in a magazine.
+With `Second opinion: ON` the box gets two rows: a second fun rating and
+its verdict. The game info page shows both and the average. Default:
+OFF.
+
+**Then and now (Build 347):** every change of the fun rating is stored
+with its date. If the value changed, the box shows "80% (22.11.2026) ->
+92% (03.03.2027)" next to the system, the game info page shows "80% ->
+92%".
+
+**The monthly issue (Build 347):** System → Statistics & achievements →
+`Read the monthly issue`. One page per month: game of the month, newly
+tested, re-tested, hits, the lemon and your charts (the five best up to
+the end of that month). Left/Right moves between issues, B goes back.
+Switch it off with `Monthly issue: ON/OFF`.
+
+**CSV export (Build 347):** `Save test archive as CSV` writes
+`/media/fat/frontend/bewertungen.csv` – semicolon separated, UTF-8 with
+BOM so Excel shows accented characters correctly. One row per game:
+system, game, all percentages, difficulty, players, verdict, second
+opinion, stamp, date, first rating, play time in hours.
 
 **The file:** `/media/fat/frontend/bewertungen.json`, one entry per game
 (system and name), with date and earlier values. It is written via a
@@ -2860,6 +2897,10 @@ conversely nobody ends up in a menu that cannot do anything).
 | Rating in lists: ON/OFF | `wertung_liste` |
 | Rating categories: all / fun only | `wertung_kategorien` |
 | Rating stamps: ON/OFF | `wertung_stempel` |
+| Second opinion: ON/OFF | `wertung_zweit` |
+| Monthly issue: ON/OFF | `wertung_heft` |
+| Read the monthly issue | `wertung_monatsheft` |
+| Save test archive as CSV | `wertung_csv` |
 
 ### Display & Sound
 

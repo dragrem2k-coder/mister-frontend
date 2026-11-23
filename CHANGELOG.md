@@ -13,6 +13,30 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Wertungen, zweite Stufe.** Im Wertungskasten ein **Kurzfazit** aus
+  einer festen Liste (Pflicht!, Für Fans, Nur zu zweit, Hat gut gealtert,
+  Nostalgie pur, Zu schwer, Finger weg), auf Wunsch eine
+  **Zweitmeinung** mit eigenem Fazit (der Steckbrief zeigt den Schnitt),
+  und **damals – heute**: hat sich der Spielspaß geändert, steht der
+  erste neben dem jetzigen Wert. Neu im Systemmenü: das **Monatsheft**
+  (Spiel des Monats, neu und nachgetestet, Hits, Gurke, deine Charts –
+  links/rechts blättert durch die Ausgaben) und **Testarchiv als CSV
+  speichern** (`/media/fat/frontend/bewertungen.csv`, Semikolon, mit
+  Umlauten für Excel). Zweitmeinung und Monatsheft sind einzeln
+  abschaltbar; der Steckbrief zeigt die Kategorien jetzt je in einer
+  eigenen Zeile. Im Wertungskasten ist die gewählte Zeile jetzt
+  deutlich markiert (Band in der Akzentfarbe mit Markierung links).
+- **Schnellerer Start mit USB-Platte.** Bench 26 hatte einen einzigen
+  Blick nach einem Bilderordner `Artwork` neben den ROMs gemessen, den es
+  gar nicht gibt: 0,4 Sekunden, weil die Platte dafür den ganzen
+  ROM-Ordner liest. Fehlende und bilderlose Ordner werden jetzt gemerkt
+  (`/media/fat/frontend/art_leer.json`) und beim nächsten Start nicht
+  mehr gefragt; ändert sich der Ordner darüber, wird wieder gefragt, und
+  etwa 20 Sekunden nach dem Start sieht Dragend im Hintergrund noch
+  einmal nach (Windows vermerkt auf FAT-Sticks keine Änderung).
+  „Spieleliste neu einlesen“ vergisst die Merker. Bench 27 zeigt in
+  Abschnitt P, wie viele Ordner übersprungen wurden.
+
 - **Eigene Wertungen im Heft-Stil.** Spielspaß in Prozent als
   Hauptzahl – kein Durchschnitt, sondern dein Urteil –, auf Wunsch dazu
   Grafik, Sound und Steuerung (Konsole), Grafik, Musik und Soundeffekte

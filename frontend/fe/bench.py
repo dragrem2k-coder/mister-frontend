@@ -102,7 +102,9 @@ import fe.messwerte as MESS    # Build 343, Abschnitte S und T
 # 26 ab Build 344: Abschnitt P schluesselt den laengsten Happen auf
 # (Dateisystem gegen Python, die langsamsten Aufrufe) und wartet vorher
 # den Vorarbeit-Faden ab; Abschnitt S kennt das Vorzeichnen.
-BENCH_VERSION = 26
+# 27 ab Build 347: Abschnitt P nennt die als fehlend/leer gemerkten
+# Bildordner, die ohne Dateizugriff uebersprungen wurden.
+BENCH_VERSION = 27
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -5707,6 +5709,16 @@ def _abschnitt_p(b, fe, S, A, fm):
     b("      teuerstes System am Stueck         %8.0f ms"
       % (zeilen[0][0] if zeilen else 0.0))
     b("      laengster Happen ueberhaupt        %8.1f ms" % luecke_max[0])
+    # Build 347: was die gemerkten leeren Bildordner gespart haben.
+    _merker = getattr(A, "_leer_merker", None)
+    if _merker is not None:
+        try:
+            b("      gemerkte leere Bildordner          %8d"
+              % len(_merker()))
+            b("      davon diese Sitzung uebersprungen  %8d"
+              % A.LEER_UEBERSPRUNGEN[0])
+        except Exception:                                # noqa: BLE001
+            pass
     b("")
     b("   ZU LESEN ALS: 'teuerstes System am Stueck' ist, wie lange ein")
     b("   Druck bis Build 320 hoechstens wartete, wenn er in einen")

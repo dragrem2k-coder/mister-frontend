@@ -12014,3 +12014,78 @@ genau einen Platzhalter haben (das Prozentzeichen ist verdoppelt). Der
 Steckbrief holt die Beschriftungen ueber `_wertung_name()` und
 `_wertung_stempel_name()`, damit der Schluessel-Abgleich des Tests
 keine halben Namen findet.
+
+## Nachtrag Build 347 - Wertungen Stufe 2 und die leeren Bildordner
+
+**Stand:** 23.11.2026, `Dragend_Build_347.zip` (build_id
+`2026-11-23-347`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8). Bench-Fassung 27.
+
+### Wertungen, zweite Stufe (fe/wertungen.py, frontend.py)
+
+- **Kurzfazit:** `FAZITE` (7 feste Saetze), Zeile `fazit` im Kasten
+  hinter Schwierigkeit und Spieler (nur mit Kategorien).
+- **Zweitmeinung:** Schalter `wertung_zweitmeinung` (Vorgabe AUS),
+  Zeilen `zweit` (Prozent) und `zweit_fazit`; das Fazit der
+  Zweitmeinung wird nur mit einem Wert gespeichert. Steckbrief:
+  Zweitmeinung und Schnitt.
+- **Damals - heute:** `damals_heute()` aus dem Verlauf (erste gegen
+  letzte Wertung, nur bei Aenderung). Kasten: neben dem System mit
+  Daten, Steckbrief kurz.
+- **Monatsheft:** `monatsheft(jahr, monat)` - neu (erste Wertung im
+  Monat), nachgetestet, Spiel des Monats, Hits, Gurke, Charts (die
+  besten 5 bis Monatsende); `monate()` juengster zuerst.
+  `monatsheft_bildschirm()`: Links aelter, Rechts neuer, jede andere
+  Taste zurueck. Schalter `wertung_heft_aus` (Vorgabe AN), Menuepunkt
+  nur bei AN.
+- **CSV:** `csv_zeilen()` / `csv_schreiben()` nach
+  `/media/fat/frontend/bewertungen.csv`, Semikolon, `utf-8-sig`, ueber
+  `.tmp`. Kopf aus den Uebersetzungen.
+- **Kasten:** Zeilenhoehe nach dem Platz bis zum Hinweis (bis zu elf
+  Zeilen auf 320x240), Stempel neben dem Titel, damals/heute neben dem
+  System. `WERTUNG_PROZENT` / `WERTUNG_LISTEN` beschreiben die Zeilen.
+- **Steckbrief:** je Kategorie eine eigene Zeile (zusammen wurden sie in
+  der Spalte abgeschnitten).
+
+### Die leeren Bildordner (fe/art.py)
+
+Bench 26, Abschnitt P: Genesis 433,6 ms am Stueck, davon EIN `os.stat`
+auf `/media/usb0/games/MegaDrive/Artwork` mit 402,3 ms - ein Ordner,
+den es nicht gibt; MegaCD 230 ms fuer das Lesen des ROM-Ordners auf der
+Suche nach Bildern darin.
+
+- `_docs_index()` merkt fehlende (nur `ENOENT`/`ENOTDIR`, kein
+  Lesefehler) und bilderlose Ordner mit einem **Zeugen**: fehlend ->
+  Elternordner, bilderlos -> der Ordner selbst, jeweils mit dessen
+  mtime. Datei `/media/fat/frontend/art_leer.json` (`LEER_MERKER_FILE`),
+  ueber `.tmp`, hoechstens `LEER_MAX` = 2000 Eintraege, nur unter
+  `LEER_NUR_UNTER` = `/media/`.
+- Beim naechsten Bau: stimmt die mtime des Zeugen, kein Zugriff auf den
+  Ordner; beobachtet (`_ordner_merken`) wird der Zeuge.
+- **Windows/FAT** aendert die Ordnerzeit beim Hineinkopieren nicht.
+  Deshalb `_leer_nachpruefen()` in einem Faden
+  (`LEER_NACHPRUEFEN_NACH` = 20 s), ohne Sperre waehrend des Wartens auf
+  das Dateisystem: hat ein uebersprungener Ordner doch Bilder, faellt
+  der Merker und `artwork_geaendert()` meldet es einmal - danach baut
+  `negativ_pruefen()` die Verzeichnisse neu wie bei jeder Aenderung.
+- **Spieleliste neu einlesen** ruft `leere_bildordner_vergessen()` -
+  importiert aus fe.art, nicht ueber `ART` (die Instanz).
+- **Bench 27**, Abschnitt P: gemerkte leere Bildordner und wie viele in
+  dieser Sitzung uebersprungen wurden.
+
+### Pruefungen
+
+`tools/test_leere_bildordner.py` neu (Merken mit Zeugen, kein Zugriff
+beim naechsten Start, Ordner entsteht, Windows/FAT ueber den Faden,
+Lesefehler, LEER_NUR_UNTER, Vergessen, kaputte Datei, Einbau).
+`tools/test_wertungen.py` um Test 10 erweitert, Zeilen und Menue
+angepasst. `tools/_harness.py` lenkt die neuen Schalter, die CSV und die
+Merker-Datei um.
+
+### Nutzermeldung waehrend des Baus: die Auswahl im Kasten
+
+"wenn ich bewerte sehe ich nicht auf welcher bewertung ich gerade stehe"
+- das Auswahlband war C_PANEL auf C_BG, in den meisten Schemata kaum zu
+unterscheiden. Jetzt: Band in abgedunkelter Akzentfarbe ueber die ganze
+Breite, links eine volle Markierung in C_ACCENT, Name und Wert der
+markierten Zeile in C_TITLE.

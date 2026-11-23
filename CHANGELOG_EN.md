@@ -13,6 +13,30 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Ratings, second stage.** The rating box gets a **verdict** from a
+  fixed list (A must!, For fans, Best with two, Aged well, Pure
+  nostalgia, Too hard, Hands off), an optional **second opinion** with
+  its own verdict (the game info page shows the average), and **then
+  and now**: if the fun rating changed, the first value is shown next to
+  the current one. New in the system menu: the **monthly issue** (game
+  of the month, newly and re-tested, hits, lemon, your charts – left and
+  right flip through the issues) and **Save test archive as CSV**
+  (`/media/fat/frontend/bewertungen.csv`, semicolon separated, with
+  accents for Excel). Second opinion and monthly issue can be switched
+  off separately; the game info page now shows each category on its own
+  line. In the rating box the selected row is now clearly marked (a
+  band in the accent colour with a marker on the left).
+- **Faster start with a USB disk.** Bench 26 measured a single look for
+  an `Artwork` image folder next to the ROMs that does not even exist:
+  0.4 seconds, because the disk reads the whole ROM folder for it.
+  Missing and image-less folders are now remembered
+  (`/media/fat/frontend/art_leer.json`) and not asked again at the next
+  start; if the folder above changes, Dragend asks again, and about 20
+  seconds after start it checks once more in the background (Windows
+  does not record changes on FAT sticks). "Rescan game list" forgets
+  these notes. Bench 27 shows in section P how many folders were
+  skipped.
+
 - **Your own ratings, magazine style.** Fun in percent as the main
   number – not an average but your verdict –, plus graphics, sound and
   controls (console), graphics, music and sound effects (computer) or

@@ -125,7 +125,8 @@ GRUPPEN = (
       "milestones", "trophy_room", "year_review", "diary",
       # Build 346: die eigenen Wertungen
       "wertungen", "wertung_fragen", "wertung_fragen_ab", "wertung_liste",
-      "wertung_kategorien", "wertung_stempel"),
+      "wertung_kategorien", "wertung_stempel", "wertung_zweit",
+      "wertung_heft", "wertung_monatsheft", "wertung_csv"),
      ("fremdquellen", "rom_filter", "multidisc")),
     ("performance", ("Performance", "Performance"),
      ("Was das Frontend schneller macht - Miniaturen, Auflösung, Scrollen.",

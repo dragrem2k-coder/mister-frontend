@@ -1092,6 +1092,18 @@ nur einmal geöffnet und danach erst wieder, wenn es sich geändert hat. Im
 Log (`/tmp/frontend.log`) steht je System eine Zeile `Einlesen: <System> -
 N Einträge, X ms` - damit ist zu sehen, wo die Zeit bleibt.
 
+**Leere Bildordner werden gemerkt (Build 347).** Für die fremde
+Cover-Datenbank sieht Dragend auch neben den ROMs nach – auf einer
+USB-Platte kostete die Frage nach einem Ordner `Artwork`, den es dort
+nicht gibt, bis zu 0,4 Sekunden (Bench 26), weil dafür der ganze
+ROM-Ordner gelesen werden muss. Was fehlt oder keine Bilder hat, merkt
+sich Dragend jetzt in `/media/fat/frontend/art_leer.json` und fragt beim
+nächsten Start nicht mehr. Ändert sich der Ordner darüber, wird wieder
+gefragt. Weil Windows auf FAT-Datenträgern diese Änderung nicht
+vermerkt, sieht Dragend etwa 20 Sekunden nach dem Start im Hintergrund
+noch einmal nach; neue Bilder erscheinen dann von selbst.
+`Spieleliste neu einlesen` vergisst alle Merker.
+
 ## 8g. Themes/Farbschemata
 
 Im System-Menü: "Farbschema" schaltet der Reihe nach zwischen drei
@@ -1691,6 +1703,32 @@ Einzelwerte, Stempel).
 eine Wertung gibt – ein Ordner „Alle Hits“ (ab 85 %, über alle Systeme)
 und je System ein Ordner, darin sortiert nach Spielspaß. Die Spiele starten von dort wie aus
 jeder Liste.
+
+**Kurzfazit (Build 347):** im Kasten eine Zeile mit einem Satz aus einer
+festen Liste – Pflicht!, Für Fans, Nur zu zweit, Hat gut gealtert,
+Nostalgie pur, Zu schwer, Finger weg. Steht im Steckbrief.
+
+**Zweitmeinung (Build 347):** wie der zweite Tester im Heft. Mit
+`Zweitmeinung: AN` bekommt der Kasten zwei Zeilen: einen zweiten
+Spielspaß und dessen Fazit. Der Steckbrief zeigt beides und den
+Schnitt. Vorgabe: AUS.
+
+**Damals – heute (Build 347):** jede Änderung des Spielspaßes wird mit
+Datum gespeichert. Hat sich der Wert geändert, steht im Kasten neben
+dem System „80% (22.11.2026) -> 92% (03.03.2027)“, im Steckbrief kurz
+„80% -> 92%“.
+
+**Das Monatsheft (Build 347):** System → Statistiken & Erfolge →
+`Monatsheft ansehen`. Eine Seite je Monat: Spiel des Monats, neu
+getestet, nachgetestet, Hits, die Gurke und deine Charts (die fünf
+besten bis zum Monatsende). Links/Rechts blättert zwischen den
+Ausgaben, B geht zurück. Abschaltbar mit `Monatsheft: AN/AUS`.
+
+**Export als CSV (Build 347):** `Testarchiv als CSV speichern` schreibt
+`/media/fat/frontend/bewertungen.csv` – Semikolon als Trenner und
+UTF-8 mit BOM, damit Excel die Umlaute richtig zeigt. Eine Zeile je
+Spiel: System, Spiel, alle Prozente, Schwierigkeit, Spieler, Fazit,
+Zweitmeinung, Stempel, Datum, erste Wertung, Spielzeit in Stunden.
 
 **Die Datei:** `/media/fat/frontend/bewertungen.json`, ein Eintrag je
 Spiel (System und Name), mit Datum und den bisherigen Werten. Sie wird
@@ -3269,6 +3307,10 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Wertung in Listen: AN/AUS | `wertung_liste` |
 | Wertungs-Kategorien: alle / nur Spielspaß | `wertung_kategorien` |
 | Wertungs-Stempel: AN/AUS | `wertung_stempel` |
+| Zweitmeinung: AN/AUS | `wertung_zweit` |
+| Monatsheft: AN/AUS | `wertung_heft` |
+| Monatsheft ansehen | `wertung_monatsheft` |
+| Testarchiv als CSV speichern | `wertung_csv` |
 
 ### Anzeige & Sound
 

@@ -13,6 +13,7 @@ frontend.py importiert sie von hier zurueck, damit alle bisherigen
 Verwendungsstellen unveraendert weiterlaufen.
 """
 import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
+import errno
 import operator
 import itertools
 from fe.log import LOG
@@ -1198,6 +1199,11 @@ def artwork_geaendert():
     Antwort False: es gibt dann auch kein Nein, das sich lohnen
     wuerde."""
     geaendert = False
+    # Build 347: der Nachpruef-Faden hat in einem gemerkten leeren
+    # Ordner doch Bilder gefunden.
+    if _leer_widerlegt[0]:
+        _leer_widerlegt[0] = False
+        geaendert = True
     for ordner, alt in list(_index_ordner.items()):
         neu = _ordner_mtime(ordner)
         if neu != alt:
@@ -5482,6 +5488,177 @@ def _docs_ordner_alle(syskey):
     return treffer
 
 
+# ======================================================================
+# BUILD 347: BEKANNT LEERE BILDORDNER (Bench 26, Abschnitt P)
+# ======================================================================
+#
+# DER BEFUND: Bench 26 hat den laengsten Happen der Vorarbeit
+# aufgeschluesselt - Genesis 433,6 ms, davon EIN os.stat auf
+# /media/usb0/games/MegaDrive/Artwork mit 402,3 ms. Den Ordner gibt es
+# nicht. Gefragt wird trotzdem, bei jedem Start, und zwar in einem
+# ROM-Ordner mit Tausenden Eintraegen auf einer USB-Platte: um zu
+# wissen, dass ein Name FEHLT, muss das Dateisystem das ganze
+# Verzeichnis lesen. Dasselbe bei MegaCD: 230 ms, um im ROM-Ordner
+# selbst nach Bildern zu suchen, die dort nicht liegen.
+#
+# DIE ABHILFE: was einmal fehlte (oder keine Bilder hatte), wird mit
+# einem ZEUGEN gemerkt - dem Ordner, dessen Aenderungszeit sich
+# aendern muss, wenn sich daran etwas aendert: bei einem fehlenden
+# Ordner sein Elternordner (dort entsteht er), bei einem leeren er
+# selbst. Beim naechsten Start kostet die Frage einen stat auf den
+# Zeugen - und der liegt im kleinen Ordner darueber, den _docs_ordner()
+# ohnehin schon angesehen hat.
+#
+# DIE GRENZE, UND WARUM ES DAS NACHPRUEFEN GIBT: Windows aendert auf
+# FAT-Datentraegern die Aenderungszeit eines Ordners nicht, wenn man
+# etwas hineinkopiert. Wer seine Artwork am PC auf den Stick kopiert,
+# wuerde hier sonst nie bemerkt. Deshalb prueft ein Faden die
+# uebersprungenen Ordner einmal je Sitzung nach, LEER_NACHPRUEFEN_NACH
+# Sekunden spaeter, abseits von allem, was auf eine Taste wartet. Ist
+# doch etwas da, faellt der Merker und artwork_geaendert() baut die
+# Verzeichnisse neu - wie bei jeder anderen Aenderung an Artwork.
+# "Neu einlesen" vergisst die Merker ebenfalls.
+#
+# NUR UNTER /media/: dort liegen SD, USB und Netzlaufwerke des MiSTer.
+# Die Pruefstaende arbeiten in Temp-Ordnern und bleiben so unberuehrt,
+# es sei denn, sie stellen LEER_NUR_UNTER ausdruecklich um.
+LEER_MERKER_FILE = "/media/fat/frontend/art_leer.json"
+LEER_NUR_UNTER = ("/media/",)
+LEER_MAX = 2000
+LEER_NACHPRUEFEN_NACH = 20.0
+LEER_UEBERSPRUNGEN = [0]                 # fuer den Bench: je Sitzung
+_leer = [None]                           # {ordner: [zeuge, mtime]}
+_leer_geaendert = [False]
+_leer_offen = []                         # in dieser Sitzung uebersprungen
+_leer_widerlegt = [False]
+_leer_faden = [None]
+_leer_sperre = threading.Lock()
+
+
+def _leer_merker():
+    if _leer[0] is None:
+        daten = {}
+        try:
+            with open(LEER_MERKER_FILE, encoding="utf-8") as f:
+                roh = json.load(f)
+            if isinstance(roh, dict):
+                for k, v in roh.items():
+                    if (isinstance(v, list) and len(v) == 2
+                            and isinstance(v[0], str)):
+                        daten[k] = v
+        except (OSError, ValueError):
+            pass
+        _leer[0] = daten
+    return _leer[0]
+
+
+def _zeugen_mtime(zeuge, zeugen):
+    if zeuge not in zeugen:
+        zeugen[zeuge] = _ordner_mtime(zeuge)
+    return zeugen[zeuge]
+
+
+def _leer_bekannt(ordner, zeugen):
+    """Ist `ordner` als fehlend/leer gemerkt, und gilt das noch?"""
+    if not ordner.startswith(LEER_NUR_UNTER):
+        return False
+    with _leer_sperre:
+        e = _leer_merker().get(ordner)
+    if not e:
+        return False
+    mt = _zeugen_mtime(e[0], zeugen)
+    return mt is not None and mt == e[1]
+
+
+def _leer_vermerken(ordner, zeuge, zeugen):
+    if not ordner.startswith(LEER_NUR_UNTER):
+        return
+    mt = _zeugen_mtime(zeuge, zeugen)
+    if mt is None:
+        return
+    with _leer_sperre:
+        merker = _leer_merker()
+        if merker.get(ordner) == [zeuge, mt]:
+            return
+        if ordner not in merker and len(merker) >= LEER_MAX:
+            return
+        merker[ordner] = [zeuge, mt]
+        _leer_geaendert[0] = True
+
+
+def _leer_vergessen(ordner):
+    with _leer_sperre:
+        if _leer_merker().pop(ordner, None) is not None:
+            _leer_geaendert[0] = True
+
+
+def _leer_speichern():
+    """Nur wenn sich etwas geaendert hat; ueber .tmp geschrieben."""
+    with _leer_sperre:
+        if not _leer_geaendert[0]:
+            return
+        daten = dict(_leer_merker())
+        _leer_geaendert[0] = False
+    try:
+        os.makedirs(os.path.dirname(LEER_MERKER_FILE), exist_ok=True)
+        tmp = LEER_MERKER_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(daten, f, sort_keys=True)
+        os.replace(tmp, LEER_MERKER_FILE)
+    except OSError:
+        pass
+
+
+def leere_bildordner_vergessen():
+    """Alle Merker weg - nach "Neu einlesen"."""
+    with _leer_sperre:
+        if _leer_merker():
+            _leer[0] = {}
+            _leer_geaendert[0] = True
+    _leer_speichern()
+
+
+def _hat_bilder(ordner):
+    try:
+        return any(fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")
+                   for fn in os.listdir(ordner))
+    except OSError:
+        return False
+
+
+def _leer_nachpruefen(warten=None):
+    """Der Faden: einmal nachsehen, ob die uebersprungenen Ordner
+    inzwischen Bilder haben. Haelt keine Sperre, waehrend er auf das
+    Dateisystem wartet."""
+    try:
+        time.sleep(LEER_NACHPRUEFEN_NACH if warten is None else warten)
+        with _leer_sperre:
+            offen = list(_leer_offen)
+            del _leer_offen[:]
+        widerlegt = [o for o in offen if _hat_bilder(o)]
+        for o in widerlegt:
+            _leer_vergessen(o)
+        if widerlegt:
+            LOG("Bildordner: %d gemerkte leere Ordner haben jetzt Bilder"
+                % len(widerlegt))
+            _leer_speichern()
+            _leer_widerlegt[0] = True
+    except Exception:                                    # noqa: BLE001
+        pass
+    finally:
+        _leer_faden[0] = None
+
+
+def _leer_nachpruefen_starten():
+    with _leer_sperre:
+        if _leer_faden[0] is not None:
+            return
+        f = threading.Thread(target=_leer_nachpruefen,
+                             name="Bildordner-Nachpruefung", daemon=True)
+        _leer_faden[0] = f
+    f.start()
+
+
 def _docs_index(syskey, bildart="boxart", zwischendurch=None):
     """{ROM-Name ohne Endung: voller Bildpfad} fuer ein System.
 
@@ -5522,19 +5699,40 @@ def _docs_index(syskey, bildart="boxart", zwischendurch=None):
     # tatsaechlich vorhandenem Ordner, beim ersten Fehltreffer, danach
     # gecacht. Ordner, die es nicht gibt, kosten einen fehlschlagenden
     # Systemaufruf.
+    zeugen = {}
+    uebersprungen = False
     for basis in _docs_ordner_alle(syskey):
         for unterordner in unter:
             ordner = os.path.join(basis, unterordner) if unterordner \
                 else basis
+            # Build 347: als fehlend/leer bekannt -> nicht fragen, aber
+            # den Zeugen beobachten (entsteht der Ordner, aendert sich
+            # dessen Aenderungszeit) und spaeter im Faden nachsehen.
+            if _leer_bekannt(ordner, zeugen):
+                with _leer_sperre:
+                    _leer_offen.append(ordner)
+                    _zeuge = _leer_merker().get(ordner, [ordner])[0]
+                _ordner_merken(_zeuge)
+                LEER_UEBERSPRUNGEN[0] += 1
+                uebersprungen = True
+                continue
             _ordner_merken(ordner)                       # Build 298
             try:
                 namen = [fn for fn in _ordner_namen(ordner, zwischendurch)
                          if fn.rsplit(".", 1)[-1].lower()
                          in ("jpg", "jpeg", "png")]
-            except OSError:
+            except OSError as e:
+                # Nur ein echtes "gibt es nicht" wird gemerkt - ein
+                # Lesefehler einer schlafenden Platte nicht.
+                if getattr(e, "errno", None) in (errno.ENOENT,
+                                                 errno.ENOTDIR):
+                    _leer_vermerken(ordner, os.path.dirname(ordner),
+                                    zeugen)
                 continue
             if not namen:
+                _leer_vermerken(ordner, ordner, zeugen)
                 continue
+            _leer_vergessen(ordner)
             if zwischendurch is not None:
                 zwischendurch()
             for fn in _happenweise(namen, zwischendurch):
@@ -5543,6 +5741,9 @@ def _docs_index(syskey, bildart="boxart", zwischendurch=None):
                              lambda fn, _o=ordner: os.path.join(_o, fn),
                              zwischendurch)
     _docs_index_cache[schluessel] = idx
+    _leer_speichern()
+    if uebersprungen:
+        _leer_nachpruefen_starten()
     return idx
 
 

@@ -452,6 +452,14 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
              else t("sys_wertung_kat_alle"), "wertung_kategorien", None),
             (t("sys_wertung_stempel_an") if WT.stempel_an()
              else t("sys_wertung_stempel_aus"), "wertung_stempel", None),
+            # Build 347: Zweitmeinung, Monatsheft, Export.
+            (t("sys_wertung_zweit_an") if WT.zweitmeinung_an()
+             else t("sys_wertung_zweit_aus"), "wertung_zweit", None),
+            (t("sys_wertung_heft_an") if WT.heft_an()
+             else t("sys_wertung_heft_aus"), "wertung_heft", None),
+        ] + ([(t("sys_wertung_monatsheft"), "wertung_monatsheft", None)]
+             if WT.heft_an() else []) + [
+            (t("sys_wertung_csv"), "wertung_csv", None),
         ]
 
     ra_items = [(ra_label, "ra_status", None)]
