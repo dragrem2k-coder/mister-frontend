@@ -13,6 +13,9 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Kurzfazit „Old but Gold“** statt „Hat gut gealtert“. Schon
+  gespeicherte Wertungen zeigen den neuen Text von selbst.
+
 - **Der Wertungskasten im Heft-Stil.** Nach deiner Wahl aus drei
   Entwürfen: ein Testkasten wie im Heft mit Kopfband in der Systemfarbe,
   links das Cover und darunter der Spielspaß groß in einem farbigen Feld,
@@ -21,7 +24,7 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
   der Kasten schmal und lesbar (Segmente, Stempel als Schrift).
 
 - **Wertungen, zweite Stufe.** Im Wertungskasten ein **Kurzfazit** aus
-  einer festen Liste (Pflicht!, Für Fans, Nur zu zweit, Hat gut gealtert,
+  einer festen Liste (Pflicht!, Für Fans, Nur zu zweit, Old but Gold,
   Nostalgie pur, Zu schwer, Finger weg), auf Wunsch eine
   **Zweitmeinung** mit eigenem Fazit (der Steckbrief zeigt den Schnitt),
   und **damals – heute**: hat sich der Spielspaß geändert, steht der

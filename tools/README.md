@@ -12121,3 +12121,16 @@ Nach Build 347 hat der Nutzer aus drei gezeigten Entwuerfen gewaehlt:
 Pruefungen: `tools/test_wertungen.py` Test 11 - Segmentzahl und
 -farben, Breite, Cover-Merker, Stempelmass, der Kasten in vier
 Aufloesungen mit und ohne Cover und mit jeder Zeile markiert.
+
+## Nachtrag Build 349 - "Old but Gold"
+
+**Stand:** 23.11.2026, `Dragend_Build_349.zip` (build_id
+`2026-11-23-349`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: "Hat gut gealtert" klang komisch - gewaehlt aus den
+Vorschlaegen: **"Old but Gold"** (in beiden Sprachen). Geaendert ist nur
+der Text in `fe/translations.py`; der Schluessel `gut_gealtert` bleibt in
+`WT.FAZITE` und in `bewertungen.json`, damit vorhandene Wertungen den
+neuen Text zeigen, ohne dass die Datei angefasst wird.
+`tools/test_wertungen.py` prueft Text und Schluessel.

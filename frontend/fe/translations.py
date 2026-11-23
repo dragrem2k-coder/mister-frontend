@@ -1917,8 +1917,10 @@ TRANSLATIONS = {
     "wertung_fazit_fans": {"en": "For fans", "de": "Für Fans"},
     "wertung_fazit_zu_zweit": {"en": "Best with two",
                                "de": "Nur zu zweit"},
-    "wertung_fazit_gut_gealtert": {"en": "Aged well",
-                                   "de": "Hat gut gealtert"},
+    # Build 349: "Hat gut gealtert" klang dem Nutzer komisch. Der
+    # Schluessel bleibt - so zeigen gespeicherte Wertungen den neuen Text.
+    "wertung_fazit_gut_gealtert": {"en": "Old but Gold",
+                                   "de": "Old but Gold"},
     "wertung_fazit_nostalgie": {"en": "Pure nostalgia",
                                 "de": "Nostalgie pur"},
     "wertung_fazit_zu_schwer": {"en": "Too hard", "de": "Zu schwer"},

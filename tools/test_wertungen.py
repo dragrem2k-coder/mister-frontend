@@ -516,6 +516,12 @@ e = WT.speichern("SNES", "Fazit", {"spass": 80, "fazit": "quatsch",
 check("ungueltiges Fazit faellt weg, Zweitmeinung mit Fazit",
       "fazit" not in e and e["zweit"] == 74
       and e["zweit_fazit"] == "zu_schwer")
+import fe.translations as _TR9                          # noqa: E402
+check("Build 349: das Fazit heisst 'Old but Gold' - in beiden Sprachen, "
+      "unter dem alten Schluessel",
+      all(_TR9.TRANSLATIONS["wertung_fazit_gut_gealtert"][_sp]
+          == "Old but Gold" for _sp in ("de", "en"))
+      and "gut_gealtert" in WT.FAZITE)
 check("Fazit waehlen: vorwaerts, rueckwaerts, leer",
       fe._wertung_wert_aendern("fazit", None, True) == WT.FAZITE[0]
       and fe._wertung_wert_aendern("fazit", None, False) == WT.FAZITE[-1]

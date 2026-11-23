@@ -13,6 +13,9 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Verdict "Old but Gold"** instead of "Aged well". Ratings you
+  already saved show the new text by themselves.
+
 - **The rating box, magazine style.** Your pick from three drafts: a
   review box like in a magazine with a header band in the system's
   colour, the cover on the left with the fun rating large in a coloured
@@ -22,7 +25,7 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
   stamp as text).
 
 - **Ratings, second stage.** The rating box gets a **verdict** from a
-  fixed list (A must!, For fans, Best with two, Aged well, Pure
+  fixed list (A must!, For fans, Best with two, Old but Gold, Pure
   nostalgia, Too hard, Hands off), an optional **second opinion** with
   its own verdict (the game info page shows the average), and **then
   and now**: if the fun rating changed, the first value is shown next to

@@ -1,5 +1,5 @@
 {
-  "build_id": "2026-11-23-348",
-  "summary": "Der Wertungskasten im Heft-Stil: Kopfband in der Systemfarbe, Cover links, Spielspass gross im Farbfeld, Werte als Pegel-Segmente, roter Stempelrahmen. Roehre schmal.",
-  "details": "BUILD 348 - Nutzerwahl 'A mit C mit Cover bild' aus drei Entwuerfen. frontend.py _wertungskasten_zeichnen() neu: Kasten mit Rahmen und Kopfband in accent_for(syskey) (Arcade: C_ACCENT), Name gross in Weiss, System rechts; ab 640 Breite links das Cover (_wertung_cover: ueber _ansicht_cover, gemerkt nur wenn vorhanden, sonst Platzhalter) und darunter das Spielspass-Feld in der Ampelfarbe mit grosser Zahl (weisser Rahmen, wenn die Zeile gewaehlt ist); rechts die Zeilen mit _wertung_segmente() (20 Segmente, schmal 10, jedes in der Farbe seiner Stufe); unten rechts _wertung_stempel_rahmen() (doppelter roter Rahmen, zweizeilig), daneben damals/heute. Unter 640 Breite: kein Cover/Feld, Stempel als Schrift unten rechts bzw. im Kopf. Auswahl wie Build 347 (Akzentband). PRUEFUNGEN: tools/test_wertungen.py Test 11 (Segmente, Farben, Cover-Merker, Stempelmass, vier Aufloesungen mit jeder Zeile markiert). C-Bibliothek UNVERAENDERT (Fassung 8)."
+  "build_id": "2026-11-23-349",
+  "summary": "Kurzfazit 'Old but Gold' statt 'Hat gut gealtert' (Nutzerwunsch). Gespeicherte Wertungen zeigen den neuen Text, der Schluessel bleibt.",
+  "details": "BUILD 349 - fe/translations.py: wertung_fazit_gut_gealtert de/en = 'Old but Gold'. Schluessel gut_gealtert in WT.FAZITE und in bewertungen.json unveraendert, damit vorhandene Wertungen den neuen Text zeigen. HANDBUCH/MANUAL_EN/Changelogs angepasst. tools/test_wertungen.py prueft Text und Schluessel. C-Bibliothek UNVERAENDERT (Fassung 8)."
 }

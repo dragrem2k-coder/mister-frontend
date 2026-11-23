@@ -1458,7 +1458,7 @@ is a rating – a folder "All hits" (85% and up, across all systems) and
 one folder per system, each sorted by fun. Games start from there like from any list.
 
 **Verdict (Build 347):** a row in the box with a sentence from a fixed
-list – A must!, For fans, Best with two, Aged well, Pure nostalgia, Too
+list – A must!, For fans, Best with two, Old but Gold, Pure nostalgia, Too
 hard, Hands off. Shown on the game info page.
 
 **Second opinion (Build 347):** like the second reviewer in a magazine.

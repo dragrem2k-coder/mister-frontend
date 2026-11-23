@@ -1713,7 +1713,7 @@ und je System ein Ordner, darin sortiert nach Spielspaß. Die Spiele starten von
 jeder Liste.
 
 **Kurzfazit (Build 347):** im Kasten eine Zeile mit einem Satz aus einer
-festen Liste – Pflicht!, Für Fans, Nur zu zweit, Hat gut gealtert,
+festen Liste – Pflicht!, Für Fans, Nur zu zweit, Old but Gold,
 Nostalgie pur, Zu schwer, Finger weg. Steht im Steckbrief.
 
 **Zweitmeinung (Build 347):** wie der zweite Tester im Heft. Mit
