@@ -1430,6 +1430,15 @@ saves, B cancels. The categories depend on the device:
 | Computer (C64, Amiga, CPC, PC) | Graphics, Music, Sound effects |
 | Arcade | Graphics, Sound, One more credit |
 
+What the box looks like (Build 348): like a review box in a magazine –
+a frame with a header band in the system's colour, the cover on the left
+with the fun rating large in a coloured field below it, the values on
+the right as **level meters made of segments** (red up to 49, yellow up
+to 79, green from 80), and the stamp as a red stamp frame at the bottom
+right. The selected row carries a band in the accent colour. On a CRT
+(below 640 pixels wide) it stays compact: header band, rows with
+segments, the stamp as text.
+
 Plus difficulty (easy/medium/tough/unfair) and players (1, 1-2, 2 at
 once). **Fun is not an average** but your overall verdict. To rate fun
 only, set `Rating categories: fun only`. A game that already has a

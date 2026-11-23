@@ -1684,6 +1684,14 @@ Gerät:
 | Computer (C64, Amiga, CPC, PC) | Grafik, Musik, Soundeffekte |
 | Arcade | Grafik, Sound, Nur noch ein Credit |
 
+So sieht der Kasten aus (Build 348): wie ein Testkasten im Heft – ein
+Rahmen mit einem Kopfband in der Farbe des Systems, links das Cover und
+darunter der Spielspaß groß in einem farbigen Feld, rechts die Werte als
+**Pegel aus Segmenten** (rot bis 49, gelb bis 79, grün ab 80), unten
+rechts der Stempel als roter Stempelrahmen. Die gewählte Zeile trägt ein
+Band in der Akzentfarbe. Auf der Röhre (unter 640 Punkten Breite) bleibt
+er schmal: Kopfband, Zeilen mit Segmenten, der Stempel als Schrift.
+
 Dazu Schwierigkeit (leicht/mittel/knackig/unfair) und Spieler (1, 1-2,
 2 gleichzeitig). **Spielspaß ist kein Durchschnitt**, sondern dein
 Gesamturteil. Wer nur den Spielspaß vergeben will, stellt

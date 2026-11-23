@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Der Wertungskasten im Heft-Stil.** Nach deiner Wahl aus drei
+  Entwürfen: ein Testkasten wie im Heft mit Kopfband in der Systemfarbe,
+  links das Cover und darunter der Spielspaß groß in einem farbigen Feld,
+  rechts die Werte als Pegel aus Segmenten (rot, gelb, grün je Stufe),
+  unten rechts der Stempel als roter Stempelrahmen. Auf der Röhre bleibt
+  der Kasten schmal und lesbar (Segmente, Stempel als Schrift).
+
 - **Wertungen, zweite Stufe.** Im Wertungskasten ein **Kurzfazit** aus
   einer festen Liste (Pflicht!, Für Fans, Nur zu zweit, Hat gut gealtert,
   Nostalgie pur, Zu schwer, Finger weg), auf Wunsch eine

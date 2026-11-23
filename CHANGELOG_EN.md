@@ -13,6 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **The rating box, magazine style.** Your pick from three drafts: a
+  review box like in a magazine with a header band in the system's
+  colour, the cover on the left with the fun rating large in a coloured
+  field below it, the values on the right as segment level meters (red,
+  yellow, green per step), and the stamp as a red stamp frame at the
+  bottom right. On a CRT the box stays compact and readable (segments,
+  stamp as text).
+
 - **Ratings, second stage.** The rating box gets a **verdict** from a
   fixed list (A must!, For fans, Best with two, Aged well, Pure
   nostalgia, Too hard, Hands off), an optional **second opinion** with

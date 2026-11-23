@@ -12089,3 +12089,35 @@ Merker-Datei um.
 unterscheiden. Jetzt: Band in abgedunkelter Akzentfarbe ueber die ganze
 Breite, links eine volle Markierung in C_ACCENT, Name und Wert der
 markierten Zeile in C_TITLE.
+
+## Nachtrag Build 348 - der Wertungskasten im Heft-Stil
+
+**Stand:** 23.11.2026, `Dragend_Build_348.zip` (build_id
+`2026-11-23-348`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nach Build 347 hat der Nutzer aus drei gezeigten Entwuerfen gewaehlt:
+"A mit C mit Cover bild" - der Testkasten (A) mit den Pegel-Segmenten
+(C) und dem Cover.
+
+- `_wertungskasten_zeichnen()` neu: Rahmen und Kopfband in
+  `accent_for(syskey)` (Arcade: `C_ACCENT`), Name in Weiss, System
+  rechts (passt es nicht, entfaellt es, statt den Namen zu kuerzen).
+- Ab 640 Punkten Breite links das Cover (`_wertung_cover()`: ueber
+  `_ansicht_cover()`, gemerkt nur, wenn eines da ist - ein noch
+  verzoegertes wird beim naechsten Bild wieder gefragt; sonst
+  `_kachel_platzhalter()`), darunter das Spielspass-Feld in der
+  Ampelfarbe mit grosser Zahl; ist die Spielspass-Zeile gewaehlt, traegt
+  das Feld einen weissen Rahmen.
+- Rechts die Zeilen; Prozentzeilen mit `_wertung_segmente()`: 20
+  Segmente (schmal 10), jedes in der Farbe SEINER Stufe (rot bis 49,
+  gelb bis 79, gruen ab 80), aus in abgedunkelter Textfarbe.
+- Unten rechts `_wertung_stempel_rahmen()`: doppelter roter Rahmen,
+  zweizeilig; Mass aus `_wertung_stempel_mass()`. Daneben damals/heute
+  (kurz, wenn der Platz fehlt).
+- Unter 640 Breite: kein Cover, kein Feld; der Stempel als rote Schrift
+  unten rechts. Die Zeilenhoehe richtet sich wie bisher nach dem Platz.
+
+Pruefungen: `tools/test_wertungen.py` Test 11 - Segmentzahl und
+-farben, Breite, Cover-Merker, Stempelmass, der Kasten in vier
+Aufloesungen mit und ohne Cover und mit jeder Zeile markiert.

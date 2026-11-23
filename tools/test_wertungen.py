@@ -619,6 +619,78 @@ check("Steckbrief rechnet den Schnitt und kennt damals/heute",
       't("info_schnitt")' in fq2 and "WT.damals_heute(_wert)" in fq2)
 WT.toggle_zweitmeinung()
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 11: der Kasten im Heft-Stil (Build 348)")
+# ---------------------------------------------------------------------------
+fe = H.make_frontend(page=1)
+_rects = []
+_rect_echt = fe.fb.rect
+fe.fb.rect = lambda x, y, w, h, c: _rects.append((x, w, c))
+n_ = fe._wertung_segmente(0, 0, 400, 8, 92, 1)
+fe.fb.rect = _rect_echt
+_aus = fe.fb._darken(fm.C_TEXT, 0.18)
+_F = fm.Frontend.WERTUNG_FARBEN
+farben = [c for _x, _w, c in _rects]
+check("Pegel: 20 Segmente, 18 an (92 %)",
+      n_ == 20 and len(farben) == 20 and farben.count(_aus) == 2, n_)
+check("jedes Segment in der Farbe seiner Stufe: 9 rot, 6 gelb, 3 gruen",
+      farben[:9] == [_F["rot"]] * 9 and farben[9:15] == [_F["gelb"]] * 6
+      and farben[15:18] == [_F["gruen"]] * 3)
+_rects[:] = []
+fe.fb.rect = lambda x, y, w, h, c: _rects.append((x, w, c))
+n_ = fe._wertung_segmente(0, 0, 60, 8, None, 1)
+fe.fb.rect = _rect_echt
+check("schmal: 10 Segmente; ohne Wert alle aus",
+      n_ == 10 and all(c == _aus for _x, _w, c in _rects))
+check("Segmente laufen nicht ueber die Breite hinaus",
+      max(x + w for x, w, _c in _rects) <= 60)
+gefragt_c = []
+
+
+def _cover(item, sk, bw, bh):
+    gefragt_c.append(item[0])
+    return ((4, 4, bytes(64)), False) if item[0] == "Mit" else (None, True)
+fe._ansicht_cover = _cover
+fe._wertung_cover(("Mit", "game", None), "SNES", 100, 100)
+fe._wertung_cover(("Mit", "game", None), "SNES", 100, 100)
+fe._wertung_cover(("Ohne", "game", None), "SNES", 100, 100)
+fe._wertung_cover(("Ohne", "game", None), "SNES", 100, 100)
+check("ein Cover wird einmal geholt, ein fehlendes jedes Mal neu gefragt",
+      gefragt_c == ["Mit", "Ohne", "Ohne"], gefragt_c)
+for st_ in ("hit", "klassiker", "gurke"):
+    b_, h_ = fe._wertung_stempel_mass(st_, 2)
+    check("Stempel %s: Rahmen passt um die Schrift" % st_,
+          b_ >= max(len(z) for z in fe._wertung_stempel_zeilen(st_)) * 32
+          + 16 and h_ > 0)
+for b_, h_, cov in ((1920, 1080, True), (1280, 720, False), (640, 480, True),
+                    (320, 240, False)):
+    H.set_screen(b_, h_)
+    fe4 = H.make_frontend(page=1)
+    if cov:
+        fe4._ansicht_cover = lambda item, sk, bw, bh: (
+            (max(1, min(bw, 40)), max(1, min(bh, 40)),
+             bytes(4 * max(1, min(bw, 40)) * max(1, min(bh, 40)))), False)
+    try:
+        for sel_ in range(len(fe4._wertung_zeilen("SNES", True))):
+            fe4._wertungskasten_zeichnen(
+                "Ein recht langer Spielname - Teil Zwei", "SNES",
+                fe4._wertung_zeilen("SNES", True), sel_,
+                {"spass": 92, "grafik": 85, "zweit": 74}, 40000,
+                (("2026-10-01", 80), ("2026-11-20", 92)),
+                eintrag=("X", "game", ["/x", ".sfc", "SNES"]))
+        ok4 = True
+    except Exception as e_:                              # noqa: BLE001
+        ok4 = e_
+    check("Kasten zeichnet sich %dx%d%s, jede Zeile markiert"
+          % (b_, h_, " mit Cover" if cov else ""), ok4 is True, ok4)
+H.set_screen(1280, 720)
+fq3 = fq[fq.index("    def _wertungskasten_zeichnen("):]
+fq3 = fq3[:fq3.index("\n    def ", 10)]
+check("das Cover kommt ueber _wertung_cover, der Kasten bekommt den Eintrag",
+      "self._wertung_cover(eintrag, syskey" in fq3
+      and "eintrag=(label, kind, arg))" in fq)
+
 print()
 if fails:
     print("ROT: %d Pruefung(en) fehlgeschlagen:" % len(fails))

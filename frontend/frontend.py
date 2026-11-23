@@ -5165,7 +5165,8 @@ class Frontend:
         i = zeilen.index("spass")
         while True:
             self._wertungskasten_zeichnen(label, syskey, zeilen, i, werte,
-                                          sek, WT.damals_heute(alt))
+                                          sek, WT.damals_heute(alt),
+                                          eintrag=(label, kind, arg))
             akt = self.inp.read_action(timeout=None)
             if akt in ("back", "exit"):
                 return None
@@ -5226,103 +5227,256 @@ class Frontend:
             return t("wertung_spieler_" + wert)
         return str(wert)
 
+    # ------------------------------------------------------------------
+    # BUILD 348: DER WERTUNGSKASTEN IM HEFT-STIL
+    #
+    # Nutzerwahl aus drei Entwuerfen: "A mit C mit Cover bild" - der
+    # Testkasten wie im Heft (Rahmen, Kopfband in der Systemfarbe, der
+    # Spielspass gross in einem farbigen Feld, der Stempel als roter
+    # Stempelrahmen), dazu die Segmente wie ein Aussteuerungsmesser statt
+    # glatter Balken, und links das Cover. Auf der Roehre (unter 640
+    # Punkten Breite) bleibt der Kasten schmal: Kopfband, Zeilen mit
+    # Segmenten, der Stempel im Kopf - fuer Cover und grosses Feld ist
+    # dort kein Platz, ohne die Zeilen zu verdraengen.
+    # ------------------------------------------------------------------
+    WERTUNG_STEMPEL_FARBE = (226, 60, 60)
+    WERTUNG_WEISS = (255, 255, 255)
+
+    def _wertung_segmente(self, x, y, w, h, wert, s):
+        """Ein Pegel: n Segmente, rot bis 49, gelb bis 79, gruen ab 80 -
+        jedes Segment in der Farbe SEINER Stufe, nicht der des Werts."""
+        fb = self.fb
+        luecke = max(1, s)
+        n = 20 if w >= 20 * (3 * s + luecke) else 10
+        sw = max(1, (w - (n - 1) * luecke) // n)
+        aus = fb._darken(C_TEXT, 0.18)
+        voll = 0 if wert is None else int(round(wert * n / 100.0))
+        for k in range(n):
+            if k < voll:
+                farbe = self.WERTUNG_FARBEN[WT.farbstufe((k + 1) * 100 // n)]
+            else:
+                farbe = aus
+            fb.rect(x + k * (sw + luecke), y, sw, h, farbe)
+        return n
+
+    def _wertung_stempel_zeilen(self, st):
+        return self._wertung_stempel_name(st).replace("-", " ").split(" ", 1)
+
+    def _wertung_stempel_mass(self, st, s):
+        """(Breite, Hoehe) des Stempelrahmens."""
+        zeilen = self._wertung_stempel_zeilen(st)
+        return (max(len(z) for z in zeilen) * 16 * s + 16 * s,
+                len(zeilen) * 20 * s + 12 * s)
+
+    def _wertung_stempel_rahmen(self, x, y, st, s, bg):
+        """Der Stempel als doppelter roter Rahmen, zweizeilig
+        ("DRAGEND" / "KLASSIKER"). Liefert (Breite, Hoehe)."""
+        fb = self.fb
+        zeilen = self._wertung_stempel_zeilen(st)
+        sc = 2 * s
+        bw, bh = self._wertung_stempel_mass(st, s)
+        rot = self.WERTUNG_STEMPEL_FARBE
+        d = max(2, s + 1)
+        for dx, dy, ww, hh, dd in ((0, 0, bw, bh, d),
+                                   (3 * s, 3 * s, bw - 6 * s, bh - 6 * s,
+                                    max(1, s // 2 or 1))):
+            fb.rect(x + dx, y + dy, ww, dd, rot)
+            fb.rect(x + dx, y + dy + hh - dd, ww, dd, rot)
+            fb.rect(x + dx, y + dy, dd, hh, rot)
+            fb.rect(x + dx + ww - dd, y + dy, dd, hh, rot)
+        ty = y + 6 * s
+        for z in zeilen:
+            fb.text(x + 8 * s, ty, z, sc, rot, bg)
+            ty += 10 * sc
+        return bw, bh
+
+    def _wertung_cover(self, eintrag, syskey, bw, bh):
+        """Das Cover fuer den Kasten - gemerkt, damit nicht jeder
+        Tastendruck es neu holt. Kein Cover (oder noch in Arbeit) wird
+        nicht gemerkt: beim naechsten Bild wird wieder gefragt."""
+        if not eintrag:
+            return None
+        schl = (eintrag[0], syskey, bw, bh)
+        merk = getattr(self, "_wertung_cover_merk", None)
+        if merk and merk[0] == schl:
+            return merk[1]
+        try:
+            art, _verz = self._ansicht_cover(
+                eintrag, None if syskey == WT.ARCADE else syskey, bw, bh)
+        except Exception:                                # noqa: BLE001
+            art = None
+        if art:
+            self._wertung_cover_merk = (schl, art)
+        return art
+
     def _wertungskasten_zeichnen(self, label, syskey, zeilen, i, werte, sek,
-                                 verlauf=None):
+                                 verlauf=None, eintrag=None):
         fb = self.fb
         W, H = fb.width, fb.height
         s = _skala(W, H)
         ox = max(4, W * OVERSCAN_X // 100)
         oy = max(4, H * OVERSCAN_Y // 100)
-        maxc = max(8, (W - 2 * ox) // (8 * s))
-        akzent = accent_for(syskey) if syskey != WT.ARCADE else C_ACCENT
+        weiss = self.WERTUNG_WEISS
+        band = accent_for(syskey) if syskey != WT.ARCADE else C_ACCENT
+        gross = W >= 640
+        hint = t("wertung_hinweis")
+        sc = s - 1 if s > 1 else 1
+        hint_h = len(self._hinweis_zeilen(hint, sc)) * 11 * sc + 4 * s
         fb.clear(C_BG)
-        titel = t("wertung_titel")
-        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
-        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
-        # Der Stempel steht rechts neben dem Titel - eine Zeile gespart,
-        # die auf der Roehre fehlen wuerde (Build 347).
-        if WT.stempel_an():
-            st = WT.stempel({"spass": werte.get("spass")}, sek)
-            if st:
-                stp = "* %s *" % self._wertung_stempel_name(st)
-                if len(titel) * 8 * ts + (len(stp) + 2) * 8 * s \
-                        <= W - 2 * ox:
-                    fb.text(W - ox - len(stp) * 8 * s,
-                            oy + (10 * ts - 8 * s) // 2, stp, s, C_ACCENT,
-                            C_BG)
-        y = oy + 10 * ts + 6 * s
-        fb.text(ox, y, display_name(label or "")[:maxc], s, C_TEXT, C_BG)
-        y += 12 * s
+        # --- der Kasten: Rahmen, Flaeche, Kopfband --------------------
+        x0, y0 = ox, oy
+        bw, bh = W - 2 * ox, H - oy - hint_h - y0
+        rand = max(2, s)
+        fb.rect(x0, y0, bw, bh, C_PANEL)
+        fb.rect(x0, y0, bw, rand, band)
+        fb.rect(x0, y0 + bh - rand, bw, rand, band)
+        fb.rect(x0, y0, rand, bh, band)
+        fb.rect(x0 + bw - rand, y0, rand, bh, band)
+        ts = s + 1 if gross else s
+        kopf_h = 10 * ts + 8 * s
+        fb.rect(x0, y0, bw, kopf_h, band)
+        innen = 6 * s
+        maxc_t = max(4, (bw - 2 * innen) // (8 * ts))
         sysname = self._wertung_systemname(syskey)
-        fb.text(ox, y, sysname[:maxc], s, akzent, C_BG)
-        # Damals gegen heute (Build 347) rechts daneben, wenn es passt.
+        name = display_name(label or "").upper()
+        rechts = sysname
+        st = (WT.stempel({"spass": werte.get("spass")}, sek)
+              if WT.stempel_an() else None)
+        if not gross and st:
+            rechts = "*%s*" % self._wertung_stempel_name(st)
+            if (len(rechts) + 2) * 8 * s >= bw // 2:
+                rechts = sysname
+        if (len(rechts) + 2) * 8 * s >= bw // 2:
+            rechts = ""
+        platz_r = (len(rechts) + 2) * 8 * s if rechts else 0
+        maxc_n = max(4, (bw - 2 * innen - platz_r) // (8 * ts))
+        fb.text(x0 + innen, y0 + 4 * s, name[:min(maxc_t, maxc_n)], ts,
+                weiss, band)
+        if rechts:
+            fb.text(x0 + bw - innen - len(rechts) * 8 * s,
+                    y0 + 4 * s + (10 * ts - 8 * s) // 2, rechts, s, weiss,
+                    band)
+        y_inhalt = y0 + kopf_h + 6 * s
+        unten = y0 + bh - rand - 4 * s
+        # --- links: Cover und das grosse Feld (nur ab 640 Breite) -----
+        if gross:
+            lw = (bw - 2 * innen) * 30 // 100
+            lx = x0 + innen
+            feld_h = max(30 * s, (unten - y_inhalt) * 32 // 100)
+            cov_h = max(0, unten - y_inhalt - feld_h - 6 * s)
+            if cov_h >= 30 * s:
+                art = self._wertung_cover(eintrag, syskey, lw, cov_h)
+                if art:
+                    aw, ah, pix = art
+                    self.blit(lx + max(0, (lw - aw) // 2),
+                              y_inhalt + max(0, (cov_h - ah) // 2),
+                              aw, ah, pix)
+                else:
+                    self._kachel_platzhalter(lx, y_inhalt, lw, cov_h,
+                                             label, s, False)
+            else:
+                feld_h = unten - y_inhalt
+                cov_h = -6 * s
+            fy = y_inhalt + cov_h + 6 * s
+            spass = werte.get("spass")
+            feld = self.WERTUNG_FARBEN.get(WT.farbstufe(spass), C_ACCENT)
+            fb.rect(lx, fy, lw, feld_h, feld)
+            if zeilen[i] == "spass":
+                d = max(2, s)
+                fb.rect(lx, fy, lw, d, weiss)
+                fb.rect(lx, fy + feld_h - d, lw, d, weiss)
+                fb.rect(lx, fy, d, feld_h, weiss)
+                fb.rect(lx + lw - d, fy, d, feld_h, weiss)
+            zahl = "%d%%" % (spass or 0)
+            zs = max(1, min((lw - 8 * s) // (len(zahl) * 8),
+                            (feld_h - 16 * s) // 10))
+            unter = t("wertung_spass").upper()
+            us = s if len(unter) * 8 * s <= lw - 4 * s else max(1, s - 1)
+            block = 10 * zs + 4 * s + 8 * us
+            zy = fy + max(2 * s, (feld_h - block) // 2)
+            fb.text(lx + max(0, (lw - len(zahl) * 8 * zs) // 2), zy, zahl,
+                    zs, weiss, feld)
+            fb.text(lx + max(0, (lw - len(unter) * 8 * us) // 2),
+                    zy + 10 * zs + 4 * s, unter[:max(1, lw // (8 * us))],
+                    us, weiss, feld)
+            rx = lx + lw + 10 * s
+        else:
+            rx = x0 + innen
+        rw = x0 + bw - innen - rx
+        # --- unten rechts: Stempel; darueber damals/heute -------------
+        stempel_h = 0
+        if gross and st:
+            probe_b, probe_h = self._wertung_stempel_mass(st, s)
+            if probe_b <= rw and probe_h < (unten - y_inhalt) // 3:
+                self._wertung_stempel_rahmen(x0 + bw - innen - probe_b,
+                                             unten - probe_h, st, s,
+                                             C_PANEL)
+                stempel_h = probe_h + 4 * s
+        maxc_r = max(4, rw // (8 * s))
+        # Auf der Roehre der Stempel als Schrift unten rechts - fuer den
+        # Rahmen ist dort kein Platz (Build 348).
+        if not gross and st:
+            _stp = "*%s*" % self._wertung_stempel_name(st)
+            if len(_stp) <= maxc_r:
+                fb.text(rx + rw - len(_stp) * 8 * s, unten - 10 * s, _stp, s,
+                        self.WERTUNG_STEMPEL_FARBE, C_PANEL)
+                stempel_h = 14 * s
         if verlauf:
             (d0, w0), (d1, w1) = verlauf
             dh = "%d%% (%s) -> %d%% (%s)" % (w0, WT.datum_lesbar(d0), w1,
                                              WT.datum_lesbar(d1))
-            if len(sysname) + len(dh) + 2 > maxc:
+            if len(dh) > maxc_r - ((len(self._wertung_stempel_name(st)) + 4
+                                    if gross else
+                                    len(self._wertung_stempel_name(st)) + 3)
+                                   if stempel_h else 0):
                 dh = "%d%% -> %d%%" % (w0, w1)
-            if len(sysname) + len(dh) + 2 <= maxc:
-                fb.text(W - ox - len(dh) * 8 * s, y, dh, s, C_DIM, C_BG)
-        y += 16 * s
+            dy = unten - 10 * s
+            fb.text(rx, dy, dh[:maxc_r], s, C_DIM, C_PANEL)
+            zeilen_unten = dy - 4 * s
+        else:
+            zeilen_unten = unten
+        if stempel_h:
+            zeilen_unten = min(zeilen_unten, unten - stempel_h)
+        # --- rechts: die Zeilen mit Segmenten -------------------------
         namen = {z: (t("wertung_loeschen") if z == "loeschen"
                      else self._wertung_name(z)) for z in zeilen}
-        lw = min(maxc // 2, max(len(n) for n in namen.values()) + 1)
-        wert_x = ox + lw * 8 * s
-        text_w = 5 * 8 * s                     # " 100%"
-        bar_w = W - ox - wert_x - text_w - 2 * s
-        # Die Zeilenhoehe richtet sich nach dem Platz bis zum Hinweis -
-        # mit Zweitmeinung und Fazit sind es bis zu elf Zeilen, und auf
-        # 320x240 muessen sie samt Hinweis hineinpassen.
-        hint = t("wertung_hinweis")
-        sc = s - 1 if s > 1 else 1
-        hint_h = len(self._hinweis_zeilen(hint, sc)) * 11 * sc + 4 * s
-        platz = H - oy - hint_h - y
+        lw_z = min(maxc_r // 2, max(len(n) for n in namen.values()) + 1)
+        wert_x = rx + lw_z * 8 * s
+        text_w = 5 * 8 * s
+        seg_w = rx + rw - wert_x - text_w - 2 * s
         trenner = 3 * s * sum(1 for z in zeilen if z in ("spass", "loeschen"))
-        zeile_h = max(9 * s, min(14 * s, (platz - trenner)
-                                 // max(1, len(zeilen))))
-        rand = max(1, (zeile_h - 8 * s) // 2)
-        spur = fb._darken(C_TEXT, 0.25)
+        platz = zeilen_unten - y_inhalt - trenner
+        zeile_h = max(9 * s, min(16 * s, platz // max(1, len(zeilen))))
+        rnd = max(1, (zeile_h - 8 * s) // 2)
+        y = y_inhalt + rnd
+        sel_bg = fb._darken(C_ACCENT, 0.45)
+        linie = fb._darken(C_TEXT, 0.25)
         for j_, z in enumerate(zeilen):
             if z in ("spass", "loeschen"):
-                fb.rect(ox, y - rand, W - 2 * ox, max(1, s // 2), spur)
+                fb.rect(rx, y - rnd - max(1, s // 2), rw, max(1, s // 2),
+                        linie)
                 y += 3 * s
             sel = j_ == i
-            # Nutzermeldung (Build 347): "ich sehe nicht, auf welcher
-            # Bewertung ich gerade stehe" - C_PANEL war auf C_BG kaum zu
-            # unterscheiden. Jetzt ein Band in der Akzentfarbe mit einer
-            # vollen Markierung links, und der Name hell.
-            sel_bg = fb._darken(C_ACCENT, 0.45)
-            bg = sel_bg if sel else C_BG
+            bg = sel_bg if sel else C_PANEL
             if sel:
-                _x0 = max(0, ox - 4 * s)
-                fb.rect(_x0, y - rand, W - ox + 2 * s - _x0,
-                        8 * s + 2 * rand, sel_bg)
-                fb.rect(_x0, y - rand, max(2, 2 * s), 8 * s + 2 * rand,
+                fb.rect(rx - 4 * s, y - rnd, rw + 4 * s, 8 * s + 2 * rnd,
+                        sel_bg)
+                fb.rect(rx - 4 * s, y - rnd, max(2, 2 * s), 8 * s + 2 * rnd,
                         C_ACCENT)
-            farbe_name = C_TITLE if (z == "spass" or sel) else C_TEXT
-            fb.text(ox, y, namen[z][:lw if z != "loeschen" else maxc], s,
-                    farbe_name, bg)
+            farbe = C_TITLE if (z == "spass" or sel) else C_TEXT
+            fb.text(rx, y, namen[z][:lw_z if z != "loeschen" else maxc_r], s,
+                    farbe, bg)
             if z != "loeschen":
                 w = werte.get(z)
                 txt = self._wertung_beschriftung(z, w)
                 if z in self.WERTUNG_PROZENT:
-                    if bar_w >= 16 * s:
-                        fb.rect(wert_x, y + 2 * s, bar_w, 4 * s, spur)
-                        if w:
-                            fb.rect(wert_x, y + 2 * s,
-                                    max(1, bar_w * w // 100), 4 * s,
-                                    self.WERTUNG_FARBEN.get(
-                                        WT.farbstufe(w), C_ACCENT))
-                    fb.text(W - ox - len(txt) * 8 * s, y, txt, s,
-                            C_TITLE if (z == "spass" or sel) else C_TEXT,
-                            bg)
+                    if seg_w >= 10 * (2 * s + 1):
+                        self._wertung_segmente(wert_x, y, seg_w, 8 * s, w, s)
+                    fb.text(rx + rw - len(txt) * 8 * s, y, txt, s, farbe, bg)
                 else:
-                    fb.text(wert_x, y, txt[:max(1, maxc - lw)], s,
-                            C_TITLE if sel else C_TEXT, bg)
+                    fb.text(wert_x, y, txt[:max(1, maxc_r - lw_z)], s, farbe,
+                            bg)
             y += zeile_h
-        # Der volle Hinweis - _hinweis_unten() bricht ihn auf der Roehre
-        # auf bis zu drei Zeilen um; die Zeilen oben lassen den Platz.
         self._hinweis_unten(hint, sc)
         fb.flip()
 
