@@ -138,6 +138,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Jahresrückblick** | Statistik für das laufende Kalenderjahr |
 | **Spielzeit-Tracker** | Wie lange, wie oft, wann zuletzt — pro Spiel und pro System |
 | **Top-10-Listen** | Nach Spielzeit, Startzahl, Systemen |
+| **Heft-Tests von kultboy.com** | Zu jedem Spiel die Tests aus den alten Magazinen: Liste mit Heft, Ausgabe und Wertung, dazu die **gescannte Heftseite** mit Zoom – online auf Knopfdruck, nichts wird gespeichert. Schalter, Vorgabe AUS |
 | **Eigene Wertungen** | Wie früher im Heft: Spielspaß in Prozent, auf Wunsch Grafik, Sound/Musik, Steuerung je nach Gerät, Stempel „Dragend-Hit“ ab 85 %. Kurze Frage nach dem Spielen (A speichert, B später), Kurzfazit, Zweitmeinung, „damals – heute“, Testarchiv je System, ein **Monatsheft** und Export als CSV. **Abschaltbar — und nach einem Update erst einmal aus** |
 | **RetroAchievements** | Fortschritt, Erfolgs-Vitrine (F6), Popup bei neuen Erfolgen |
 | **Durchgespielt & eigene Erfolge** | Auch für Spiele ohne RA-Unterstützung |

@@ -122,7 +122,14 @@ class _WT(object):
             kind == "core" and str(arg).lower().endswith(".mra")))
 
 
-_um = {"t": TR.t, "WT": _WT}
+_KB_AN = [False]
+
+
+class _KB(object):
+    an = staticmethod(lambda: _KB_AN[0])
+
+
+_um = {"t": TR.t, "WT": _WT, "KB": _KB}
 exec(compile(_quelle, "<kontextmenue>", "exec"), _um)
 
 
@@ -187,6 +194,17 @@ check("Wertungen AN: 'Bewerten...' bei Spiel und Arcade, nicht beim Ordner",
       and TR.t("ctx_bewerten") in a_m.gezeigt
       and TR.t("ctx_bewerten") not in a_o.gezeigt)
 _WT_AN[0] = False
+check("Kultboy AUS (Vorgabe): kein 'Heft-Tests'",
+      TR.t("ctx_kultboy") not in a_w.gezeigt)
+_KB_AN[0] = _WT_AN[0] = True
+a_k = Attrappe(1, [SPIEL])
+a_k.kontextmenue()
+a_ko = Attrappe(1, [ORDNER])
+a_ko.kontextmenue()
+check("Kultboy AN: 'Heft-Tests' bei einem Spiel, nicht beim Ordner",
+      TR.t("ctx_kultboy") in a_k.gezeigt
+      and TR.t("ctx_kultboy") not in a_ko.gezeigt)
+_KB_AN[0] = _WT_AN[0] = False
 # BUILD 310: die Core-Wahl je Spiel, und sie folgt derselben Regel wie
 # die Anleitung darueber - ein Punkt, der einen leeren Bildschirm
 # oeffnet, ist einer zu viel.
@@ -298,7 +316,8 @@ namen = set(re.findall(r'eintraege\.append\(\s*\([^,]+,\s*"([a-z_]+)"\)',
 namen |= set(re.findall(r'"([a-z_]+)"\)\)', _quelle))
 namen = {n for n in namen if not n.startswith("ctx_")}
 EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung",
-          "core_spiel", "spiel_info", "bewerten"}
+          "core_spiel", "spiel_info", "bewerten", "kultboy"}
+# "kultboy" (Build 350): die Heft-Tests, ebenfalls nur hier.
 # "bewerten" (Build 346): der Wertungskasten, ebenfalls nur hier.
 # "core_spiel" (Build 310) und "spiel_info" (Build 311) stehen aus
 # demselben Grund hier wie "anleitung": es gibt keine freie Taste
@@ -323,7 +342,7 @@ for n in sorted(namen - EIGENE):
           n in behandelt, "sonst passiert beim Auswaehlen nichts")
 for n in sorted(EIGENE):
     check("'%s' hat einen eigenen Zweig" % n,
-          ('"%s"' % n) in _FE.split('elif act == "back_fe":')[1][:3200])
+          ('"%s"' % n) in _FE.split('elif act == "back_fe":')[1][:4000])
 
 # ---------------------------------------------------------------------------
 print()

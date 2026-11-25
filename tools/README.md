@@ -12134,3 +12134,80 @@ der Text in `fe/translations.py`; der Schluessel `gut_gealtert` bleibt in
 `WT.FAZITE` und in `bewertungen.json`, damit vorhandene Wertungen den
 neuen Text zeigen, ohne dass die Datei angefasst wird.
 `tools/test_wertungen.py` prueft Text und Schluessel.
+
+## Nachtrag Build 350 - Heft-Tests von kultboy.com
+
+**Stand:** 25.11.2026, `Dragend_Build_350.zip` (build_id
+`2026-11-25-350`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: zu einem Spiel die Tests aus den alten Magazinen zeigen,
+mit der gescannten Heftseite - online, nur auf Knopfdruck, NICHT
+speichern; merken darf Dragend nur, welche Kultboy-Seite zu welchem
+Spiel gehoert. Keine Projektkennung beim Abruf, kein QR-Code.
+
+### Der Aufbau der Seiten
+
+Vom Nutzer im Browser gespeichert (11/2026) und in fe/kultboy.py
+beschrieben: Suche `index.php?site=testb/testb&q=..&system=<Nr>`
+(Ergebniszeilen `tr class="row2"/"row3"`, je Spiel ein Link
+`/testbericht-uebersicht/<Nr>/` mit allen Namen durch `<br>`),
+Uebersicht (je Test `tr bgcolor="#eee8aa"`: Heft, Art + Link
+`index.php?site=t&id=<Nr>`, Grafik, Sound, Wertung oder EINE Zelle
+`colspan=3`, System - mehrere Systeme durch `<br>`), Testseite (Heft im
+Link `/magazin/<Nr>/`, der Scan als `background="/gfx/..."` einer
+Tabellenzelle unter einem durchsichtigen testbericht.gif). Die Seiten
+nennen windows-1252, kommen aber auch als UTF-8 - `_text()` nimmt UTF-8
+und faellt auf cp1252 zurueck.
+
+### fe/kultboy.py (neu)
+
+- `SYSTEME`: Dragend-Systemschluessel -> Kultboy-Systemnummern (das
+  erste fuer die Suche, alle fuer das Sortieren).
+- `finden()`: Suche mit System, dann ohne, dann mit dem Namen vor
+  `:`/` - `; Umlaute zusaetzlich in cp1252. `_guete()`: 3 gleich, 2
+  gleich bis zum Doppelpunkt, 1 beginnt damit. Eindeutig ab 2 (oder ein
+  einziger Treffer mit 1) -> `('treffer', nr)`, sonst `('auswahl',
+  [(nr, name)])`, nichts -> `KultboyFehler('nichts')`.
+- `holen()`: urllib, `ZEITLIMIT` = 8 s, hoechstens 6 MB, Fehler als
+  `KultboyFehler` ('netz', 'zeit', 'seite'). User-Agent ohne Projektnamen
+  (Wunsch des Nutzers).
+- Merker `/media/fat/frontend/kultboy_zuordnung.json` - nur
+  "System|Name" -> Nummer, ueber `.tmp`.
+- Schalter `kultboy_an`, Vorgabe AUS: die robots.txt von kultboy.com
+  schliesst Programme von `/gfx/` aus, wo die Scans liegen.
+
+### Frontend
+
+- Kontextmenue `Heft-Tests (Kultboy)` (nur bei AN, bei Spielen und
+  .mra). `_kultboy_ablauf()`: Netzpruefung, gemerkte Nummer oder Suche
+  (Auswahl einmal, dann gemerkt), Testliste (`tests_sortiert()`, eigenes
+  System zuerst, `zeile()` mit der Wertung des eigenen Systems), Test ->
+  Scans -> Betrachter. Ist eine gemerkte Seite nicht mehr lesbar, wird
+  der Merker vergessen.
+- `_kultboy_warten()`: jeder Abruf im Faden, ein eigener Bildschirm,
+  B/Esc bricht ab (der Faden laeuft aus, sein Ergebnis wird verworfen),
+  hoechstens 2 x ZEITLIMIT + 2 s.
+- `_kultboy_betrachter()`: Zoomstufen `_kultboy_faktoren()` (passend =
+  groesste ganze Vergroesserung oder verkleinert, dann 1:1, dann
+  doppelt), Ausschnitt `_kultboy_ausschnitt()`, Steuerkreuz verschiebt
+  (links/rechts blaettert, wenn nichts zu verschieben ist), Select
+  naechste Seite, B zurueck. Bilder nur im Arbeitsspeicher, beim
+  Verlassen geleert. Unten Heft, Seite, Zoom und die Quelle.
+- Systemmenue Statistiken & Erfolge: `Heft-Tests von kultboy.com:
+  AN/AUS`.
+
+### Pruefungen
+
+`tools/test_kultboy.py` neu - ohne Netz, mit nachgebauten Ausschnitten
+der Seiten: Schalter und Menue, Lesen (Suche, Uebersicht mit allen
+Sonderfaellen, Testseite), Finden (eindeutig, Auswahl, zweiter Versuch,
+nichts), Merker, der ganze Ablauf im Frontend mit einem nachgebauten
+Netz (Auswahl, Liste, Betrachter, zweites Mal ohne Suche, kaputte
+gemerkte Seite, kein Netz, Zeitueberschreitung, nichts, Abbruch mit B),
+Betrachter in zwei Aufloesungen (nichts auf die Karte geschrieben).
+`tools/test_kontextmenue.py`: Eintrag nur bei AN und nur bei Spielen.
+`tools/_harness.py` lenkt Schalter und Merker um. Der Betrachter gibt
+nach 50 leeren Antworten der Eingabe auf, statt endlos neu zu zeichnen
+(auf dem Geraet wird blockierend gefragt; beim Pruefen einer
+Abwandlung hing genau dort ein Lauf).

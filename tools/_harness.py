@@ -115,6 +115,12 @@ import fe.art as _ART_LEER                               # noqa: E402
 _ART_LEER.LEER_MERKER_FILE = os.path.join(_WT_ORDNER, "art_leer.json")
 _ART_LEER._leer[0] = None
 
+# BUILD 350: die Kultboy-Schalter und -Zuordnung in denselben Ordner.
+import fe.kultboy as _KB                                 # noqa: E402
+_KB.AN_FLAG = os.path.join(_WT_ORDNER, "kultboy_an")
+_KB.ZUORDNUNG_FILE = os.path.join(_WT_ORDNER, "kultboy_zuordnung.json")
+_KB._an[0] = None
+
 # BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
 # Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,
 # setzt WEIHNACHT.ERZWUNGEN = True (tools/test_weihnachten.py).

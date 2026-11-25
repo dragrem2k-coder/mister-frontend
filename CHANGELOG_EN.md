@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Magazine reviews from kultboy.com.** In a game's context menu:
+  "Magazine reviews (Kultboy)". Dragend searches Kultboy for the game,
+  lists the reviews with magazine, issue and rating (those for your
+  system first) and, if you like, shows the scanned magazine page – with
+  zoom (fitted, 1:1, double), panning and paging. Loading happens only on
+  demand, B cancels while loading; the only thing stored is which Kultboy
+  page belongs to which game. Switch under System → Statistics &
+  achievements, OFF by default (kultboy.com's robots.txt excludes
+  programs from its image folder – switch it on once Kultboy agrees).
+
 - **Verdict "Old but Gold"** instead of "Aged well". Ratings you
   already saved show the new text by themselves.
 

@@ -126,7 +126,9 @@ GRUPPEN = (
       # Build 346: die eigenen Wertungen
       "wertungen", "wertung_fragen", "wertung_fragen_ab", "wertung_liste",
       "wertung_kategorien", "wertung_stempel", "wertung_zweit",
-      "wertung_heft", "wertung_monatsheft", "wertung_csv"),
+      "wertung_heft", "wertung_monatsheft", "wertung_csv",
+      # Build 350
+      "kultboy_an"),
      ("fremdquellen", "rom_filter", "multidisc")),
     ("performance", ("Performance", "Performance"),
      ("Was das Frontend schneller macht - Miniaturen, Auflösung, Scrollen.",

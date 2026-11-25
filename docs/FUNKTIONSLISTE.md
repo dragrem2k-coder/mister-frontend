@@ -58,7 +58,7 @@ Frontend liest diese Datei, legt sie aber nie an und
 aendert darin hoechstens die eine Zeile, um die es
 gerade geht.
 
-### Statistiken & Erfolge (7 Eintraege)
+### Statistiken & Erfolge (8 Eintraege)
 
 - `Top 10: meistgespielt`
 - `Top 10: meistgestartet`
@@ -67,6 +67,7 @@ gerade geht.
 - `Jahresrückblick`
 - `Spieltagebuch`
 - `Wertungen: AUS`
+- `Heft-Tests von kultboy.com: AUS`
 
 ### Anzeige & Sound (35 Eintraege)
 
@@ -184,6 +185,7 @@ ein Ordner oder eine Kategorie.
 - Nicht mehr durchgespielt
 - Als durchgespielt merken
 - Bewerten...
+- Heft-Tests (Kultboy)
 - Diesen Eintrag ausblenden
 - Suchen
 - Filter
@@ -402,6 +404,7 @@ Quelltext selbst beschrieben ist.
 - **gimmick** - Das Gimmick unter System -> Wartung: Invade-a-Load auf dem C64-Core (Build 329)
 - **hauptseite** - Die Hauptseite selbst bestimmen - Reihenfolge und Sichtbarkeit der Kategorien (Build 250)
 - **hintergrund** - Ein eigenes Hintergrundbild statt der einfarbigen Flaeche (Build 235)
+- **kultboy** - Heft-Tests von kultboy.com (Build 350)
 - **masken** - MiSTers eigene Shadow Masks - gelesen, nicht mitgeliefert (Build 226)
 - **messwerte** - Messwerte aus dem echten Betrieb (Build 343)
 - **mister_favs** - MiSTers

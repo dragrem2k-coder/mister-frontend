@@ -140,6 +140,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Year in review** | Statistics for the current calendar year |
 | **Playtime tracker** | How long, how often, when last — per game and per system |
 | **Top 10 lists** | By playtime, launch count, systems |
+| **Magazine reviews from kultboy.com** | The reviews of each game from old German games magazines: list with magazine, issue and rating, plus the **scanned magazine page** with zoom – online on demand, nothing is stored. A switch, OFF by default |
 | **Your own ratings** | Like an old games magazine: fun in percent, plus graphics, sound/music and controls depending on the device if you like, a "Dragend hit" stamp from 85%. A short question after playing (A saves, B later), verdict, second opinion, "then and now", a test archive per system, a **monthly issue** and CSV export. **Can be switched off — and starts off after an update** |
 | **RetroAchievements** | Progress, achievement showcase (F6), popup when you earn one |
 | **Completed & custom achievements** | Also for games RA does not support |

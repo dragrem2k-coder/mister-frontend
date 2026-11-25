@@ -170,6 +170,7 @@ history to read up on (`CHANGELOG.md`).
    - 8i. Playtime tracker
    - 8j. Top 10 lists
    - 8j-2. Your own ratings, magazine style
+   - 8j-3. Magazine reviews from kultboy.com
    - 8k. RetroAchievements progress
    - 8l. Choosing a standard or RA core
    - 8m. Completed status + your own achievements
@@ -1487,6 +1488,42 @@ opinion, stamp, date, first rating, play time in hours.
 (system and name), with date and earlier values. It is written via a
 temporary file; a damaged file is moved aside as
 `bewertungen.json.kaputt` instead of being overwritten.
+
+## 8j-3. Magazine reviews from kultboy.com (Build 350)
+
+View the reviews of a game from old German games magazines – magazine,
+issue, rating and the **scanned magazine page** – straight from
+[kultboy.com](https://www.kultboy.com).
+
+**Switching it on:** System → Statistics & achievements → press
+`Magazine reviews from kultboy.com: OFF`. Default is OFF. The MiSTer
+needs an internet connection.
+
+**How it works:** open the context menu in the game list (X on the pad,
+F1) → `Magazine reviews (Kultboy)`.
+
+1. Dragend searches Kultboy for the game (name without bracketed
+   extras, first with the system). If the match is not unique you pick
+   once from a list – after that Dragend remembers the number of the
+   Kultboy page and does not search for this game again.
+2. The list of reviews appears, those for your system first:
+   `Amiga Joker 3/91  89%  Amiga`. If one review covers several systems,
+   the rating of yours is shown.
+3. A review opens the magazine page. **A** zooms (fitted, 1:1, double),
+   the **D-pad** moves, **Select** goes to the next page, **B** goes
+   back.
+
+While something loads, a screen of its own is shown; **B** cancels. No
+network, no answer (after 8 seconds) or no review found: a message, the
+frontend never hangs.
+
+**Nothing is stored** except the link game → Kultboy page
+(`/media/fat/frontend/kultboy_zuordnung.json`, numbers only). Lists and
+pages are kept in memory only and are gone when you leave.
+
+**Note:** kultboy.com excludes programs from the image folder holding
+the scans in its `robots.txt`. That is why the switch is OFF by default
+– switch it on once Kultboy agrees.
 
 ## 8k. RetroAchievements progress
 
@@ -2910,6 +2947,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Monthly issue: ON/OFF | `wertung_heft` |
 | Read the monthly issue | `wertung_monatsheft` |
 | Save test archive as CSV | `wertung_csv` |
+| Magazine reviews from kultboy.com: ON/OFF | `kultboy_an` |
 
 ### Display & Sound
 

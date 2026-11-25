@@ -174,6 +174,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8i. Spielzeit-Tracker
    - 8j. Top-10-Listen
    - 8j-2. Eigene Wertungen im Heft-Stil
+   - 8j-3. Heft-Tests von kultboy.com
    - 8k. RetroAchievements-Fortschritt
    - 8l. Standard- oder RA-Core wählen
    - 8m. Durchgespielt-Status + eigene Erfolge
@@ -1742,6 +1743,42 @@ Zweitmeinung, Stempel, Datum, erste Wertung, Spielzeit in Stunden.
 Spiel (System und Name), mit Datum und den bisherigen Werten. Sie wird
 über eine Zwischendatei geschrieben; eine beschädigte Datei wird als
 `bewertungen.json.kaputt` beiseitegelegt statt überschrieben.
+
+## 8j-3. Heft-Tests von kultboy.com (Build 350)
+
+Zu einem Spiel die Tests aus den alten Magazinen ansehen – Heft,
+Ausgabe, Wertung und die **gescannte Heftseite** – direkt von
+[kultboy.com](https://www.kultboy.com).
+
+**Einschalten:** System → Statistiken & Erfolge → `Heft-Tests von
+kultboy.com: AUS` drücken. Vorgabe ist AUS. Der MiSTer braucht dafür eine
+Internetverbindung.
+
+**So geht's:** In der Spieleliste das Kontextmenü öffnen (X am Pad, F1)
+→ `Heft-Tests (Kultboy)`.
+
+1. Dragend sucht das Spiel bei Kultboy (Name ohne Klammerzusätze, zuerst
+   mit dem System). Ist der Treffer nicht eindeutig, wählst du einmal
+   aus einer Liste – danach merkt sich Dragend die Nummer der
+   Kultboy-Seite und sucht für dieses Spiel nicht mehr.
+2. Es erscheint die Liste der Tests, die zum eigenen System zuerst:
+   `Amiga Joker 3/91  89%  Amiga`. Bei mehreren Systemen in einem Test
+   steht die Wertung des eigenen.
+3. Ein Test öffnet die Heftseite. **A** zoomt (passend, 1:1, doppelt),
+   das **Steuerkreuz** verschiebt, **Select** blättert zur nächsten
+   Seite, **B** geht zurück.
+
+Während etwas geladen wird, steht ein eigener Bildschirm da; **B**
+bricht ab. Kein Netz, keine Antwort (nach 8 Sekunden) oder kein Test
+gefunden: eine Meldung, das Frontend hängt nie.
+
+**Gespeichert wird nichts** außer der Zuordnung Spiel → Kultboy-Seite
+(`/media/fat/frontend/kultboy_zuordnung.json`, nur Nummern). Listen und
+Heftseiten liegen nur im Arbeitsspeicher und sind beim Verlassen weg.
+
+**Hinweis:** kultboy.com schließt in seiner `robots.txt` Programme vom
+Bilder-Ordner aus, in dem die Scans liegen. Deshalb ist der Schalter
+von Haus aus AUS – einschalten, wenn Kultboy einverstanden ist.
 
 ## 8k. RetroAchievements-Fortschritt
 
@@ -3319,6 +3356,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Monatsheft: AN/AUS | `wertung_heft` |
 | Monatsheft ansehen | `wertung_monatsheft` |
 | Testarchiv als CSV speichern | `wertung_csv` |
+| Heft-Tests von kultboy.com: AN/AUS | `kultboy_an` |
 
 ### Anzeige & Sound
 

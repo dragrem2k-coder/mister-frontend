@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Heft-Tests von kultboy.com.** Im Kontextmenü eines Spiels:
+  „Heft-Tests (Kultboy)“. Dragend sucht das Spiel bei Kultboy, zeigt die
+  Tests mit Heft, Ausgabe und Wertung (die zum eigenen System zuerst) und
+  auf Wunsch die gescannte Heftseite – mit Zoom (passend, 1:1, doppelt),
+  Verschieben und Blättern. Geladen wird nur auf Knopfdruck, während des
+  Ladens bricht B ab; gespeichert wird nur, welche Kultboy-Seite zu
+  welchem Spiel gehört. Schalter unter System → Statistiken & Erfolge,
+  Vorgabe AUS (kultboy.com schließt den Bilder-Ordner in der robots.txt
+  für Programme aus – einschalten, wenn Kultboy einverstanden ist).
+
 - **Kurzfazit „Old but Gold“** statt „Hat gut gealtert“. Schon
   gespeicherte Wertungen zeigen den neuen Text von selbst.
 

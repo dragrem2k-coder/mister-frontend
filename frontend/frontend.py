@@ -1267,6 +1267,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # ----------------------------------------------------------------------------
 import fe.masken as MASKEN
 import fe.wertungen as WT   # Build 346: eigene Wertungen
+import fe.kultboy as KB     # Build 350: Heft-Tests von kultboy.com
 import fe.schriften as SCHRIFTEN
 import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
@@ -4126,6 +4127,10 @@ class Frontend:
                     kind, markiert[2] if len(markiert) > 2 else None):
                 # Build 346: nur bei EIN, und nur bei einem Spiel.
                 eintraege.append((t("ctx_bewerten"), "bewerten"))
+            if markiert is not None and KB.an() and WT.bewertbar(
+                    kind, markiert[2] if len(markiert) > 2 else None):
+                # Build 350: die Heft-Tests von kultboy.com.
+                eintraege.append((t("ctx_kultboy"), "kultboy"))
             if markiert is not None:
                 eintraege.append((t("ctx_verstecken"), "verstecken"))
             eintraege.append((t("ctx_suche"), "search"))
@@ -5479,6 +5484,322 @@ class Frontend:
             y += zeile_h
         self._hinweis_unten(hint, sc)
         fb.flip()
+
+    # ------------------------------------------------------------------
+    # BUILD 350: HEFT-TESTS VON KULTBOY.COM (fe/kultboy.py)
+    #
+    # Nutzerwunsch: zu einem Spiel die Tests aus den alten Magazinen -
+    # die Liste mit Heft, Ausgabe und Wertung, und die gescannte Seite
+    # als Bild. Online, nur auf Knopfdruck, NICHTS auf der Karte ausser
+    # der Nummer der Kultboy-Seite je Spiel. Jeder Abruf laeuft in einem
+    # Faden; waehrenddessen steht ein Bildschirm, und B bricht ab.
+    # ------------------------------------------------------------------
+    def _kultboy_netz(self):
+        try:
+            from fe.retroachievements import _has_network
+            return bool(_has_network())
+        except Exception:                                # noqa: BLE001
+            return True
+
+    def _kultboy_schirm(self, zeilen, hinweis=None):
+        """Ein schlichter Bildschirm: Titel, Text, unten Quelle und
+        Bedienung. zeilen: Liste von Texten."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        fb.clear(C_BG)
+        titel = t("kb_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 10 * s
+        for z in zeilen:
+            for teil in self._wrap(z, maxc, max_lines=3):
+                fb.text(ox, y, teil, s, C_TEXT, C_BG)
+                y += 12 * s
+            y += 4 * s
+        quelle = t("kb_quelle")
+        sc = s - 1 if s > 1 else 1
+        hint = hinweis or t("kb_abbrechen")
+        unten = H - oy - len(self._hinweis_zeilen(hint, sc)) * 11 * sc \
+            - 12 * sc
+        fb.text(max(ox, W - ox - len(quelle) * 8 * sc), unten, quelle, sc,
+                C_DIM, C_BG)
+        self._hinweis_unten(hint, sc)
+        fb.flip()
+
+    def _kultboy_warten(self, text, arbeit):
+        """arbeit() im Faden, der Bildschirm bleibt bedienbar. Liefert
+        ('ok', Ergebnis), ('fehler', Ausnahme) oder ('abbruch', None).
+        Ein abgebrochener Faden laeuft im Hintergrund aus; sein Ergebnis
+        wird verworfen."""
+        import threading
+        erg = {}
+
+        def _lauf():
+            try:
+                erg["wert"] = arbeit()
+            except Exception as e:                       # noqa: BLE001
+                erg["fehler"] = e
+        faden = threading.Thread(target=_lauf, name="Kultboy", daemon=True)
+        faden.start()
+        self._kultboy_schirm([text])
+        ende = time.monotonic() + 2 * KB.ZEITLIMIT + 2.0
+        while faden.is_alive():
+            akt = self.inp.read_action(timeout=0.1)
+            if akt in ("back", "exit"):
+                return "abbruch", None
+            if time.monotonic() > ende:
+                return "fehler", KB.KultboyFehler("zeit")
+        if "fehler" in erg:
+            return "fehler", erg["fehler"]
+        return "ok", erg.get("wert")
+
+    def _kultboy_hinweis(self, text):
+        """Eine Meldung, bis eine Taste kommt (hoechstens 4 s)."""
+        self._kultboy_schirm([text], hinweis=t("kb_weiter"))
+        self.inp.read_action(timeout=4.0)
+
+    def _kultboy_fehlertext(self, fehler):
+        art = getattr(fehler, "art", None)
+        if art in ("netz", "zeit", "nichts", "seite"):
+            return t("kb_fehler_" + art)
+        LOG("Kultboy:\n" + "".join(traceback.format_exception(
+            type(fehler), fehler, fehler.__traceback__)))
+        return t("kb_fehler_seite")
+
+    def _kultboy_bild(self, url):
+        """Ein Scan: holen und dekodieren - nur in den Arbeitsspeicher.
+        (breite, hoehe, BGRX-Pixel) oder None."""
+        daten = KB.holen(url)
+        if daten[:3] == b"\xff\xd8\xff":
+            import fe.bildlib as _BL
+            return _BL.decode_jpeg(daten)
+        if daten[:8] == b"\x89PNG\r\n\x1a\n":
+            return decode_png(daten)
+        return None
+
+    def _kultboy_zeigen(self):
+        """Kontextmenue -> 'Heft-Tests (Kultboy)'."""
+        items = self._display_items()
+        markiert = items[self.item_i] if items else None
+        if not markiert or not KB.an():
+            return
+        kind = markiert[1]
+        arg = markiert[2] if len(markiert) > 2 else None
+        if not WT.bewertbar(kind, arg):
+            return
+        label = markiert[0]
+        kat_syskey = self.cats[self.cat_i][2] if self.cats else None
+        sk = WT.ARCADE if WT.ist_automat(kind, arg) \
+            else self._item_syskey(markiert, kat_syskey)
+        try:
+            self._kultboy_ablauf(sk, label)
+        finally:
+            self._force_full_redraw = True
+            self.draw()
+
+    def _kultboy_ablauf(self, sk, label):
+        if not self._kultboy_netz():
+            self._kultboy_hinweis(t("kb_fehler_netz"))
+            return
+        nr = KB.zuordnung(sk, label)
+        gemerkt = nr is not None
+        if nr is None:
+            st, wert = self._kultboy_warten(
+                t("kb_suche", display_name(label)),
+                lambda: KB.finden(sk, label))
+            if st == "abbruch":
+                return
+            if st == "fehler":
+                self._kultboy_hinweis(self._kultboy_fehlertext(wert))
+                return
+            art, was = wert
+            if art == "auswahl":
+                w = self._wizard_choice(t("kb_welches", display_name(label)),
+                                        [n for _k, n in was],
+                                        hint_key="choice_hint_plain")
+                if w is None:
+                    return
+                nr = was[w][0]
+            else:
+                nr = was
+            KB.zuordnung_merken(sk, label, nr)
+        st, liste = self._kultboy_warten(
+            t("kb_lade_liste"),
+            lambda: KB.tests(KB._text(KB.holen(KB.uebersicht_url(nr)))))
+        if st == "abbruch":
+            return
+        if st == "fehler":
+            if gemerkt and getattr(liste, "art", None) == "seite":
+                # Die gemerkte Seite gibt es nicht mehr - beim naechsten
+                # Mal wird neu gesucht.
+                KB.zuordnung_vergessen(sk, label)
+            self._kultboy_hinweis(self._kultboy_fehlertext(liste))
+            return
+        liste = KB.tests_sortiert(liste or [], sk)
+        if not liste:
+            self._kultboy_hinweis(t("kb_fehler_nichts"))
+            return
+        wahl = 0
+        while True:
+            w = self._wizard_choice(
+                t("kb_tests_titel", display_name(label)),
+                [KB.zeile(x, sk) for x in liste], initial=wahl,
+                hint_key="choice_hint_plain")
+            if w is None:
+                return
+            wahl = w
+            test = liste[w]
+            st, res = self._kultboy_warten(
+                t("kb_lade_seite", test["heft"]),
+                lambda: KB.scans(KB._text(KB.holen(
+                    KB.test_url(test["id"])))))
+            if st == "abbruch":
+                continue
+            if st == "fehler":
+                self._kultboy_hinweis(self._kultboy_fehlertext(res))
+                continue
+            heft, urls = res
+            if not urls:
+                self._kultboy_hinweis(t("kb_kein_scan"))
+                continue
+            self._kultboy_betrachter(heft or test["heft"], urls)
+
+    @staticmethod
+    def _kultboy_faktoren(w, h, aw, ah):
+        """Die Zoomstufen: passend (groesste ganze Vergroesserung, oder
+        verkleinert), dann 1:1, dann doppelt."""
+        f = min(aw / float(w), ah / float(h))
+        erst = int(f) if f >= 1 else f
+        stufen = [erst]
+        if erst != 1:
+            stufen.append(1)
+        if erst < 2:
+            stufen.append(2)
+        return stufen
+
+    @staticmethod
+    def _kultboy_skalieren(w, h, pix, f):
+        import fe.art as _A
+        if f == 1:
+            return w, h, pix
+        if f < 1:
+            tw, th = max(1, int(w * f)), max(1, int(h * f))
+            return tw, th, _A._verkleinern(pix, w, h, tw, th)
+        return _A._hochskalieren(pix, w, h, int(f))
+
+    @staticmethod
+    def _kultboy_ausschnitt(pix, w, x0, y0, vw, vh):
+        return b"".join(bytes(pix[(y * w + x0) * 4:(y * w + x0 + vw) * 4])
+                        for y in range(y0, y0 + vh))
+
+    def _kultboy_betrachter(self, heft, urls):
+        """Die Heftseite: passend, 1:1, doppelt (A), verschieben mit dem
+        Steuerkreuz, Select naechste Seite, B zurueck. Die Bilder liegen
+        nur im Arbeitsspeicher und sind danach weg."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        sc = s - 1 if s > 1 else 1
+        hint = t("kb_hinweis")
+        fuss_h = (len(self._hinweis_zeilen(hint, sc)) + 1) * 11 * sc + 6 * s
+        aw, ah = W - 2 * ox, H - 2 * oy - fuss_h
+        bilder, skaliert = {}, {}
+        seite, stufe, px, py = 0, 0, 0, 0
+        leer = 0
+        try:
+            while True:
+                if seite not in bilder:
+                    st, res = self._kultboy_warten(
+                        t("kb_lade_bild", seite + 1, len(urls)),
+                        lambda u=urls[seite]: self._kultboy_bild(u))
+                    if st != "ok" or not res:
+                        if st != "abbruch":
+                            self._kultboy_hinweis(
+                                self._kultboy_fehlertext(res) if st ==
+                                "fehler" else t("kb_bild_fehler"))
+                        return
+                    bilder[seite] = res
+                    skaliert.clear()
+                    stufe, px, py = 0, 0, 0
+                w, h, pix = bilder[seite]
+                faktoren = self._kultboy_faktoren(w, h, aw, ah)
+                stufe = min(stufe, len(faktoren) - 1)
+                f = faktoren[stufe]
+                if (seite, f) not in skaliert:
+                    skaliert.clear()
+                    skaliert[(seite, f)] = self._kultboy_skalieren(w, h, pix,
+                                                                  f)
+                sw, sh, spix = skaliert[(seite, f)]
+                vw, vh = min(sw, aw), min(sh, ah)
+                px = max(0, min(px, sw - vw))
+                py = max(0, min(py, sh - vh))
+                fb.clear(C_BG)
+                self.blit(ox + (aw - vw) // 2, oy + (ah - vh) // 2, vw, vh,
+                          self._kultboy_ausschnitt(spix, sw, px, py, vw, vh))
+                zoom = (t("kb_passend") if stufe == 0 else "%dx" % int(f)
+                        if f >= 1 else t("kb_passend"))
+                info = "%s   %s   %s" % (heft, t("kb_seite", seite + 1,
+                                                  len(urls)), zoom)
+                maxc = max(8, (W - 2 * ox) // (8 * sc))
+                yi = H - oy - fuss_h + 4 * s
+                # Die Quelle steht immer da - auf der Roehre kurz.
+                quelle = t("kb_quelle")
+                if len(info) + len(quelle) + 2 > maxc:
+                    quelle = "kultboy.com"
+                platz = maxc - len(quelle) - 2
+                fb.text(ox, yi, info[:max(4, platz)], sc, C_TEXT, C_BG)
+                fb.text(W - ox - len(quelle) * 8 * sc, yi, quelle, sc,
+                        C_DIM, C_BG)
+                self._hinweis_unten(hint, sc)
+                fb.flip()
+                akt = self.inp.read_action(timeout=None)
+                # Blockierend gefragt, kommt eigentlich nie leer zurueck -
+                # klemmt die Eingabe doch einmal, nicht endlos neu zeichnen.
+                if akt is None:
+                    leer += 1
+                    if leer > 50:
+                        return
+                    continue
+                leer = 0
+                schritt_x, schritt_y = max(8, vw // 3), max(8, vh // 3)
+                if akt == "exit":
+                    return
+                if akt == "back":
+                    if stufe:
+                        stufe, px, py = 0, 0, 0
+                        continue
+                    return
+                if akt == "ok":
+                    mx = (px + vw / 2.0) / sw
+                    my = (py + vh / 2.0) / sh
+                    stufe = (stufe + 1) % len(faktoren)
+                    f2 = faktoren[stufe]
+                    nw, nh = int(w * f2), int(h * f2)
+                    px = int(mx * nw - min(nw, aw) / 2.0)
+                    py = int(my * nh - min(nh, ah) / 2.0)
+                elif akt == "select":
+                    if len(urls) > 1:
+                        seite = (seite + 1) % len(urls)
+                        stufe, px, py = 0, 0, 0
+                elif akt in ("left", "right"):
+                    if sw > vw:
+                        px += schritt_x if akt == "right" else -schritt_x
+                    elif len(urls) > 1:
+                        seite = (seite + (1 if akt == "right" else -1)) \
+                            % len(urls)
+                        stufe, px, py = 0, 0, 0
+                elif akt in ("up", "down"):
+                    py += schritt_y if akt == "down" else -schritt_y
+        finally:
+            bilder.clear()
+            skaliert.clear()
+            self._force_full_redraw = True
 
     def _anzeige_geaendert(self):
         """Den Zaehler hochdrehen, an dem der Merker in
@@ -28399,6 +28720,16 @@ class Frontend:
                         continue
                     # Build 346: der Wertungskasten - wie der Steckbrief nur
                     # hier, es gibt keine freie Taste dafuer.
+                    if gewaehlt == "kultboy":
+                        # Build 350: die Heft-Tests von kultboy.com.
+                        try:
+                            self._kultboy_zeigen()
+                        except Exception:                # noqa: BLE001
+                            LOG("Kultboy CRASH:\n"
+                                + traceback.format_exc())
+                            self._force_full_redraw = True
+                            self.draw()
+                        continue
                     if gewaehlt == "bewerten":
                         try:
                             self._wertung_bearbeiten()
@@ -29187,6 +29518,10 @@ class Frontend:
                             self.WERTUNG_SCHALTER[kind]()
                             self._anzeige_geaendert()
                             self._sync_testarchiv_category()
+                            self._refresh_system_category()
+                        elif kind == "kultboy_an":
+                            # Build 350: Heft-Tests von kultboy.com.
+                            KB.toggle_an()
                             self._refresh_system_category()
                         elif kind == "wertung_monatsheft":
                             # Build 347: das eigene Heft.
