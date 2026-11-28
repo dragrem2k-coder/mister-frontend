@@ -109,7 +109,7 @@ gerade geht.
 - `Musik-Quelle: MP3`
 - `Lautstärke: 100%`
 
-### Optionen (17 Eintraege)
+### Optionen (18 Eintraege)
 
 - `CRT-Testbild`
 - `Miniaturen vorbereiten (einmalig, dauert einige Minuten)`
@@ -125,6 +125,7 @@ gerade geht.
 - `Attract-Modus (Bildschirmschoner): AN -> ausschalten`
 - `Attract-Modus Verzögerung: 1.5min -> nächste`
 - `Ziehung Spannung: 2.0s -> nächste`
+- `Zufalls-Zock: Systeme: alle`
 - `Zeitzone: UTC -> nächste`
 - `Beim Start auf NAS/Netzwerk warten: AUS -> einschalten (automatisch erkannt)`
 - `Autostart: AUS -> einschalten (Frontend startet zusammen mit dem MiSTer)`
@@ -428,6 +429,7 @@ Quelltext selbst beschrieben ist.
 - **wertungen** - Eigene Wertungen im Heft-Stil (Build 346)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
 - **zeitmaschine** - Die Zeitmaschine (Build 351, ueberarbeitet in Build 353)
+- **zufallsauswahl** - Aus welchen Systemen zieht der Zufalls-Zock? (Build 354) NUTZERWUNSCH: "Zufalls-Zock sollte man sich noch aussuchen koennen, aus welchen Kategorien man Spiele dort auswaehlt! Wenn jemand zum Beispiel nur von SNES, Mega Drive, ...
 - **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
 
 ### Das Overlay fuer OBS und den Browser

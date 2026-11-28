@@ -688,6 +688,67 @@ H.set_screen(1280, 720)
 fm.get_meta, fm.mra_meta = _gm_echt, _mra_echt
 ZM.bauen = _bauen_echt
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: Arcade in einer gemischten Liste (Build 354)")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "wenn ich in 'Neu in 1993' rein gehe und die Spiele
+# durchscrolle, beendet sich das Frontend von selbst". Ursache: ein .mra
+# traegt keinen Systemkey, die Zeitmaschine selbst hat keinen - und
+# get_meta(None, ...) warf mitten im Zeichnen einen TypeError. Geprueft
+# mit dem ECHTEN get_meta(), in allen vier Ansichten, beide Groessen.
+import fe.art as _A2                                     # noqa: E402
+check("get_meta ohne System: leer statt Absturz",
+      _A2.get_meta(None, "Galaga") == {} and _A2.get_meta("", "x") == {})
+fe = H.make_frontend(page=0)
+mra_e = ("Galaga", "core", "/media/fat/_Arcade/galaga.mra")
+rbf_e = ("Menu", "core", "/media/fat/menu.rbf")
+check("_item_syskey: ein .mra ohne Kategorie-System ist ARCADE",
+      fe._item_syskey(mra_e, None) == "ARCADE"
+      and fe._item_syskey(mra_e, "ARCADE") == "ARCADE"
+      and fe._item_syskey(rbf_e, None) is None
+      and fe._item_syskey(rbf_e, "CORES") == "CORES"
+      and fe._item_syskey(spiel("X", "SNES"), None) == "SNES")
+JAHRE.update({"Mario Kart": "1993", "Gunstar": "1993"})
+MRA93 = lambda p: {"year": "1993"} if p.endswith(".mra") else {}  # noqa: E731
+fehler = []
+for b_, h_ in ((1280, 720), (320, 240)):
+    for ansicht in ("liste", "raster", "galerie", "coverflow"):
+        H.set_screen(b_, h_)
+        fe = H.make_frontend(page=0)
+        fe.cats = [("SNES", {"folders": {}, "items": [
+            spiel("Mario Kart", "SNES")]}, "SNES"),
+            ("Mega Drive", {"folders": {}, "items": [
+                spiel("Gunstar", "MEGADRIVE")]}, "MEGADRIVE"),
+            ("Arcade", {"folders": {}, "items": [
+                ("Avengers", "core", "/media/fat/_Arcade/av.mra"),
+                ("Zz Galaga", "core", "/media/fat/_Arcade/galaga.mra")]},
+             "ARCADE")] + fe.cats
+        fe._zm_sync_kategorie()
+        ZM.merker_vergessen()
+        fe._zm_vz = _bauen_echt(fe.cats, meta, MRA93, 2027)
+        fe._zm_veraltet = False
+        fe._zm_jahr = 1993
+        fe._zm_ersetzen(oeffnen=True)
+        fe.ansicht_setzen(ansicht)
+        for o in [it[2] for it in fe._display_items() if it[1] == "folder"]:
+            try:
+                fe.nav_path = [o]
+                fe.item_i = fe.scroll = 0
+                fe._force_full_redraw = True
+                fe.draw()
+                for _k in range(len(fe._display_items()) + 1):
+                    _alt = fe.item_i
+                    fe.nav_anwenden("down", fe._display_items(), 1)
+                    fe._draw_navigate_items(_alt)
+                fe._force_full_redraw = True
+                fe.draw()
+            except Exception as e_:                      # noqa: BLE001
+                fehler.append((b_, ansicht, o, repr(e_)))
+check("durch alle Ordner gescrollt, alle Ansichten, beide Groessen: "
+      "kein Absturz", not fehler, fehler[:3])
+H.set_screen(1280, 720)
+
 print()
 if fails:
     print("ROT: %d Pruefung(en) fehlgeschlagen:" % len(fails))

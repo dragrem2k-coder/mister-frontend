@@ -12455,3 +12455,53 @@ stehen, Neu-Einlesen beendet sie; Abzeichen-Schluessel).
 Vorbild vor dem Sound, C scheitert schon am Vorbild. Die Abzeichen in
 `test_sysart_logos.py` und `test_kategorie_abzeichen.py`. Der Harness
 lenkt den Merker um.
+
+## Nachtrag Build 354 - Absturz in der Zeitmaschine, Zufalls-Zock-Systeme, Musik bei Anleitungen
+
+**Stand:** 28.11.2026, `Dragend_Build_354.zip` (build_id
+`2026-11-28-354`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 9).
+
+### Der Absturz (Nutzermeldung)
+
+"Wenn ich die Zeitmaschine nutze, ein Jahr auswaehle und in 'Neu in
+1993' die Spiele durchscrolle, beendet sich das Frontend von selbst."
+Nachgestellt mit dem echten `get_meta()`: in einer gemischten Liste
+(Kategorie-syskey None) liefert `_item_syskey()` fuer ein `.mra` None -
+das arg ist nur der Pfad -, und `_spiel_infozeilen()` ruft
+`get_meta(None, name)` -> `None + ".json"` -> TypeError mitten in
+`draw()` -> Absturz. Nur sichtbar, wenn die Liste mit einem SPIEL
+beginnt (sonst hat sie keine Bildspalte, `hat_artspalte()`).
+
+- `_item_syskey()`: ein `.mra` ohne Kategorie-System ist `ARCADE`
+  (wie `WT.ist_automat`), dann greift auch `mra_meta()` fuer die
+  Infozeilen.
+- `fe/art.get_meta()`: ohne System `{}` statt TypeError.
+
+### Zufalls-Zock: Systeme (fe/zufallsauswahl.py, neu)
+
+- `zufallszock_systeme.json` = `{"nur": [syskeys]}`, keine Datei = alle
+  (auch kuenftige). Gemerkt wird das GEWAEHLTE, damit ein spaeter
+  eingelesenes System nicht ungefragt dazukommt.
+- `zufall_systeme_bildschirm()`: Systeme mit Spielen und ihre Zahl,
+  "Alle an"/"Alle aus", A/Links/Rechts, B speichert; keines an = alle;
+  ohne Aenderung kein Schreiben; gibt nach 300 leeren Eingaben auf.
+- `draw_zufallszock_screen()` filtert den Pool; leer -> ein Satz, wo
+  man es aendert. Attract, F11 und Sammlungen filtern NICHT.
+- Systemmenue Optionen, direkt unter der Ziehung: `zufall_systeme`.
+
+### Musik bei Anleitungen
+
+`_auf_konsole(..., musik_weiter=True)` fuer den Betrachter: kein
+`pause_for_core()`/`resume_after_core()`, statt dessen
+`_puls_mit_musik()` - hoechstens einmal je Sekunde `music.tick()`, damit
+der naechste Titel kommt (die Hauptschleife steht ja). Skripte wie
+bisher.
+
+### Pruefungen
+
+`tools/test_zufallsauswahl.py` und `tools/test_anleitung_musik.py` neu
+(das echte `_auf_konsole()` mit einem echten Prozess). In
+`tools/test_zeitmaschine.py` Test 10: durch alle Ordner der Zeitmaschine
+gescrollt, alle vier Ansichten, beide Groessen, mit dem echten
+`get_meta()`.

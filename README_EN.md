@@ -146,7 +146,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **RetroAchievements** | Progress, achievement showcase (F6), popup when you earn one |
 | **Completed & custom achievements** | Also for games RA does not support |
 | **Easter eggs & frontend level** | Hidden achievements, anniversary notes, seasonal decorations |
-| **Zufalls-Zock (random pick)** | Draws random games you have not played yet |
+| **Zufalls-Zock (random pick)** | Draws random games you have not played yet – if you like, only from the systems you choose |
 | **The draw, with sound** | Titles spin like a wheel while a draw sound plays — duration 1–5 s, adjustable or off |
 
 ### Display & sound

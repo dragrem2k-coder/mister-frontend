@@ -1171,6 +1171,25 @@ Seit Build 247 steht außerdem eine Zeile in `/tmp/frontend.log`, wenn
 für einen Klang gar keine Datei gefunden wurde — vorher kam dort
 nichts, und genau das machte die Suche unnötig schwer.
 
+### Aus welchen Systemen gezogen wird (Build 354)
+
+Im System-Menü unter *Optionen*, direkt unter der Ziehung:
+**„Zufalls-Zock: Systeme: alle"**. Dort steht jedes System, das Spiele
+hat, mit ihrer Zahl – **A** oder **Links/Rechts** schaltet es an oder
+aus, ganz oben gibt es „Alle Systeme an" und „Alle Systeme aus", **B**
+speichert. Unten steht, wie viele Spiele dann im Topf sind.
+
+Wer nur SNES, Mega Drive, NES und Game Boy will, schaltet erst alles
+aus und dann diese vier an. Gemerkt wird, was **an** ist – ein System,
+das später dazukommt, ist also nicht automatisch dabei. „Alle Systeme
+an" heißt dagegen wirklich alle, auch künftige. Ist beim Speichern gar
+keines an, zieht der Zufalls-Zock wieder aus allen; ein leerer Topf
+wäre eine Sackgasse. Gespeichert in
+`/media/fat/frontend/zufallszock_systeme.json`.
+
+Nur der Zufalls-Zock richtet sich danach – Attract-Modus,
+Zufallsstart (F11) und Sammlungen ziehen weiter aus allem.
+
 ## 8h-3. Die Hauptseite selbst einrichten (Build 250)
 
 Im System-Menü unter *Verhalten & Optionen*: **„Hauptseite: Kategorien
@@ -2665,6 +2684,11 @@ ganz oben **Anleitung anzeigen** an. Der Punkt erscheint **nur dann** —
 ein Eintrag, der bei neun von zehn Spielen „keine Anleitung vorhanden"
 sagt, wäre schlimmer als keiner.
 
+**Die Musik läuft weiter** (seit Build 354): der Betrachter macht
+selbst keinen Ton, also hält das Frontend die Musik nicht mehr an, und
+am Ende eines Titels kommt der nächste. Skripte bekommen die
+Soundkarte weiterhin für sich – sie könnten selbst Ton machen.
+
 **Wir bringen keinen eigenen Betrachter mit.** Angezeigt wird mit dem
 Programm, das MiSTers eigene Help-Funktion benutzt:
 
@@ -3499,6 +3523,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Nur das Geänderte nachlesen — nur nach einer Speicher-Änderung | `nachscan` |
 | Attract-Modus (Bildschirmschoner): AN/AUS, Verzögerung | `attract`, `attract_delay` |
 | Ziehung Spannung (Zufalls-Zock mit Ton) | `ziehung_spannung` |
+| Zufalls-Zock: Systeme | `zufall_systeme` |
 | Zeitzone | `timezone` |
 | Beim Start auf NAS/Netzwerk warten: AN/AUS | `network_wait` |
 | Autostart: AN/AUS | `autostart` |

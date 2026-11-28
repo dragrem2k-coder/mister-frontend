@@ -59,6 +59,7 @@ import fe.wertungen as WT
 import fe.kultboy as KB
 import fe.zeitmaschine as ZM
 import fe.reiseeffekt as RE
+import fe.zufallsauswahl as ZA
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
 # sprechende Aliasname statt eines blanken "vorhanden".
@@ -636,6 +637,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (ziehung_label, "ziehung_spannung", None),
+            # Build 354: aus welchen Systemen der Zufalls-Zock zieht.
+            (t("sys_zz_systeme",
+               t("zz_alle_kurz") if not ZA.laden() else len(ZA.laden())),
+             "zufall_systeme", None),
             (tz_label, "timezone", None),
             (netwait_label, "network_wait", None),
             (autostart_label, "autostart", None),

@@ -1275,6 +1275,7 @@ import fe.wertungen as WT   # Build 346: eigene Wertungen
 import fe.kultboy as KB     # Build 350: Heft-Tests von kultboy.com
 import fe.zeitmaschine as ZM   # Build 351: die Zeitmaschine
 import fe.reiseeffekt as RE    # Build 352: Blitz, Wirbel, Sound
+import fe.zufallsauswahl as ZA  # Build 354: Zufalls-Zock nur aus ...
 import fe.schriften as SCHRIFTEN
 import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
@@ -2871,6 +2872,17 @@ class Frontend:
         try:
             if item[1] == "game" and item[2] and len(item[2]) >= 3:
                 return item[2][2]
+            # BUILD 354 (Nutzermeldung: "wenn ich in der Zeitmaschine in
+            # 'Neu in 1993' die Spiele durchscrolle, beendet sich das
+            # Frontend von selbst"). Ein Arcade-Spiel (.mra) traegt
+            # keinen Systemkey in sich - sein arg ist nur der Pfad. In
+            # der Arcade-Kategorie kam der Key von der Kategorie, in
+            # einer GEMISCHTEN Liste (Zeitmaschine) aber war er None,
+            # und get_meta(None, ...) warf einen TypeError mitten im
+            # Zeichnen. Ein .mra ist immer Arcade - genau wie bei den
+            # Wertungen (fe/wertungen.ist_automat).
+            if not fallback and WT.ist_automat(item[1], item[2]):
+                return WT.ARCADE
         except (IndexError, TypeError):
             pass
         return fallback
@@ -4099,7 +4111,8 @@ class Frontend:
         self._auf_konsole(["/bin/bash", "-c", inner, "anleitung"] + befehl,
                           list(befehl), pfad, grafik=True,
                           grenze=self.ANLEITUNG_MAX_SEK,
-                          eigene_konsole=True, puls=self._anleitung_pult)
+                          eigene_konsole=True, puls=self._anleitung_pult,
+                          musik_weiter=True)
 
     def kontextmenue(self):
         """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
@@ -20328,8 +20341,30 @@ class Frontend:
             LOG("VT: tty%d nicht freigegeben (%s) - benutzt sie noch "
                 "jemand?" % (self.ANLEITUNG_VT, e))
 
+    MUSIK_TAKT = 1.0            # so oft fragt der Puls die Musik
+
+    def _puls_mit_musik(self, puls):
+        """Ein Puls, der nebenbei die Musik weiterlaufen laesst (Build
+        354): hoechstens einmal je MUSIK_TAKT music.tick() - das startet
+        den naechsten Titel, wenn einer zu Ende ist. Danach der
+        eigentliche Puls, falls es einen gibt. Ein Fehler in der Musik
+        darf den Betrachter nie stoeren."""
+        naechst = [0.0]
+
+        def _puls(proc):
+            jetzt = time.monotonic()
+            if jetzt >= naechst[0]:
+                naechst[0] = jetzt + self.MUSIK_TAKT
+                try:
+                    self.music.tick()
+                except Exception:                        # noqa: BLE001
+                    pass
+            return puls(proc) if puls is not None else False
+        return _puls
+
     def _auf_konsole(self, wrapped, raw, name="", grafik=False,
-                     grenze=0.0, eigene_konsole=False, puls=None):
+                     grenze=0.0, eigene_konsole=False, puls=None,
+                     musik_weiter=False):
         """Ein fremdes Programm auf der echten Konsole laufen lassen und
         danach den Bildschirm zurueckholen.
 
@@ -20349,8 +20384,16 @@ class Frontend:
 
         "wrapped" ist der Weg mit tty1 als steuerndem Terminal, "raw"
         der Rueckfall ohne. "name" steht nur im Protokoll.
+
+        musik_weiter (Build 354, Nutzerfrage: "warum laeuft die Musik
+        im Frontend nicht weiter, wenn ich mir Anleitungen anschaue?"):
+        ein Skript bekommt die Soundkarte fuer sich (es koennte selbst
+        Ton machen), der Anleitungs-Betrachter aber ist stumm - dort
+        laeuft die Musik weiter, und am Ende eines Titels startet der
+        naechste (music.tick() im Puls, die Hauptschleife steht ja).
         """
-        self.music.pause_for_core()
+        if not musik_weiter:
+            self.music.pause_for_core()
         # DIE TEXTKONSOLE WIEDER REDEN LASSEN (Build 279)
         #
         # Wir legen tty1 beim Start in den Grafikmodus, damit der
@@ -20486,6 +20529,8 @@ class Frontend:
                     "Einspeisen (%s) - das Pad bleibt bei MiSTer"
                     % (ziel.name if ziel is not None else "kein Geraet"))
                 puls = None
+        if musik_weiter:
+            puls = self._puls_mit_musik(puls)
         # Bildschirm dem Programm ueberlassen
         try:
             if tty:
@@ -20588,7 +20633,8 @@ class Frontend:
             # legen wir sie still.
             if _grafik_war:
                 self.textkonsole_grafik_an()
-        self.music.resume_after_core()
+        if not musik_weiter:
+            self.music.resume_after_core()
         self.back_to_frontend()
         # NACH EINEM KONSOLENPROGRAMM WIRD IN JEDEM FALL GEWISCHT
         # (Build 264) - und spaeter als sonst. back_to_frontend() hat
@@ -21182,6 +21228,14 @@ class Frontend:
         # Ziehen/Anzeige/Start darunter bleiben unveraendert.
         played_set, _ = zufallszock_load_played()
         pool = self._attract_games_pool()
+        # Build 354: nur die Systeme, die unter System -> Optionen ->
+        # "Zufalls-Zock: Systeme" gewaehlt sind (Vorgabe: alle).
+        if pool and ZA.laden():
+            pool = ZA.filtern(pool)
+            if not pool:
+                self._wizard_info(t("zufallszock_title"),
+                                  [t("zz_keine_spiele")], skippable=False)
+                return
         playable = []
         for label, syskey, arg in pool:
             if (syskey, zufallszock_normalize_title(label)) in played_set:
@@ -22806,6 +22860,116 @@ class Frontend:
             LOG("Hauptseiten-Reihenfolge speichern fehlgeschlagen")
         self._force_full_redraw = True
         self.draw()
+
+    def zufall_systeme_bildschirm(self):
+        """Aus welchen Systemen zieht der Zufalls-Zock? (Build 354,
+        fe/zufallsauswahl.py)
+
+        Derselbe modale Aufbau wie hauptseite_bildschirm(): Zeilen,
+        Scrollfenster, gespeichert wird beim Verlassen.
+
+            hoch/runter   Auswahl
+            A, links/rechts  an/aus (auf "Alle an"/"Alle aus": alle)
+            B             speichern und zurueck
+
+        In der Liste steht jedes System, das Spiele hat, mit ihrer
+        Zahl - so sieht man beim Waehlen, wie gross der Topf wird.
+        Ist am Ende keines an, zieht der Zufalls-Zock wieder aus allen:
+        ein leerer Topf waere eine Sackgasse."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        zaehler = ZA.systeme(self._attract_games_pool())
+        namen = {}
+        for name, _knoten, sk in self.cats:
+            if sk and sk in zaehler and sk not in namen:
+                namen[sk] = HS.ohne_zaehler(name)
+        systeme = sorted(namen, key=lambda k: namen[k].lower())
+        if not systeme:
+            self._force_full_redraw = True
+            self.draw(message=t("zufallszock_pool_keine_spiele"))
+            return
+        alt = ZA.laden()
+        an = set(systeme) if not alt else set(k for k in systeme if k in alt)
+        zeilen = [("*alle", t("zz_alle_an")), ("*keine", t("zz_alle_aus"))] \
+            + [(k, namen[k]) for k in systeme]
+        zeile = 0
+        geaendert = False
+        leer = 0
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("zz_titel"), 2 * s, C_TITLE)
+            y = oy + 30 * s
+            breite = W - 2 * ox
+            platz = max(1, (H - oy - y - 26 * s) // (17 * s))
+            erste = max(0, min(zeile - platz // 2, len(zeilen) - platz))
+            for i in range(erste, min(erste + platz, len(zeilen))):
+                k, name = zeilen[i]
+                markiert = (i == zeile)
+                if markiert:
+                    fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                    15 * s, C_PANEL)
+                if k.startswith("*"):
+                    fb.text(ox + 2 * s, y, name, s,
+                            C_TITLE if markiert else C_DIM)
+                else:
+                    ist_an = k in an
+                    fb.text(ox + 2 * s, y, "%s (%d)" % (name, zaehler[k]), s,
+                            C_TITLE if markiert else
+                            (C_TEXT if ist_an else C_DIM))
+                    _wert = t("hauptseite_an") if ist_an \
+                        else t("hauptseite_aus")
+                    fb.text(W - ox - len(_wert) * 8 * s - 2 * s, y, _wert, s,
+                            accent_for(None) if ist_an else C_DIM)
+                y += 17 * s
+            fb.text(ox, H - oy - 26 * s,
+                    t("zz_anzahl", len(an), len(systeme),
+                      sum(zaehler[k] for k in an)), s, C_DIM)
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            for _i, _z in enumerate(self._wrap(t("zz_hinweis"), _maxc,
+                                               max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                # Wie beim Drehrad: eine klemmende Eingabe darf hier
+                # nicht ewig neu zeichnen lassen (Pruefstand).
+                leer += 1
+                if leer > 300:
+                    break
+                continue
+            leer = 0
+            if akt in ("up", "down"):
+                zeile = (zeile + (-1 if akt == "up" else 1)) % len(zeilen)
+            elif akt in ("left", "right", "ok"):
+                k = zeilen[zeile][0]
+                if k == "*alle":
+                    an = set(systeme)
+                elif k == "*keine":
+                    an = set()
+                elif k in an:
+                    an.discard(k)
+                else:
+                    an.add(k)
+                geaendert = True
+            elif akt in ("back", "exit", "select"):
+                break
+
+        meldung = None
+        if geaendert:
+            # Alle an (oder keines) heisst: alle - auch kuenftige.
+            nur = None if (not an or an >= set(systeme)) else an
+            if ZA.speichern(nur):
+                meldung = t("zz_keins_alle") if not an else \
+                    t("zz_gespeichert")
+                LOG("Zufalls-Zock: Systeme %s"
+                    % ("alle" if nur is None else ", ".join(sorted(nur))))
+            else:
+                LOG("Zufalls-Zock: Systeme speichern fehlgeschlagen")
+        self._force_full_redraw = True
+        self.draw(message=meldung)
 
     def cores_bildschirm(self):
         """Welche Core-Fassung startet welches System? (Build 174)
@@ -30155,6 +30319,17 @@ class Frontend:
                                     + traceback.format_exc())
                                 self._force_full_redraw = True
                                 self.draw()
+                        elif kind == "zufall_systeme":
+                            # Build 354: aus welchen Systemen der
+                            # Zufalls-Zock zieht.
+                            try:
+                                self.zufall_systeme_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("zufall_systeme CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
+                            self._refresh_system_category()
                         elif kind == "cores":
                             try:
                                 self.cores_bildschirm()

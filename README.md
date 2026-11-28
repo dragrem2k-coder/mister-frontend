@@ -144,7 +144,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **RetroAchievements** | Fortschritt, Erfolgs-Vitrine (F6), Popup bei neuen Erfolgen |
 | **Durchgespielt & eigene Erfolge** | Auch für Spiele ohne RA-Unterstützung |
 | **Easter Eggs & Frontend-Level** | Versteckte Erfolge, Jubiläums-Hinweise, saisonale Dekorationen |
-| **Zufalls-Zock** | Zieht zufällig Spiele, die du noch nicht gespielt hast |
+| **Zufalls-Zock** | Zieht zufällig Spiele, die du noch nicht gespielt hast – auf Wunsch nur aus den Systemen, die du auswählst |
 | **Ziehung mit Ton** | Beim Ziehen laufen die Titel wie auf einem Rad, dazu ein Ziehungssound — Dauer 1–5 s einstellbar oder ganz aus |
 
 ### Anzeige & Ton

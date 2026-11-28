@@ -13,6 +13,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Fixed: the frontend quit while scrolling in the time machine.** In a
+  list that mixes arcade games (.mra) with other systems ("New in 1993"
+  or "All games from 1993"), the game panel asked for the game info of a
+  system that did not exist and crashed. A .mra now counts as arcade
+  everywhere.
+
+- **Zufalls-Zock: choose the systems.** Under System → Options →
+  "Zufalls-Zock: systems" you switch each system on or off – if you only
+  want SNES, Mega Drive, NES and Game Boy, it only draws from those.
+  Default: all.
+
+- **The music keeps playing while you read a manual.** The viewer is
+  silent, so the music stays on; scripts still stop it as before.
+
 - **Time machine: only the chosen year, read once.** A trip now shows
   only the games that came out in exactly that year – "All games from
   1991", one folder per system, your ratings from that year. The wheel

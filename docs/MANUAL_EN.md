@@ -955,6 +955,24 @@ python3 /media/fat/frontend/sound_probe.py
 
 ---
 
+### Which systems it draws from (Build 354)
+
+In the System menu under *Options*, right below the draw suspense:
+**"Zufalls-Zock: systems: all"**. It lists every system that has games,
+with their number – **A** or **Left/Right** switches one on or off, at
+the top there are "All systems on" and "All systems off", **B** saves.
+At the bottom you see how many games are then in the pot.
+
+If you only want SNES, Mega Drive, NES and Game Boy, switch everything
+off first and then those four on. What is **on** is remembered – a
+system added later is not automatically included. "All systems on", on
+the other hand, really means all, including future ones. If none is on
+when saving, Zufalls-Zock draws from all systems again; an empty pot
+would be a dead end. Saved in `/media/fat/frontend/zufallszock_systeme.json`.
+
+Only Zufalls-Zock follows this – attract mode, random start (F11) and
+collections still draw from everything.
+
 ## 8h-3. Arranging the main page yourself (Build 250)
 
 System menu, under *Options*: **"Main page: sort and hide categories"**.
@@ -2326,6 +2344,11 @@ When the selected game has a manual on the card, the **context menu**
 top. The entry appears **only then** — one that says „no manual" for
 nine games out of ten would be worse than none.
 
+**The music keeps playing** (since Build 354): the viewer makes no
+sound itself, so the frontend no longer stops the music, and when a
+track ends the next one starts. Scripts still get the sound card to
+themselves – they might make sound of their own.
+
 **We do not ship a viewer of our own.** It is displayed with the
 program MiSTer's own Help function uses:
 
@@ -3088,6 +3111,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Re-read only what changed — only after a storage change | `nachscan` |
 | Attract mode (screensaver): ON/OFF, delay | `attract`, `attract_delay` |
 | Draw suspense (Random Pick with sound) | `ziehung_spannung` |
+| Zufalls-Zock: systems | `zufall_systeme` |
 | Time zone | `timezone` |
 | Wait for NAS/network at startup: ON/OFF | `network_wait` |
 | Autostart: ON/OFF | `autostart` |

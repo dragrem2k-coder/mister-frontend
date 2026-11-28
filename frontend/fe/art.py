@@ -6813,6 +6813,11 @@ def get_meta(syskey, rom_basename):
     oder ein System eine ungewoehnlich grosse Metadaten-Datei hat,
     verhindert diese Grenze trotzdem unbegrenztes Wachstum, nach
     demselben einfachen Verdraengungs-Prinzip wie bei _mra_cache."""
+    # Build 354: ohne System gibt es keine Tabelle - und vor allem
+    # keinen TypeError aus None + ".json" mitten im Zeichnen (so hat sich
+    # das Frontend beim Scrollen durch die Zeitmaschine beendet).
+    if not syskey or not isinstance(syskey, str):
+        return {}
     if syskey not in _meta_cache:
         data = {}
         try:

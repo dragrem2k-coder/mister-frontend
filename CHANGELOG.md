@@ -13,6 +13,21 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Behoben: das Frontend beendete sich beim Scrollen in der
+  Zeitmaschine.** In einer Liste, die Arcade-Spiele (.mra) mit anderen
+  Systemen mischt („Neu in 1993“ bzw. „Alle Spiele aus 1993“), fragte
+  die Spielanzeige nach den Spieldaten eines Systems, das es nicht gab,
+  und stürzte ab. Ein .mra gilt jetzt überall als Arcade.
+
+- **Zufalls-Zock: Systeme auswählen.** Unter System → Optionen →
+  „Zufalls-Zock: Systeme“ schaltest du jedes System an oder aus – wer
+  nur SNES, Mega Drive, NES und Game Boy will, zieht nur noch daraus.
+  Vorgabe: alle.
+
+- **Die Musik läuft beim Lesen einer Anleitung weiter.** Der
+  Betrachter ist stumm, also bleibt die Musik an; Skripte halten sie wie
+  bisher an.
+
 - **Zeitmaschine: nur das gewählte Jahr, einmal lesen.** Auf der Reise
   stehen jetzt nur noch die Spiele, die in genau diesem Jahr erschienen
   sind – „Alle Spiele aus 1991“, je System ein Ordner, deine Wertungen
