@@ -57,7 +57,8 @@ SYSTEM = "system"
 # entsteht. Ihr Kuerzel IST dieser Schluessel - damit ist es von der
 # Sprache unabhaengig.
 BESONDERE = ("continue_cat", "recent_cat", "favorites_cat",
-             "collections_cat", "ra_hunter_cat", "zufallszock_title")
+             "collections_cat", "ra_hunter_cat", "zufallszock_title",
+             "zm_cat")
 
 # Build 340: das Kuerzel, unter dem der Zufalls-Zock bis Build 339
 # gespeichert wurde. Bewusst zusammengesetzt - der alte Name soll im
@@ -119,6 +120,13 @@ def schluessel(name, syskey=None, gemerkte=()):
     if roh in gemerkte:
         return "filter:" + roh
     besonders = _namensmap().get(roh)
+    if not besonders:
+        # Build 351: auf der Reise heisst die Zeitmaschine
+        # "Zeitmaschine \xb7 1991" - das Kuerzel bleibt dasselbe.
+        basis, punkt, jahr = roh.rpartition(" \xb7 ")
+        if punkt and len(jahr) == 4 and jahr.isdigit() \
+                and _namensmap().get(basis) == "zm_cat":
+            besonders = "zm_cat"
     if besonders:
         return besonders
     if syskey:

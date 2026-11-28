@@ -20,4 +20,5 @@ Beiträgen nicht ins Leere laufen.
 
 🇬🇧 English: **[README_EN](README_EN.md)**
 
-Lizenz: [MIT](LICENSE).
+Lizenz: [GPL-3.0-or-later](LICENSE) (bis Build 350: MIT, siehe
+[LICENSE_MIT_bis_Build_350.txt](LICENSE_MIT_bis_Build_350.txt)).

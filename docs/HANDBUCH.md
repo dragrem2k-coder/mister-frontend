@@ -175,6 +175,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8j. Top-10-Listen
    - 8j-2. Eigene Wertungen im Heft-Stil
    - 8j-3. Heft-Tests von kultboy.com
+   - 8j-4. Die Zeitmaschine
    - 8k. RetroAchievements-Fortschritt
    - 8l. Standard- oder RA-Core wählen
    - 8m. Durchgespielt-Status + eigene Erfolge
@@ -1780,6 +1781,60 @@ Heftseiten liegen nur im Arbeitsspeicher und sind beim Verlassen weg.
 Bilder-Ordner aus, in dem die Scans liegen. Deshalb ist der Schalter
 von Haus aus AUS – einschalten, wenn Kultboy einverstanden ist.
 
+## 8j-4. Die Zeitmaschine (Build 351)
+
+Ein Jahr wählen – und die Sammlung zeigt sich, wie sie damals war: welche
+Spiele es bis dahin gab, was in genau diesem Jahr neu war, und wie du sie
+bewertet hast.
+
+**So geht's:** Auf der Hauptseite die Kategorie `Zeitmaschine` öffnen →
+`Zeitreise starten ...`. Es erscheint das Drehrad mit der Jahreszahl:
+
+| Taste | Wirkung |
+|---|---|
+| Links / Rechts | ein Jahr zurück / vor |
+| Hoch / Runter | zehn Jahre vor / zurück |
+| A | reisen |
+| B | abbrechen |
+
+Unter der Zahl steht, wie viele Spiele es bis zu diesem Jahr gibt und wie
+viele davon neu sind, dazu der Bereich deiner Sammlung. Das Rad beginnt
+beim Jahr mit den meisten Neuerscheinungen, ab der zweiten Reise beim
+letzten Reiseziel.
+
+**Auf der Reise** heißt die Kategorie `Zeitmaschine · 1991` und zeigt:
+
+- `Zurück in die Gegenwart` und `Anderes Jahr ...` ganz oben,
+- `Neu in 1991` – alles, was in diesem Jahr erschienen ist,
+- `Deine Wertungen` – deine bewerteten Spiele bis zu diesem Jahr, die
+  besten zuerst (nur bei eingeschalteten Wertungen, siehe 8j-2),
+- je System ein Ordner mit allem bis zu diesem Jahr, das Neueste zuerst.
+
+Die Spiele darin sind die echten Einträge – starten, Kontextmenü,
+Favoriten, alles geht wie gewohnt.
+
+**Zurück in die Gegenwart:** über den Punkt ganz oben oder mit **B** auf
+der obersten Ebene der Zeitmaschine. In einem Ordner geht B wie immer
+nur eine Ebene hoch. Auch Ausschalten und ein Neu-Einlesen der Spiele
+beenden die Reise.
+
+**Woher die Jahre kommen:** aus den Spieledaten, die Dragend ohnehin hat
+(System → `Spieledaten nachladen`, eine eigene `gamelist.xml`, bei
+Arcade die `.mra`-Datei). Spiele ohne bekanntes Jahr fahren nicht mit –
+wie viele das sind, steht unter dem Drehrad. Hat noch kein Spiel ein
+Jahr, sagt die Zeitmaschine das, statt ein leeres Rad zu zeigen.
+
+**Kostet nichts, solange man nicht reist.** Beim Start steht nur die
+Kategorie mit einem einzigen Eintrag da – kein Lesen, kein Rechnen.
+Erst die erste Reise liest die Jahre (mit Fortschrittsanzeige, **B**
+bricht ab) und merkt sie sich bis zum nächsten Start bzw. Neu-Einlesen.
+Gespeichert wird nichts, ins Netz geht nichts.
+
+**Ausblenden:** wie jede Kategorie (System → Verhalten & Optionen →
+„Hauptseite: Kategorien sortieren und ausblenden“), oder ganz abschalten: System → Statistiken & Erfolge → `Zeitmaschine auf der
+Hauptseite: AN` (Vorgabe AN; Merker beim Ausschalten:
+`/media/fat/frontend/zeitmaschine_aus`).
+
 ## 8k. RetroAchievements-Fortschritt
 
 Zeigt im Info-Bereich, wie viele Achievements du bei einem Spiel
@@ -3357,6 +3412,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Monatsheft ansehen | `wertung_monatsheft` |
 | Testarchiv als CSV speichern | `wertung_csv` |
 | Heft-Tests von kultboy.com: AN/AUS | `kultboy_an` |
+| Zeitmaschine auf der Hauptseite: AN/AUS | `zeitmaschine_an` |
 
 ### Anzeige & Sound
 
@@ -3487,6 +3543,12 @@ Standardbelegung zusammengeführt wird.
 ---
 
 Erstellt von **Dragrem2K**, mit Beiträgen von **TheRealSuTefan**
-und **Dfense**. Lizenziert unter der MIT-Lizenz (siehe
-`LICENSE`) - frei nutzbar, veränderbar und weitergebbar. Was sich
+und **Dfense**. Lizenziert unter der GNU General Public License,
+Version 3 oder neuer (GPL-3.0-or-later, siehe `LICENSE`) - frei nutzbar,
+veränderbar und weitergebbar; wer Dragend verändert weitergibt oder
+darauf aufbaut, muss das ebenfalls unter der GPL und mit Quelltext tun.
+Bis einschließlich Build 350 stand Dragend unter der MIT-Lizenz; diese
+Fassungen und die bis dahin eingebrachten Beiträge behalten sie (siehe
+`LICENSE_MIT_bis_Build_350.txt`). `Scripts/MiSTer_RA.sh` stammt von
+sage2050 und steht weiter unter MIT. Was sich
 zwischen den Versionen getan hat: siehe `CHANGELOG.md`.

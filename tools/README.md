@@ -12211,3 +12211,87 @@ Betrachter in zwei Aufloesungen (nichts auf die Karte geschrieben).
 nach 50 leeren Antworten der Eingabe auf, statt endlos neu zu zeichnen
 (auf dem Geraet wird blockierend gefragt; beim Pruefen einer
 Abwandlung hing genau dort ein Lauf).
+
+## Nachtrag Build 351 - Die Zeitmaschine und GPL-3.0
+
+**Stand:** 26.11.2026, `Dragend_Build_351.zip` (build_id
+`2026-11-26-351`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 8).
+
+Nutzerwunsch: "das ultimative Feature" - ein Jahr waehlen und die
+Sammlung sehen, wie sie damals war; ein- und ausschaltbar, "Zurueck in
+die Gegenwart" als eigener Punkt und auf B. Und ausdruecklich: "die
+Performance, die wir jetzt haben, darf nicht darunter leiden". Dazu der
+Wechsel der Lizenz von MIT auf GPL-3.0-or-later.
+
+### fe/zeitmaschine.py (neu)
+
+- Schalter `zeitmaschine_aus` (Merker fuers AUS), Vorgabe AN.
+- `Verzeichnis`: `{jahr: [(syskey, label, kind, arg)]}`, `ohne` (Spiele
+  ohne Jahr), `gesehen` (ein Spiel je System nur einmal, auch wenn es in
+  mehreren Kategorien steht). `bereich()`, `zaehlen(jahr)` -> (bis,
+  neu), `startjahr()` (meiste Neuerscheinungen, bei Gleichstand das
+  fruehere).
+- `eintraege(cats)`: nur Kategorien mit Systemschluessel, durch alle
+  Unterordner; `anzahl()` zaehlt genau, was `bauen()` liest (fuer die
+  Fortschrittsanzeige).
+- `bauen(cats, meta_fn, mra_fn, bis, zwischendurch)`: Jahr ueber
+  `fe.filter.jahr_zahl`, nur 1970 bis naechstes Jahr; Arcade nur `.mra`
+  (ueber `mra_meta`), `.rbf`-Cores nicht; ein bekanntes Spiel liest die
+  Spieldaten kein zweites Mal. Alle `HAPPEN` (300) Spiele ruft es
+  `zwischendurch(n)`; False bricht ab (Rueckgabe None).
+- `knoten(vz, jahr, ...)`: `oben` = "Zurueck in die Gegenwart", "Anderes
+  Jahr ..."; `folge` = "Neu in <Jahr>", "Deine Wertungen"; dann je
+  System ein Ordner (Name wie die Kategorie auf der Hauptseite), das
+  Neueste zuerst. Wertungen bester zuerst, Arcade unter `ARCADE`.
+
+### Frontend
+
+- `_display_items()`: ein Knoten darf `folge` (Ordner zuerst in dieser
+  Reihenfolge) und `oben` (Eintraege vor den Ordnern) tragen. Alle
+  anderen Knoten haben beides nicht und bleiben unveraendert; gerechnet
+  wird nur, wenn der Knoten-Cache fehlt.
+- `build_categories()`: verwirft Verzeichnis und Reise und haengt die
+  Kategorie mit EINEM Eintrag an (vor den Zufalls-Zock) - nur wenn
+  eingeschaltet und mindestens eine System-Kategorie da ist.
+- `_zm_reisen()`: `_zm_vorbereiten()` (einmal je Sitzung, Fortschritt
+  alle 0,25 s, `read_action(timeout=0)` zwischen den Happen, B bricht ab
+  und laesst alles wie es war), dann das Drehrad `_zm_waehlen()`
+  (Links/Rechts 1, Hoch/Runter 10, geklemmt, A/B, gibt nach 50 leeren
+  Antworten auf), dann `_zm_ersetzen(oeffnen=True)`. Ohne ein einziges
+  Jahr: Hinweis statt Rad.
+- Name auf der Reise `Zeitmaschine · <Jahr>`; `fe/hauptseite.schluessel()`
+  liefert dafuer weiter `zm_cat` (neu in BESONDERE), Ausblenden und
+  Ordnen gelten also auch auf der Reise.
+- Zurueck in die Gegenwart: Eintrag `zeitmaschine_zurueck`, B auf der
+  obersten Ebene der Zeitmaschine (`_go_back_or_confirm_quit`), in
+  Unterordnern geht B wie immer eine Ebene hoch. Ausschalten und
+  Neu-Einlesen beenden die Reise.
+- Systemmenue Statistiken & Erfolge: `Zeitmaschine auf der Hauptseite:
+  AN/AUS` (`zeitmaschine_an`), auch in der Vorfuehrung.
+
+### Lizenz
+
+- `LICENSE`: unveraenderter Text der GPL Version 3 (aus
+  /usr/share/common-licenses/GPL-3). Gilt als GPL-3.0-or-later.
+- `LICENSE_MIT_bis_Build_350.txt`: Erklaerung (de/en) und der alte
+  MIT-Text mit dem alten Vermerk - fuer die Fassungen bis Build 350 und
+  die bis dahin eingebrachten Beitraege.
+- README (de/en), VORSCHAU, Handbuch, Manual und der Kopf von
+  frontend.py nennen die GPL. `Scripts/MiSTer_RA.sh` (sage2050) behaelt
+  seinen eigenen MIT-Vermerk.
+
+### Pruefungen
+
+`tools/test_zeitmaschine.py` neu: Schalter, Menue, Kategorie nur mit
+Systemen; nichts gebaut und nichts gelesen beim Start, beim Zeichnen
+und nach einem Neu-Aufbau; Verzeichnis (Datumsformen, unplausible
+Jahre, doppelte Eintraege, Arcade, Happen, Abbruch, Fehler in den
+Spieldaten); Knoten (oben/folge, Neuestes zuerst, nichts aus der
+Zukunft, Wertungen mit Arcade); Drehrad (+-1, +-10, Grenzen, A, B,
+klemmende Eingabe); die ganze Reise im Frontend (Name, Kuerzel, Liste,
+B oben/unten/anderswo, Punkt, Ausschalten, Neu-Einlesen); Abbruch der
+Vorbereitung; keine Jahre; Bildschirme 1280x720 und 320x240.
+`tools/test_lizenz.py` neu: GPL-Text unveraendert (Zeilen, Pruefsumme),
+alter MIT-Text vollstaendig, alle Nennungen, sage2050 unangetastet.
+`tools/_harness.py` lenkt den Schalter um.

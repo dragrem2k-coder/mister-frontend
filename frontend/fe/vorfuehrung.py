@@ -128,7 +128,9 @@ GRUPPEN = (
       "wertung_kategorien", "wertung_stempel", "wertung_zweit",
       "wertung_heft", "wertung_monatsheft", "wertung_csv",
       # Build 350
-      "kultboy_an"),
+      "kultboy_an",
+      # Build 351
+      "zeitmaschine_an"),
      ("fremdquellen", "rom_filter", "multidisc")),
     ("performance", ("Performance", "Performance"),
      ("Was das Frontend schneller macht - Miniaturen, Auflösung, Scrollen.",

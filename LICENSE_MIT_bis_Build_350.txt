@@ -1,0 +1,52 @@
+Dragend - frühere Lizenz (MIT) / earlier licence (MIT)
+=====================================================
+
+DE: Bis einschließlich Build 350 stand Dragend unter der MIT-Lizenz
+(Text unten). Ab Build 351 gilt die GNU General Public License,
+Version 3 oder (nach deiner Wahl) jede spätere Version
+(GPL-3.0-or-later, siehe LICENSE).
+
+Was bis Build 350 veröffentlicht wurde, bleibt unter der MIT-Lizenz.
+Das gilt auch für die bis dahin eingebrachten Beiträge von
+TheRealSuTefan und Dfense: Teile daraus, die im heutigen Dragend
+stecken, tragen weiter den MIT-Hinweis unten; das Ganze wird unter
+der GPL-3.0-or-later weitergegeben (MIT-Code darf in GPL-Software
+stehen).
+
+EN: Up to and including Build 350, Dragend was released under the MIT
+licence (text below). From Build 351 on, the GNU General Public
+License, version 3 or (at your option) any later version applies
+(GPL-3.0-or-later, see LICENSE).
+
+Everything released up to Build 350 stays under the MIT licence. This
+also covers the contributions by TheRealSuTefan and Dfense made up to
+then: the parts of them that are still in Dragend keep the MIT notice
+below; the whole is distributed under GPL-3.0-or-later (MIT code may
+be part of GPL software).
+
+Scripts/MiSTer_RA.sh is by sage2050 and keeps its own MIT licence
+(see the header of that file).
+
+-----------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 Dragrem2K
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

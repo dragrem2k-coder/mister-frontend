@@ -5,6 +5,11 @@ MiSTer Custom Frontend - v5.1
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
+Copyright (C) 2026 Dragrem2K. Freie Software unter der GNU General
+Public License, Version 3 oder (nach Wahl) jeder spaeteren Version -
+siehe LICENSE. OHNE JEDE GEWAEHRLEISTUNG. Bis Build 350: MIT (siehe
+LICENSE_MIT_bis_Build_350.txt).
+
 Die vollstaendige Entwicklungs- und Versionsgeschichte (frueher hier im
 Dateikopf, ueber 3300 Zeilen) steht jetzt in:
   docs/ENTWICKLUNGSHISTORIE.md
@@ -1268,6 +1273,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 import fe.masken as MASKEN
 import fe.wertungen as WT   # Build 346: eigene Wertungen
 import fe.kultboy as KB     # Build 350: Heft-Tests von kultboy.com
+import fe.zeitmaschine as ZM   # Build 351: die Zeitmaschine
 import fe.schriften as SCHRIFTEN
 import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
@@ -3094,6 +3100,10 @@ class Frontend:
         # BUILD 338: wo der Nutzer gerade steht - VOR dem Neuaufbau
         # gemerkt, danach wiedergefunden. Siehe _position_wiederfinden().
         _vorher = self._position_merken()
+        # Build 351: ein neuer Spielebaum - das Verzeichnis der
+        # Zeitmaschine gilt nicht mehr, eine laufende Reise endet.
+        self._zm_vz = None
+        self._zm_jahr = None
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
         # welche entfernt worden sein.
@@ -3329,6 +3339,11 @@ class Frontend:
         _archiv = self._testarchiv_knoten()
         if _archiv is not None:
             self.cats.append((t("testarchiv_cat"), _archiv, None))
+        # Build 351: die Zeitmaschine - hier nur ein Eintrag, das
+        # Verzeichnis entsteht erst bei der ersten Reise. Ohne ein
+        # einziges System gaebe es nichts zu reisen.
+        if self._zm_moeglich():
+            self.cats.append((self._zm_name(), self._zm_knoten(), None))
         self.cats.append((t("zufallszock_title"), _wrap_flat(
             [(t("sys_zufallszock_action"), "zufallszock_draw", None)]), None))
         self.cats.append(("System", system_items(
@@ -3371,6 +3386,10 @@ class Frontend:
         i = getattr(self, "cat_i", 0)
         if not cats or not 0 <= i < len(cats):
             return None
+        # Build 351: auf der Reise heisst die Zeitmaschine
+        # "Zeitmaschine · 1991"; nach dem Neuaufbau wieder ohne Jahr.
+        if cats[i][2] is None and HS.schluessel(cats[i][0]) == "zm_cat":
+            return (t("zm_cat"), None)
         return (cats[i][0], cats[i][2])
 
     def _position_wiederfinden(self, vorher):
@@ -3476,6 +3495,10 @@ class Frontend:
                 self._kategorie_position[self.cat_i] = (self.item_i,
                                                         self.scroll)
                 self.page = 0
+                # Build 351: B auf der obersten Ebene der Zeitmaschine
+                # holt in die Gegenwart zurueck.
+                if getattr(self, "_zm_jahr", None) and self._zm_aktuell():
+                    self._zm_gegenwart(meldung=False)
         else:
             self.confirm_quit = True
             self.confirm_choice = 1    # Nein vorausgewaehlt
@@ -3951,9 +3974,20 @@ class Frontend:
         cached = node.get("_display_items_cache")
         if cached is None:
             folder_names = sorted(node["folders"].keys(), key=str.lower)
+            # Build 351: ein Knoten darf seine Ordner selbst ordnen
+            # ("folge") und Eintraege ueber die Ordner stellen ("oben") -
+            # die Zeitmaschine zeigt "Zurueck in die Gegenwart" zuerst,
+            # dann "Neu in <Jahr>". Alle anderen Knoten haben beides
+            # nicht und bleiben genau wie bisher.
+            folge = node.get("folge")
+            if folge:
+                vorn = [f for f in folge if f in node["folders"]]
+                folder_names = vorn + [f for f in folder_names
+                                       if f not in set(vorn)]
             folder_entries = [(fname + "/", "folder", fname)
                               for fname in folder_names]
-            cached = folder_entries + node["items"]
+            cached = (list(node.get("oben") or ()) + folder_entries
+                      + node["items"])
             node["_display_items_cache"] = cached
         # NEU (Build 256): Ausblenden, Ordnerstellung, Favoriten zuerst.
         # Aus demselben Grund wie der Filter darunter NACH dem
@@ -5800,6 +5834,254 @@ class Frontend:
             bilder.clear()
             skaliert.clear()
             self._force_full_redraw = True
+
+    # ------------------------------------------------------------------
+    # BUILD 351: DIE ZEITMASCHINE (fe/zeitmaschine.py)
+    #
+    # Ein Jahr waehlen, und die Kategorie zeigt die Sammlung von damals:
+    # "Neu in <Jahr>", je System alles bis dahin, deine Wertungen. Das
+    # Verzeichnis entsteht erst bei der ersten Reise und gilt fuer die
+    # Sitzung - solange niemand reist, kostet die Zeitmaschine nichts.
+    # Zurueck in die Gegenwart: der Punkt in der Liste, oder B auf der
+    # obersten Ebene der Kategorie.
+    # ------------------------------------------------------------------
+    def _zm_name(self):
+        jahr = getattr(self, "_zm_jahr", None)
+        return t("zm_cat") + (" \xb7 %d" % jahr if jahr else "")
+
+    def _zm_texte(self):
+        return {"neu": t("zm_neu"), "wertungen": t("zm_wertungen"),
+                "zurueck": t("zm_zurueck"), "anderes": t("zm_anderes")}
+
+    def _zm_knoten(self):
+        vz = getattr(self, "_zm_vz", None)
+        jahr = getattr(self, "_zm_jahr", None)
+        if vz is None or not jahr:
+            return _wrap_flat([(t("zm_starten"), "zeitmaschine", None)])
+        wertungen = None
+        if WT.an():
+            wertungen = dict(((e.get("syskey") or "", e.get("label")),
+                              WT.runden(e.get("spass")) or 0)
+                             for e in WT.alle().values())
+        # Die Systemordner heissen wie ihre Kategorie auf der
+        # Hauptseite - so findet man sie wieder.
+        namen = {}
+        for name, _k, sk in self.cats or ():
+            if sk and sk not in namen:
+                namen[sk] = HS.ohne_zaehler(name)
+        return ZM.knoten(vz, jahr,
+                         lambda sk: namen.get(sk)
+                         or self._wertung_systemname(sk),
+                         self._zm_texte(), wertungen)
+
+    def _zm_moeglich(self):
+        """Eingeschaltet und mindestens eine System-Kategorie da."""
+        return ZM.an() and any(c[2] for c in self.cats or ())
+
+    def _zm_index(self):
+        """Position der Zeitmaschine in self.cats oder None."""
+        ziel = HS.schluessel(t("zm_cat"))
+        for i, (name, _k, sk) in enumerate(self.cats or ()):
+            if sk is None and HS.schluessel(name) == ziel:
+                return i
+        return None
+
+    def _zm_sync_kategorie(self):
+        """Nach dem Umschalten: die Kategorie da oder weg - vor dem
+        Zufalls-Zock, wie beim Aufbau."""
+        if not self.cats:
+            return
+        current_ref = (self.cats[self.cat_i][0], self.cats[self.cat_i][2])
+        i = self._zm_index()
+        if i is not None:
+            del self.cats[i]
+        if self._zm_moeglich():
+            pos = len(self.cats)
+            for k, c in enumerate(self.cats):
+                if c[2] is None and c[0] in (t("zufallszock_title"),
+                                              "System"):
+                    pos = k
+                    break
+            self.cats.insert(pos, (self._zm_name(), self._zm_knoten(), None))
+        self._hauptseite_anwenden()
+        for k, c in enumerate(self.cats):
+            if (c[0], c[2]) == current_ref:
+                self.cat_i = k
+                break
+        else:
+            self.cat_i = min(self.cat_i, len(self.cats) - 1)
+
+    def _zm_ersetzen(self, oeffnen=False):
+        i = self._zm_index()
+        if i is None:
+            return
+        # Die gemerkte Listenposition gehoert zur alten Liste.
+        getattr(self, "_kategorie_position", {}).pop(i, None)
+        self.cats[i] = (self._zm_name(), self._zm_knoten(), None)
+        self._anzeige_geaendert()
+        self._force_full_redraw = True
+        if oeffnen:
+            self.cat_i = i
+            self.page = 1
+            self.nav_path = []
+            self._nav_position_stack = []
+            self.item_i = self.scroll = 0
+        elif self.page == 1 and self.cat_i == i:
+            self.page = 0
+            self.nav_path = []
+            self._nav_position_stack = []
+
+    def _zm_aktuell(self):
+        """Steht man gerade in der Zeitmaschine?"""
+        i = self._zm_index()
+        return i is not None and i == self.cat_i
+
+    def _zm_schirm(self, zeilen, hinweis):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        fb.clear(C_BG)
+        titel = t("zm_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        y = oy + 10 * ts + 10 * s
+        for z in zeilen:
+            for teil in self._wrap(z, maxc, max_lines=3):
+                fb.text(ox, y, teil, s, C_TEXT, C_BG)
+                y += 12 * s
+        self._hinweis_unten(hinweis, s - 1 if s > 1 else 1)
+        fb.flip()
+
+    def _zm_vorbereiten(self):
+        """Das Verzeichnis bauen - einmal je Sitzung. B bricht ab
+        (dann bleibt alles, wie es war). True, wenn es steht."""
+        if getattr(self, "_zm_vz", None) is not None:
+            return True
+        gesamt = max(1, ZM.anzahl(self.cats, mra_meta))
+        letzt = [0.0]
+
+        def _zwischendurch(n):
+            akt = self.inp.read_action(timeout=0)
+            if akt in ("back", "exit"):
+                return False
+            jetzt = time.monotonic()
+            if jetzt - letzt[0] >= 0.25:
+                letzt[0] = jetzt
+                self._zm_schirm([t("zm_vorbereiten"),
+                                 t("zm_fortschritt", min(n, gesamt), gesamt)],
+                                t("zm_abbrechen"))
+            return True
+        self._zm_schirm([t("zm_vorbereiten"),
+                         t("zm_fortschritt", 0, gesamt)], t("zm_abbrechen"))
+        t0 = time.monotonic()
+        vz = ZM.bauen(self.cats, get_meta, mra_meta,
+                      int(time.strftime("%Y")) + 1, _zwischendurch)
+        if vz is None:
+            LOG("Zeitmaschine: Vorbereitung abgebrochen")
+            return False
+        self._zm_vz = vz
+        LOG("Zeitmaschine: %d Jahre, %d Spiele ohne Jahr, %.0f ms"
+            % (len(vz.jahre), vz.ohne, (time.monotonic() - t0) * 1000.0))
+        return True
+
+    def _zm_rad_zeichnen(self, jahr, von, bis):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        vz = self._zm_vz
+        fb.clear(C_BG)
+        titel = t("zm_titel")
+        ts = self._fit_scale(titel, W - 2 * ox, s + 1)
+        fb.text(ox, oy, titel, ts, C_TITLE, C_BG)
+        zahl = str(jahr)
+        gross = max(2, min(8 * s, (W - 2 * ox) // (len(zahl) * 8 + 40)))
+        zb = len(zahl) * 8 * gross
+        y = max(oy + 10 * ts + 12 * s, (H - 10 * gross) // 2 - 20 * s)
+        x = (W - zb) // 2
+        fb.text(x, y, zahl, gross, C_ACCENT, C_BG)
+        pfeil_y = y + (10 * gross - 8 * 2 * s) // 2
+        for zeichen, px, ok in (("<", x - 24 * s, jahr > von),
+                                (">", x + zb + 8 * s, jahr < bis)):
+            fb.text(px, pfeil_y, zeichen, 2 * s, C_TITLE if ok else C_DIM,
+                    C_BG)
+        y += 10 * gross + 10 * s
+        n_bis, n_neu = vz.zaehlen(jahr)
+        for zeile, farbe in ((t("zm_zaehlen", jahr, n_bis, n_neu), C_TEXT),
+                             (t("zm_bereich", von, bis), C_DIM)):
+            zeile = zeile[:maxc]
+            fb.text((W - len(zeile) * 8 * s) // 2, y, zeile, s, farbe, C_BG)
+            y += 12 * s
+        if vz.ohne:
+            zeile = t("zm_ohne", vz.ohne)[:maxc]
+            fb.text((W - len(zeile) * 8 * s) // 2, y, zeile, s, C_DIM, C_BG)
+        self._hinweis_unten(t("zm_hinweis"), s - 1 if s > 1 else 1)
+        fb.flip()
+
+    def _zm_waehlen(self):
+        """Das Drehrad: Links/Rechts ein Jahr, Hoch/Runter zehn, A reist,
+        B bricht ab. Das gewaehlte Jahr oder None."""
+        von, bis = self._zm_vz.bereich()
+        jahr = getattr(self, "_zm_jahr", None) or self._zm_vz.startjahr()
+        leer = 0
+        while True:
+            jahr = max(von, min(bis, jahr))
+            self._zm_rad_zeichnen(jahr, von, bis)
+            akt = self.inp.read_action(timeout=None)
+            if akt is None:
+                leer += 1
+                if leer > 50:
+                    return None
+                continue
+            leer = 0
+            if akt in ("left", "right"):
+                jahr += 1 if akt == "right" else -1
+            elif akt in ("up", "down"):
+                jahr += 10 if akt == "up" else -10
+            elif akt == "ok":
+                return jahr
+            elif akt == "back" or akt == "exit":
+                return None
+
+    def _zm_reisen(self):
+        """Eintrag 'Zeitreise starten' / 'Anderes Jahr'."""
+        try:
+            if not self._zm_vorbereiten():
+                return
+            if not self._zm_vz.jahre:
+                self._zm_schirm([t("zm_keine")], t("kb_weiter"))
+                self.inp.read_action(timeout=5.0)
+                return
+            jahr = self._zm_waehlen()
+            if jahr is None:
+                return
+            self._zm_jahr = jahr
+            LOG("Zeitmaschine: Reise nach %d" % jahr)
+            self._zm_ersetzen(oeffnen=True)
+        finally:
+            self._force_full_redraw = True
+            self.draw()
+
+    def _zm_gegenwart(self, meldung=True):
+        """Zurueck in die Gegenwart - die Kategorie ist wieder, was sie
+        vorher war; man steht auf der Hauptseite bei ihr."""
+        if not getattr(self, "_zm_jahr", None):
+            return False
+        self._zm_jahr = None
+        i = self._zm_index()
+        self._zm_ersetzen(oeffnen=False)
+        if i is not None:
+            self.cat_i = i
+        self.page = 0
+        self._force_full_redraw = True
+        if meldung:
+            self.draw(message=t("zm_gegenwart"))
+        return True
 
     def _anzeige_geaendert(self):
         """Den Zaehler hochdrehen, an dem der Merker in
@@ -9112,6 +9394,9 @@ class Frontend:
         name, _node, syskey = entry
         if syskey is not None:
             return ("sys", syskey)
+        # Build 351: die Zeitmaschine mit und ohne Reisejahr ist dieselbe.
+        if HS.schluessel(name) == "zm_cat":
+            return ("label", "zm_cat")
         return ("label", name.split(" (")[0])
 
     def _rebuild_categories_preserving_selection(self, force_rescan=False):
@@ -29523,6 +29808,13 @@ class Frontend:
                             # Build 350: Heft-Tests von kultboy.com.
                             KB.toggle_an()
                             self._refresh_system_category()
+                        elif kind == "zeitmaschine_an":
+                            # Build 351: die Zeitmaschine (Vorgabe AN).
+                            # Ausschalten beendet eine laufende Reise.
+                            ZM.toggle_an()
+                            self._zm_jahr = None
+                            self._zm_sync_kategorie()
+                            self._refresh_system_category()
                         elif kind == "wertung_monatsheft":
                             # Build 347: das eigene Heft.
                             try:
@@ -30033,6 +30325,11 @@ class Frontend:
                         elif kind == "zufallszock_draw":
                             self.draw_zufallszock_screen()
                             self.draw()
+                        elif kind == "zeitmaschine":
+                            # Build 351: Zeitreise starten / anderes Jahr.
+                            self._zm_reisen()
+                        elif kind == "zeitmaschine_zurueck":
+                            self._zm_gegenwart()
                         elif kind == "secrets":
                             self.draw_secrets_screen()
                             self.draw()

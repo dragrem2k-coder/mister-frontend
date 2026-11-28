@@ -138,6 +138,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Jahresrückblick** | Statistik für das laufende Kalenderjahr |
 | **Spielzeit-Tracker** | Wie lange, wie oft, wann zuletzt — pro Spiel und pro System |
 | **Top-10-Listen** | Nach Spielzeit, Startzahl, Systemen |
+| **Zeitmaschine** | Jahr am Drehrad wählen, und die Sammlung zeigt sich wie damals: „Neu in 1991“, je System alles bis dahin, deine Wertungen von damals. „Zurück in die Gegenwart“ mit einem Druck. Kostet nichts, solange man nicht reist |
 | **Heft-Tests von kultboy.com** | Zu jedem Spiel die Tests aus den alten Magazinen: Liste mit Heft, Ausgabe und Wertung, dazu die **gescannte Heftseite** mit Zoom – online auf Knopfdruck, nichts wird gespeichert. Schalter, Vorgabe AUS |
 | **Eigene Wertungen** | Wie früher im Heft: Spielspaß in Prozent, auf Wunsch Grafik, Sound/Musik, Steuerung je nach Gerät, Stempel „Dragend-Hit“ ab 85 %. Kurze Frage nach dem Spielen (A speichert, B später), Kurzfazit, Zweitmeinung, „damals – heute“, Testarchiv je System, ein **Monatsheft** und Export als CSV. **Abschaltbar — und nach einem Update erst einmal aus** |
 | **RetroAchievements** | Fortschritt, Erfolgs-Vitrine (F6), Popup bei neuen Erfolgen |
@@ -437,4 +438,9 @@ Läuft etwas nicht, steht die Fehlersuche im
 mit nach `/tmp/frontend.log` — diese Datei ist bei einer Meldung das
 Nützlichste, was man mitschicken kann.
 
-Lizenz: [MIT](LICENSE).
+Lizenz: [GPL-3.0-or-later](LICENSE) (ab Build 351) — Dragend darf jeder
+nutzen, verändern und weitergeben; wer es verändert weitergibt oder darauf
+aufbaut, muss das ebenfalls unter der GPL und mit Quelltext tun. Versionen
+bis Build 350 waren MIT-lizenziert und bleiben es
+([LICENSE_MIT_bis_Build_350.txt](LICENSE_MIT_bis_Build_350.txt)).
+`Scripts/MiSTer_RA.sh` stammt von sage2050 und steht weiter unter MIT.

@@ -13,6 +13,21 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Die Zeitmaschine.** Eine neue Kategorie auf der Hauptseite: Jahr am
+  Drehrad wählen (Links/Rechts ein Jahr, Hoch/Runter zehn, A reist), und
+  die Sammlung zeigt sich, wie sie damals war – „Neu in 1991“, je System
+  alles bis zu diesem Jahr, deine Wertungen von damals. „Zurück in die
+  Gegenwart“ ganz oben oder mit B. Kostet nichts, solange man nicht
+  reist: die Jahre werden erst bei der ersten Reise gelesen (B bricht
+  ab) und für die Sitzung gemerkt. Ausblendbar wie jede Kategorie,
+  Schalter unter System → Statistiken & Erfolge, Vorgabe AN.
+
+- **Neue Lizenz: GPL-3.0-or-later** statt MIT. Dragend bleibt frei
+  nutzbar, veränderbar und weitergebbar – wer es verändert weitergibt
+  oder darauf aufbaut, muss das ebenfalls unter der GPL und mit Quelltext
+  tun. Versionen bis Build 350 bleiben MIT
+  (`LICENSE_MIT_bis_Build_350.txt`).
+
 - **Heft-Tests von kultboy.com.** Im Kontextmenü eines Spiels:
   „Heft-Tests (Kultboy)“. Dragend sucht das Spiel bei Kultboy, zeigt die
   Tests mit Heft, Ausgabe und Wertung (die zum eigenen System zuerst) und

@@ -120,6 +120,9 @@ import fe.kultboy as _KB                                 # noqa: E402
 _KB.AN_FLAG = os.path.join(_WT_ORDNER, "kultboy_an")
 _KB.ZUORDNUNG_FILE = os.path.join(_WT_ORDNER, "kultboy_zuordnung.json")
 _KB._an[0] = None
+import fe.zeitmaschine as _ZM                           # noqa: E402
+_ZM.AUS_FLAG = os.path.join(_WT_ORDNER, "zeitmaschine_aus")
+_ZM._aus[0] = None
 
 # BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
 # Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,

@@ -171,6 +171,7 @@ history to read up on (`CHANGELOG.md`).
    - 8j. Top 10 lists
    - 8j-2. Your own ratings, magazine style
    - 8j-3. Magazine reviews from kultboy.com
+   - 8j-4. The time machine
    - 8k. RetroAchievements progress
    - 8l. Choosing a standard or RA core
    - 8m. Completed status + your own achievements
@@ -1525,6 +1526,61 @@ pages are kept in memory only and are gone when you leave.
 the scans in its `robots.txt`. That is why the switch is OFF by default
 – switch it on once Kultboy agrees.
 
+
+## 8j-4. The time machine (Build 351)
+
+Pick a year – and your collection shows itself as it was back then: which
+games existed up to that year, what was new in exactly that year, and how
+you rated them.
+
+**How it works:** on the main page open the `Time machine` category →
+`Start a time trip ...`. The year wheel appears:
+
+| Button | Effect |
+|---|---|
+| Left / Right | one year back / forward |
+| Up / Down | ten years forward / back |
+| A | travel |
+| B | cancel |
+
+Below the number you see how many games exist up to that year and how
+many of them are new, plus the range of your collection. The wheel starts
+at the year with the most releases, from the second trip on at the last
+destination.
+
+**While travelling** the category is called `Time machine · 1991` and
+shows:
+
+- `Back to the present` and `Another year ...` at the very top,
+- `New in 1991` – everything released in that year,
+- `Your ratings` – your rated games up to that year, best first (only
+  with ratings switched on, see 8j-2),
+- one folder per system with everything up to that year, newest first.
+
+The games in there are the real entries – launching, context menu,
+favourites all work as usual.
+
+**Back to the present:** via the item at the top or with **B** on the
+top level of the time machine. Inside a folder B goes up one level as
+always. Switching it off and rescanning the games also end the trip.
+
+**Where the years come from:** the game info Dragend already has (System
+→ `Download game info`, your own `gamelist.xml`, the `.mra` file for
+arcade). Games without a known year stay at home – the count is shown
+below the wheel. If no game has a year yet, the time machine says so
+instead of showing an empty wheel.
+
+**Costs nothing unless you travel.** At startup there is just the
+category with a single entry – no reading, no computing. Only the first
+trip reads the years (with a progress screen, **B** cancels) and keeps
+them until the next start or rescan. Nothing is saved, nothing goes to
+the network.
+
+**Hiding it:** like any category (System → Options → "Main page: sort and
+hide categories"), or switch it
+off completely: System → Statistics & achievements → `Time machine on
+the main page: ON` (default ON; marker file when off:
+`/media/fat/frontend/zeitmaschine_aus`).
 ## 8k. RetroAchievements progress
 
 Shows in the info area how many achievements you've already earned in a
@@ -2948,6 +3004,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Read the monthly issue | `wertung_monatsheft` |
 | Save test archive as CSV | `wertung_csv` |
 | Magazine reviews from kultboy.com: ON/OFF | `kultboy_an` |
+| Time machine on the main page: ON/OFF | `zeitmaschine_an` |
 
 ### Display & Sound
 
@@ -3077,6 +3134,12 @@ default mapping.
 ---
 
 Created by **Dragrem2K**, with contributions from **TheRealSuTefan**
-and **Dfense**. Licensed under the MIT license (see
-`LICENSE`) - free to use, modify and redistribute. What has changed
+and **Dfense**. Licensed under the GNU General Public License,
+version 3 or later (GPL-3.0-or-later, see `LICENSE`) - free to use,
+modify and redistribute; whoever shares a modified version or builds on
+it must do so under the GPL as well, with source code. Up to and
+including Build 350 Dragend was MIT-licensed; those versions and the
+contributions made up to then keep that licence (see
+`LICENSE_MIT_bis_Build_350.txt`). `Scripts/MiSTer_RA.sh` is by sage2050
+and keeps its MIT licence. What has changed
 between versions: see `CHANGELOG.md`.

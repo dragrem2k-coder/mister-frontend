@@ -13,6 +13,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **The time machine.** A new category on the main page: pick a year on
+  the wheel (left/right one year, up/down ten, A travels), and your
+  collection shows itself as it was back then – "New in 1991", per system
+  everything up to that year, your ratings from back then. "Back to the
+  present" at the top or with B. Costs nothing unless you travel: the
+  years are read on the first trip only (B cancels) and kept for the
+  session. Can be hidden like any category, switch under System →
+  Statistics & achievements, ON by default.
+
+- **New licence: GPL-3.0-or-later** instead of MIT. Dragend stays free
+  to use, modify and share – whoever shares a modified version or builds
+  on it must do so under the GPL as well, with source code. Versions up
+  to Build 350 stay MIT (`LICENSE_MIT_bis_Build_350.txt`).
+
 - **Magazine reviews from kultboy.com.** In a game's context menu:
   "Magazine reviews (Kultboy)". Dragend searches Kultboy for the game,
   lists the reviews with magazine, issue and rating (those for your

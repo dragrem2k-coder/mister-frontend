@@ -57,6 +57,7 @@ from fe.retroachievements import load_ra_config, ra_toggle_enabled
 import fe.gimmick as GIMMICK
 import fe.wertungen as WT
 import fe.kultboy as KB
+import fe.zeitmaschine as ZM
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
 # sprechende Aliasname statt eines blanken "vorhanden".
@@ -579,6 +580,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Build 350: die Heft-Tests von kultboy.com (Vorgabe AUS).
             (t("sys_kultboy_an") if KB.an() else t("sys_kultboy_aus"),
              "kultboy_an", None),
+            # Build 351: die Zeitmaschine (Vorgabe AN).
+            (t("sys_zm_an") if ZM.an() else t("sys_zm_aus"),
+             "zeitmaschine_an", None),
         ),
         t("sys_group_display"): folder(*display_items),
         t("sys_group_behavior"): folder(

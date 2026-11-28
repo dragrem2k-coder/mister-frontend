@@ -58,7 +58,7 @@ Frontend liest diese Datei, legt sie aber nie an und
 aendert darin hoechstens die eine Zeile, um die es
 gerade geht.
 
-### Statistiken & Erfolge (8 Eintraege)
+### Statistiken & Erfolge (9 Eintraege)
 
 - `Top 10: meistgespielt`
 - `Top 10: meistgestartet`
@@ -68,6 +68,7 @@ gerade geht.
 - `Spieltagebuch`
 - `Wertungen: AUS`
 - `Heft-Tests von kultboy.com: AUS`
+- `Zeitmaschine auf der Hauptseite: AN`
 
 ### Anzeige & Sound (35 Eintraege)
 
@@ -424,6 +425,7 @@ Quelltext selbst beschrieben ist.
 - **weihnachten** - Die Weihnachts-Deko (Build 342)
 - **wertungen** - Eigene Wertungen im Heft-Stil (Build 346)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
+- **zeitmaschine** - Die Zeitmaschine (Build 351)
 - **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
 
 ### Das Overlay fuer OBS und den Browser
