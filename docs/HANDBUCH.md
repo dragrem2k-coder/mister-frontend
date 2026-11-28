@@ -2293,7 +2293,13 @@ und erst dann das Abzeichen aus `sysart`. Mitgeliefert werden 20
 Fotos (NES, SNES, Super Game Boy, Game Boy, GBC, GBA, N64, Virtual
 Boy, Mega Drive, Mega CD, 32X, Master System, PlayStation, Saturn,
 TurboGrafx-16, Neo Geo, Atari 2600, Arcade, Computer, externes
-Laufwerk, seit Build 353 auch das Famicom Disk System). Kategorien ohne Foto — Favoriten, Weiterspielen, Game Gear
+Laufwerk, seit Build 353 auch das Famicom Disk System). Seit Build 355
+haben auch die Sonderkategorien ein Bild im selben Look – Weiterspielen
+(Modul mit Play-Knopf), Zuletzt gespielt (Spielhüllen mit Uhr), Custom
+Cores (FPGA-Chip), Sammlungen (Regal mit Spielboxen), Testarchiv
+(Heftstapel mit Wertung), Zeitmaschine (Taschenuhr vor dem Wirbel),
+Zufalls-Zock (Würfel) und System (Zahnräder); gezeichnet mit
+`PC-Tools/sysart_foto_eigene.py`. Kategorien ohne Foto — Favoriten, Game Gear
 … — behalten ihr Abzeichen, und Liste, Raster und Galerie bleiben
 ganz bei den Abzeichen. Eigene Fotos legt
 `PC-Tools/sysart_foto_convert.py` im richtigen Format ab; siehe

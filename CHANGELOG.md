@@ -13,6 +13,12 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **HD-Bilder für die Sonderkategorien.** In Kachelwand, Dashboard und
+  Karussell haben jetzt auch Weiterspielen, Zuletzt gespielt, Custom
+  Cores, Sammlungen, Testarchiv, Zeitmaschine, Zufalls-Zock und System
+  ein Bild im Look der Gerätefotos statt des beigen Abzeichens. Liste,
+  Raster und Galerie bleiben bei den Abzeichen.
+
 - **Behoben: das Frontend beendete sich beim Scrollen in der
   Zeitmaschine.** In einer Liste, die Arcade-Spiele (.mra) mit anderen
   Systemen mischt („Neu in 1993“ bzw. „Alle Spiele aus 1993“), fragte

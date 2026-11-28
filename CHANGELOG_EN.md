@@ -13,6 +13,12 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **HD pictures for the special categories.** In tile wall, dashboard
+  and carousel, continue, recently played, custom cores, collections,
+  test archive, time machine, Zufalls-Zock and System now have a picture
+  in the look of the console photos instead of the beige badge. List,
+  grid and gallery keep the badges.
+
 - **Fixed: the frontend quit while scrolling in the time machine.** In a
   list that mixes arcade games (.mra) with other systems ("New in 1993"
   or "All games from 1993"), the game panel asked for the game info of a

@@ -180,13 +180,17 @@ ALLE = ("liste", "raster", "galerie") + NEU
 # Eine Mischung aus Namen MIT Foto und Namen OHNE - genau der Fall, der
 # auf seinem Geraet eintritt (20 Fotos, 60 Abzeichen). Ein Test nur mit
 # Fotos haette den Rueckfall nie angefasst.
-MIT_FOTO = ["NES", "SNES", "GAMEBOY", "GBC", "GBA", "N64", "Genesis",
+_GERAETE = ["NES", "SNES", "GAMEBOY", "GBC", "GBA", "N64", "Genesis",
             "SMS", "MegaCD", "PSX", "Saturn", "TGFX16", "NEOGEO",
             "ATARI2600", "ARCADE", "SUPERGAMEBOY", "PHYSICAL_DISC_CORES",
             "S32X", "VIRTUALBOY", "COMPUTER"]
-OHNE_FOTO = ["FAVORITES", "CONTINUE", "RECENT", "COLLECTIONS",
-             "GAMEGEAR", "ATARILYNX", "COLECOVISION", "SYSTEM"]
-KEYS = OHNE_FOTO[:4] + MIT_FOTO + OHNE_FOTO[4:]
+# Build 355: Weiterspielen, Zuletzt gespielt, Sammlungen und System
+# haben jetzt ein eigenes HD-Bild (PC-Tools/sysart_foto_eigene.py).
+MIT_FOTO = _GERAETE + ["CONTINUE", "RECENT", "COLLECTIONS", "SYSTEM"]
+OHNE_FOTO = ["FAVORITES", "GAMEGEAR", "ATARILYNX", "COLECOVISION"]
+# Die Reihenfolge der Kacheln bleibt wie bis Build 354.
+KEYS = (["FAVORITES", "CONTINUE", "RECENT", "COLLECTIONS"] + _GERAETE
+        + ["GAMEGEAR", "ATARILYNX", "COLECOVISION", "SYSTEM"])
 
 
 def seite(w, h, ansicht, anzahl=None):
@@ -664,6 +668,26 @@ check("die Abzeichen sind unangetastet geblieben",
 check("das Werkzeug zum Nachliefern liegt bei",
       os.path.exists(os.path.join(_REPO, "PC-Tools",
                                   "sysart_foto_convert.py")))
+# Build 355: die Sonderkategorien im selben Look (Nutzerwunsch: "der
+# Look passt nicht zu den HD-Bildern von den Konsolen-Kategorien").
+EIGENE = {"CONTINUE": fm.t("continue_cat"), "RECENT": fm.t("recent_cat"),
+          "COLLECTIONS": fm.t("collections_cat") + " (3)",
+          "CUSTOM_CORES": "Custom Cores", "TESTARCHIV": fm.t("testarchiv_cat"),
+          "ZEITMASCHINE": fm.t("zm_cat") + " \xb7 1991",
+          "ZUFALLSZOCK": fm.t("zufallszock_title"), "SYSTEM": "System"}
+f = seite(1920, 1080, "kachelwand")
+for key, name in EIGENE.items():
+    pfad = f._kat_logo_pfad(name, None, foto=True)
+    check("%-14s eigenes HD-Bild (ueber den Kategorienamen)" % key,
+          pfad == os.path.join(A.SYSART_FOTO_BASE, key + ".art")
+          and os.path.exists(os.path.join(FOTOS, key + ".art"))
+          and key in f._sysart_foto_namen(), pfad)
+    check("%-14s ohne foto=True bleibt das Abzeichen" % key,
+          f._kat_logo_pfad(name, None) == os.path.join(A.SYSART_BASE,
+                                                        key + ".art"))
+check("das Werkzeug fuer die eigenen HD-Bilder liegt bei",
+      os.path.exists(os.path.join(_REPO, "PC-Tools",
+                                  "sysart_foto_eigene.py")))
 
 # ---------------------------------------------------------------------------
 print()

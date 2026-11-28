@@ -12505,3 +12505,31 @@ bisher.
 `tools/test_zeitmaschine.py` Test 10: durch alle Ordner der Zeitmaschine
 gescrollt, alle vier Ansichten, beide Groessen, mit dem echten
 `get_meta()`.
+
+## Nachtrag Build 355 - HD-Bilder fuer die Sonderkategorien
+
+**Stand:** 28.11.2026, `Dragend_Build_355.zip` (build_id
+`2026-11-28-355`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 9).
+
+Nutzerwunsch: "fuer die Kategorien Weiterspielen, Zuletzt gespielt,
+Custom Cores, Sammlung, Testarchiv, Zeitmaschine, Zufalls-Zock, System
+fuer den HD-Modus ... der Look passt nicht zu den HD-Bildern von den
+Konsolen-Kategorien". Nach den Entwuerfen: "Wir nehmen die."
+
+- `PC-Tools/sysart_foto_eigene.py` (neu): zeichnet die acht Kacheln
+  420x320 auf C_PANEL - isometrische Koerper mit Verlaeufen,
+  Glanzlichtern und weichem Schatten, vierfach gross gerechnet und
+  verkleinert. Prueft nach dem Verkleinern, dass die vier Ecken genau
+  C_PANEL sind; geschrieben ueber `sysart_karten.schreiben()`.
+- `frontend/sysart_foto/`: CONTINUE, RECENT, CUSTOM_CORES, COLLECTIONS,
+  TESTARCHIV, ZEITMASCHINE, ZUFALLSZOCK, SYSTEM (`.art`). Die Schluessel
+  sind die von `fe/art._category_art_key()` - am Frontend aendert sich
+  nichts, `_kat_logo_pfad(..., foto=True)` findet sie ueber
+  `_sysart_foto_namen()`.
+- Die Installer kopieren `sysart_foto/` mit `cp -rn`: neue Dateinamen
+  kommen an.
+- `tools/test_hauptseite_stil.py`: CONTINUE, RECENT, COLLECTIONS und
+  SYSTEM jetzt mit Foto; fuer alle acht der Weg ueber den echten
+  Kategorienamen (auch "Zeitmaschine · 1991", "Sammlungen (3)") und dass
+  ohne `foto=True` das Abzeichen bleibt.

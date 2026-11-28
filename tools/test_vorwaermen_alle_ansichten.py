@@ -92,13 +92,16 @@ H._zwischenspeicher_leeren()
 # Kategorien MIT Foto und OHNE - der Fall, der auf dem Geraet eintritt
 # (20 Fotos, 60 Abzeichen). Nur mit Fotos haette der Test die Regel
 # "sonst das Abzeichen" nie angefasst.
-MIT_FOTO = ["NES", "SNES", "GAMEBOY", "GBC", "GBA", "N64", "Genesis",
+_GERAETE = ["NES", "SNES", "GAMEBOY", "GBC", "GBA", "N64", "Genesis",
             "SMS", "MegaCD", "PSX", "Saturn", "TGFX16", "NEOGEO",
             "ATARI2600", "ARCADE", "SUPERGAMEBOY", "PHYSICAL_DISC_CORES",
             "S32X", "VIRTUALBOY", "COMPUTER"]
-OHNE_FOTO = ["FAVORITES", "CONTINUE", "RECENT", "COLLECTIONS",
-             "GAMEGEAR", "ATARILYNX", "COLECOVISION", "SYSTEM"]
-KEYS = OHNE_FOTO[:4] + MIT_FOTO + OHNE_FOTO[4:]
+# Build 355: Weiterspielen, Zuletzt gespielt, Sammlungen und System
+# haben ein eigenes HD-Bild (PC-Tools/sysart_foto_eigene.py).
+MIT_FOTO = _GERAETE + ["CONTINUE", "RECENT", "COLLECTIONS", "SYSTEM"]
+OHNE_FOTO = ["FAVORITES", "GAMEGEAR", "ATARILYNX", "COLECOVISION"]
+KEYS = (["FAVORITES", "CONTINUE", "RECENT", "COLLECTIONS"] + _GERAETE
+        + ["GAMEGEAR", "ATARILYNX", "COLECOVISION", "SYSTEM"])
 
 
 def mitschreiben():

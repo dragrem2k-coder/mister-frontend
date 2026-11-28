@@ -1973,8 +1973,13 @@ from `/media/fat/frontend/sysart_foto` first and only then from
 Boy, GBC, GBA, N64, Virtual Boy, Mega Drive, Mega CD, 32X, Master
 System, PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600,
 arcade, computer, external drive, and since Build 353 the Famicom Disk
-System). Categories without a photo -
-favourites, continue, Game Gear ... - keep their badge, and list,
+System). Since Build 355 the special categories have a picture in the
+same look too – continue (cartridge with play button), recently played
+(game cases with a clock), custom cores (FPGA chip), collections (shelf
+with game boxes), test archive (magazine stack with rating), time
+machine (pocket watch in front of the vortex), Zufalls-Zock (dice) and
+System (gears); drawn with `PC-Tools/sysart_foto_eigene.py`. Categories
+without a photo - favourites, Game Gear ... - keep their badge, and list,
 grid and gallery stay on the badges entirely.
 `PC-Tools/sysart_foto_convert.py` converts your own photos; see
 `docs/LOGOS_NACHLIEFERN.md`.

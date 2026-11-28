@@ -1,5 +1,5 @@
 {
-  "build_id": "2026-11-28-354",
-  "summary": "Behoben: Absturz beim Scrollen in der Zeitmaschine (Arcade in gemischten Listen). Zufalls-Zock zieht auf Wunsch nur aus gewählten Systemen. Musik läuft beim Anleitung-Lesen weiter.",
-  "details": "BUILD 354. ABSTURZ: _item_syskey() lieferte fuer .mra in gemischten Listen None, get_meta(None) warf TypeError in draw(); jetzt ARCADE fuer .mra und get_meta ohne System {}. NEU fe/zufallsauswahl.py: zufallszock_systeme.json {nur: [...]}, keine Datei = alle; zufall_systeme_bildschirm() unter System > Optionen; draw_zufallszock_screen() filtert, Attract/F11/Sammlungen nicht. MUSIK: _auf_konsole(musik_weiter=True) fuer den Anleitungs-Betrachter, _puls_mit_musik() ruft music.tick() hoechstens 1x/s. PRUEFUNGEN: test_zufallsauswahl, test_anleitung_musik neu; test_zeitmaschine Test 10."
+  "build_id": "2026-11-28-355",
+  "summary": "HD-Bilder im Look der Gerätefotos für Weiterspielen, Zuletzt gespielt, Custom Cores, Sammlungen, Testarchiv, Zeitmaschine, Zufalls-Zock und System.",
+  "details": "BUILD 355. NEU PC-Tools/sysart_foto_eigene.py: acht selbst gezeichnete Kacheln 420x320 auf C_PANEL (isometrisch, Verlaeufe, Schatten, 4x gerechnet), Ecken geprueft. frontend/sysart_foto/: CONTINUE, RECENT, CUSTOM_CORES, COLLECTIONS, TESTARCHIV, ZEITMASCHINE, ZUFALLSZOCK, SYSTEM. Frontend unveraendert - die Schluessel aus _category_art_key() greifen. PRUEFUNGEN: test_hauptseite_stil angepasst und erweitert."
 }
