@@ -1318,7 +1318,7 @@ import ctypes as _ctypes
 # Jetzt gilt: alles von MIN bis VERSION wird genommen, und die Funktionen
 # der neueren Fassungen werden einzeln nachgefragt. Fehlt eine, rechnet
 # genau ihr Aufrufer in Python weiter, der Rest laeuft in C.
-DRAGEND_LIB_VERSION = 8
+DRAGEND_LIB_VERSION = 9
 DRAGEND_LIB_VERSION_MIN = 4
 _LIB = None
 # Was die gefundene Fassung kann - wird beim Laden gesetzt.
@@ -1326,6 +1326,7 @@ _HAT_FARBEN = False
 _HAT_ZEILEN = False
 _HAT_MASKE = False
 _HAT_TEXT = False
+_HAT_WIRBEL = False
 
 
 def _lib_laden():
@@ -1437,6 +1438,23 @@ def _lib_laden():
         except AttributeError:
             LOG("libdragend: Version %d ohne texte_zeichnen - Text baut "
                 "Python" % _v)
+        # Build 352: der Wirbel der Zeitmaschine. Zum sechsten Mal ein
+        # EIGENES try - eine 8er-Fassung kennt ihn nicht, dann zeigt die
+        # Zeitreise den Ringtunnel aus Python, und alles andere bleibt
+        # in C.
+        global _HAT_WIRBEL
+        _HAT_WIRBEL = False
+        try:
+            lib.wirbel_zeichnen.restype = _ctypes.c_int
+            lib.wirbel_zeichnen.argtypes = [
+                _ctypes.c_void_p, _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_int, _ctypes.c_int, _ctypes.c_int, _ctypes.c_int]
+            lib.wirbel_freigeben.restype = None
+            lib.wirbel_freigeben.argtypes = []
+            _HAT_WIRBEL = True
+        except AttributeError:
+            LOG("libdragend: Version %d ohne wirbel_zeichnen - die "
+                "Zeitreise zeigt den Ringtunnel" % _v)
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -1956,6 +1974,36 @@ def fremd_zaehlen(mm, buf, stride, zeilen, breite4, hell=0x40, dunkel=0x40):
     if erg < 0:
         return None
     return erg
+
+
+def wirbel_da():
+    """Kann C den Wirbel der Zeitmaschine zeichnen (Build 352)?"""
+    return _LIB is not None and _HAT_WIRBEL
+
+
+def wirbel_zeichnen(buf, stride, breite, hoehe, t_ms, blitz=0):
+    """Den Wirbel in den Bildpuffer zeichnen (c/dragend.c). True, wenn
+    C es getan hat; bei False ist NICHTS veraendert und der Aufrufer
+    zeichnet den Ringtunnel selbst."""
+    if not wirbel_da():
+        return False
+    try:
+        _halt, zeiger = _roh_zeiger(buf)
+        return _LIB.wirbel_zeichnen(zeiger, stride, len(buf), breite, hoehe,
+                                    int(t_ms), int(blitz)) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: wirbel_zeichnen fehlgeschlagen, nehme Python")
+        return False
+
+
+def wirbel_freigeben():
+    """Die Tabelle des Wirbels zurueckgeben (rund 1,4 MB bei 720p)."""
+    if not wirbel_da():
+        return
+    try:
+        _LIB.wirbel_freigeben()
+    except Exception:                                    # noqa: BLE001
+        pass
 
 
 _addiere = operator.add

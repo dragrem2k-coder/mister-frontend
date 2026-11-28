@@ -292,6 +292,13 @@ SFX_CHIME_DEFS = {
     # Spannungsphase auf dem Schirm aus (wechselnde Titel, die langsamer
     # werden). Gesamtlaenge rund 1,1 s - kurz genug, dass auch die
     # kleinste Stufe (1 s) nicht mitten im Klang abbricht.
+    # Build 352: der ERSATZKLANG fuer die Zeitreise. Bevorzugt wird
+    # SFX_DIR/zeitreise.mp3 (siehe frontend/sfx/QUELLEN.txt); dieser
+    # Eintrag greift nur, wenn die MP3 fehlt - dann bleibt die Reise
+    # nicht stumm. Zwei Sweeps hinauf, einer hinab, ein heller Schluss.
+    "zeitreise": [(180, 900, 380), (900, 300, 260), (300, 1400, 520),
+                  (1400, 1400, 180)],
+
     "zufall_ziehung": [(330, 330, 90), (392, 392, 85), (330, 330, 80),
                        (392, 392, 75), (330, 330, 70), (392, 392, 65),
                        (440, 440, 60), (392, 392, 55), (440, 440, 50),

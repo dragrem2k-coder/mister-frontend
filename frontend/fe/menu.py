@@ -58,6 +58,7 @@ import fe.gimmick as GIMMICK
 import fe.wertungen as WT
 import fe.kultboy as KB
 import fe.zeitmaschine as ZM
+import fe.reiseeffekt as RE
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
 # sprechende Aliasname statt eines blanken "vorhanden".
@@ -583,6 +584,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Build 351: die Zeitmaschine (Vorgabe AN).
             (t("sys_zm_an") if ZM.an() else t("sys_zm_aus"),
              "zeitmaschine_an", None),
+            # Build 352: Blitz, Wirbel und Sound beim Reisen (Vorgabe AN).
+            (t("sys_zm_effekt_an") if RE.an() else t("sys_zm_effekt_aus"),
+             "zeitreise_effekt_an", None),
         ),
         t("sys_group_display"): folder(*display_items),
         t("sys_group_behavior"): folder(

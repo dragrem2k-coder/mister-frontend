@@ -64,7 +64,9 @@ check("in einem EIGENEN try", "global _HAT_TEXT" in open(
     os.path.join(_REPO, "frontend", "fe", "art.py"),
     encoding="utf-8").read(),
     "eine 7er-Fassung darf die Bibliothek nicht mitnehmen")
-check("die Fassung wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 8,
+# GEAENDERT (Build 352): mindestens 8 - die 9 brachte den Wirbel der
+# Zeitmaschine, der Textzeichner ist seit 8 dabei.
+check("die Fassung wurde hochgezaehlt", A.DRAGEND_LIB_VERSION >= 8,
       str(A.DRAGEND_LIB_VERSION))
 if A._LIB is None or not getattr(A, "_HAT_TEXT", False):
     print()

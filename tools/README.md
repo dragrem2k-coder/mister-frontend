@@ -12295,3 +12295,81 @@ Vorbereitung; keine Jahre; Bildschirme 1280x720 und 320x240.
 `tools/test_lizenz.py` neu: GPL-Text unveraendert (Zeilen, Pruefsumme),
 alter MIT-Text vollstaendig, alle Nennungen, sage2050 unangetastet.
 `tools/_harness.py` lenkt den Schalter um.
+
+## Nachtrag Build 352 - Der Reise-Effekt der Zeitmaschine
+
+**Stand:** 27.11.2026, `Dragend_Build_352.zip` (build_id
+`2026-11-27-352`). Version bleibt 5.1. **C-Bibliothek: Fassung 9**
+(neu: `wirbel_zeichnen()`, `wirbel_freigeben()`).
+
+Nutzerwunsch: beim Start einer Zeitreise ein Effekt wie bei einer
+Zeitreise im Rollenspiel - Wirbel mit Blitz, dazu sein Sound (von
+Pixabay, vom Nutzer bestaetigt).
+
+### c/dragend.c, Fassung 9
+
+- `wirbel_zeichnen(dst, stride, grenze, breite, hoehe, t_ms, blitz)`:
+  halbe Aufloesung (2x2 je Rasterzelle). Einmal je Bildgroesse eine
+  Tabelle (zwei Phasen, Helligkeit, Glut) im Heap, danach je Bild nur
+  Ganzzahlen: zwei Sinus-Nachschlagungen, eine Farbtafel, Aufhellen
+  Richtung Weiss um `blitz`/256. Die Bewegung haengt an `t_ms`.
+- Keine libm: Wurzel ueber Bits plus Newton, Winkel als Polynom, Sinus
+  als Reihe. Die ARM-Datei verlangt neu nur `malloc`/`free`
+  (GLIBC_2.4) - nachgesehen mit `nm -D --undefined-only`.
+- Pruefung vor dem Zeichnen: stride, Puffergroesse bis zur letzten
+  Zeile, Hoechstmass 4096; sonst -1 und nichts geschrieben.
+- `wirbel_freigeben()`: die Tabelle (1280x720: rund 1,4 MB) zurueck.
+- Nachgeprueft: x86, ARM und ARM-NEON liefern dasselbe Bild (Pruefsumme
+  ueber sechs Bilder, ARM unter qemu-arm).
+- Auf dem Entwicklungsrechner 1,6 ms je 720p-Bild. Was es auf dem
+  DE10-Nano kostet, zeigt der Bench, Abschnitt C, neue Zeile
+  "Zeitreise-Wirbel 1280x720 je Bild (C)".
+
+### fe/reiseeffekt.py (neu)
+
+- Schalter `zeitreise_effekt_aus`, Vorgabe AN.
+- Ablauf `phase(t)`: Blitz 0,18 s - Rattern 2,2 s - Halten 0,3 s -
+  Blitz 0,22 s - Weiss 0,1 s (gesamt 3,0 s, abgestimmt auf den Sound).
+  `jahr_bei()` (schnell los, langsam ins Ziel), `aufhellen()`.
+- `ringe(breite, hoehe, t)`: der Ringtunnel ohne C - 18 gefuellte
+  Rechtecke, gross nach klein, der erste deckt den Schirm.
+- `MAX_BILDER = 240`: steht oder springt die Uhr, endet der Effekt
+  trotzdem.
+
+### Frontend
+
+- `_zm_effekt(von, nach)` zwischen Drehrad und Reise. Wirbel aus C,
+  sonst (oder wenn C mittendrin -1 meldet) der Tunnel aus Python;
+  Jahreszahl im Kasten bei 80 % der Hoehe; der weisse Blitz als
+  `fb.rect` (clear() wuerde die Vignette darueberlegen).
+- Sound ueber `_play_ducked_sfx("zeitreise", griff)` wie beim
+  Zufalls-Zock: Musik leiser, Griff zum Abbrechen. Jede Taste nach den
+  ersten 0,3 s ueberspringt und beendet den Sound (die 0,3 s, damit das
+  A aus dem Drehrad nicht gleich alles ueberspringt).
+- Ein Fehler im Effekt haelt die Reise nie auf (try um den Aufruf).
+- Gereist wird vom letzten Reiseziel, bei der ersten Reise vom heutigen
+  Jahr.
+- Systemmenue Statistiken & Erfolge: `Reise-Effekt (Blitz, Wirbel,
+  Sound): AN/AUS` (`zeitreise_effekt_an`), auch in der Vorfuehrung.
+
+### Sound
+
+- `frontend/sfx/zeitreise.mp3`: "Science Fiction Effect 015" von
+  AudioPapkin (pixabay.com, Nr. 305473), auf 3,4 s gekuerzt, ab 2,6 s
+  ausgeblendet, 192 kbit/s, ohne ID3-Kopf. Pixabay-Inhaltslizenz, nicht
+  GPL - vermerkt in `frontend/sfx/QUELLEN.txt`, README, Handbuch,
+  Manual.
+- Ersatzklang `zeitreise` in `SFX_CHIME_DEFS`, falls die MP3 fehlt.
+
+### Pruefungen
+
+`tools/test_reiseeffekt.py` neu: Schalter und Menue; Ablauf und
+Jahreszahl; Ringtunnel in drei Groessen; Wirbel in C (alle Punkte
+gesetzt, Rand unberuehrt, ungerade Groessen, Blitz, sechs unsinnige
+Aufrufe, Freigeben, neue Groesse, ARM-Dateien enthalten ihn und liegen
+gleich in c/ und daneben); der Effekt im Frontend mit C, ohne C, mit C
+das mittendrin ausfaellt, Ueberspringen samt Tastensperre, stehende und
+rueckwaerts laufende Uhr, Roehre, AUS; die Reise mit Effekt, mit
+kaputtem Effekt, das Startjahr; der Sound. `tools/test_lizenz.py`: der
+Sound als Ausnahme von der GPL. `tools/_harness.py` lenkt den Schalter
+um.

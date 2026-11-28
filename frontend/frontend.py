@@ -1274,6 +1274,7 @@ import fe.masken as MASKEN
 import fe.wertungen as WT   # Build 346: eigene Wertungen
 import fe.kultboy as KB     # Build 350: Heft-Tests von kultboy.com
 import fe.zeitmaschine as ZM   # Build 351: die Zeitmaschine
+import fe.reiseeffekt as RE    # Build 352: Blitz, Wirbel, Sound
 import fe.schriften as SCHRIFTEN
 import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
@@ -1328,6 +1329,9 @@ from fe.art import (
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
+    # Build 352: der Wirbel der Zeitmaschine (C, ab Fassung 9).
+    wirbel_da as _c_wirbel_da, wirbel_zeichnen as _c_wirbel_zeichnen,
+    wirbel_freigeben as _c_wirbel_freigeben,
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
     zeiger_leeren as _c_zeiger_leeren,
@@ -6060,12 +6064,111 @@ class Frontend:
             jahr = self._zm_waehlen()
             if jahr is None:
                 return
+            von = getattr(self, "_zm_jahr", None) \
+                or int(time.strftime("%Y"))
             self._zm_jahr = jahr
             LOG("Zeitmaschine: Reise nach %d" % jahr)
+            # Build 352: der Reise-Effekt. Ein Fehler darin darf die
+            # Reise nie aufhalten - dann eben ohne Effekt.
+            try:
+                self._zm_effekt(von, jahr)
+            except Exception:                            # noqa: BLE001
+                LOG("Zeitmaschine: Effekt fehlgeschlagen\n"
+                    + traceback.format_exc())
             self._zm_ersetzen(oeffnen=True)
         finally:
             self._force_full_redraw = True
             self.draw()
+
+    # ------------------------------------------------------------------
+    # BUILD 352: DER REISE-EFFEKT (fe/reiseeffekt.py)
+    #
+    # Blitz, Wirbel mit ratternder Jahreszahl, Blitz - dazu der Sound
+    # (sfx/zeitreise.mp3). Der Wirbel kommt aus C (c/dragend.c, ab
+    # Fassung 9); ohne C zeichnet Python den Ringtunnel. Jede Taste
+    # ueberspringt den Rest und beendet den Sound. Kostet nichts, wenn
+    # niemand reist, und gar nichts, wenn er abgeschaltet ist.
+    # ------------------------------------------------------------------
+    _zm_uhr = staticmethod(time.monotonic)
+    ZM_TASTEN_SPERRE = 0.3      # so lange zaehlt kein Tastendruck
+
+    def _zm_jahr_kasten(self, jahr, blitz):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        # Auf der Roehre 3, sonst 4 je Skalenstufe - gross genug, um
+        # beim Rattern mitzulesen, ohne den Wirbel zu verdecken.
+        sc = max(2, min(8, (3 if H < 400 else 4) * s))
+        text = str(jahr)
+        tw = len(text) * 8 * sc
+        x = (W - tw) // 2
+        y = int(H * 0.80) - 4 * sc
+        rand = max(1, sc // 2)
+        hell = RE.aufhellen((230, 230, 255), blitz)
+        grund = RE.aufhellen((8, 8, 20), blitz)
+        fb.rect(x - 3 * sc, y - 2 * sc - rand, tw + 6 * sc,
+                12 * sc + 2 * rand, hell)
+        fb.rect(x - 3 * sc + rand, y - 2 * sc, tw + 6 * sc - 2 * rand,
+                12 * sc, grund)
+        fb.text(x, y, text, sc, RE.aufhellen((255, 255, 255), blitz),
+                grund)
+
+    def _zm_tunnel_zeichnen(self, t, blitz):
+        fb = self.fb
+        for x, y, w, h, farbe in RE.ringe(fb.width, fb.height, t):
+            fb.rect(x, y, w, h, RE.aufhellen(farbe, blitz))
+
+    def _zm_effekt(self, von, nach):
+        """Der Effekt von Jahr von nach Jahr nach. True, wenn er ganz
+        lief; False, wenn abgeschaltet oder uebersprungen."""
+        if not RE.an():
+            return False
+        fb = self.fb
+        W, H = fb.width, fb.height
+        mit_c = _c_wirbel_da()
+        griff = SoundGriff()
+        try:
+            self._play_ducked_sfx(RE.SOUND, griff=griff)
+        except Exception:                                # noqa: BLE001
+            LOG("Zeitmaschine: Sound konnte nicht starten")
+            griff.stoppen()
+        uhr = self._zm_uhr
+        t0 = uhr()
+        bilder = 0
+        uebersprungen = False
+        try:
+            while bilder < RE.MAX_BILDER:
+                t = uhr() - t0
+                blitz, rattern, fertig = RE.phase(t)
+                if fertig:
+                    break
+                if blitz >= 256:
+                    # rect und nicht clear(): clear() legt die Vignette
+                    # darueber, der Blitz soll aber weiss sein.
+                    fb.rect(0, 0, W, H, (255, 255, 255))
+                else:
+                    if not (mit_c and _c_wirbel_zeichnen(
+                            fb.buf, fb.stride, W, H, int(t * 1000), blitz)):
+                        mit_c = False
+                        self._zm_tunnel_zeichnen(t, blitz)
+                    self._zm_jahr_kasten(RE.jahr_bei(von, nach, rattern),
+                                         blitz)
+                fb.flip()
+                bilder += 1
+                akt = self.inp.read_action(timeout=0)
+                if akt is not None and t >= self.ZM_TASTEN_SPERRE:
+                    uebersprungen = True
+                    break
+        finally:
+            if uebersprungen:
+                griff.stoppen()
+            _c_wirbel_freigeben()
+            fb.mark_full_redraw()
+            self._force_full_redraw = True
+        LOG("Zeitmaschine: Effekt %s, %d Bilder, %s"
+            % ("uebersprungen" if uebersprungen else "ganz", bilder,
+               "Wirbel (C)" if mit_c else "Ringtunnel"))
+        return not uebersprungen
 
     def _zm_gegenwart(self, meldung=True):
         """Zurueck in die Gegenwart - die Kategorie ist wieder, was sie
@@ -29807,6 +29910,10 @@ class Frontend:
                         elif kind == "kultboy_an":
                             # Build 350: Heft-Tests von kultboy.com.
                             KB.toggle_an()
+                            self._refresh_system_category()
+                        elif kind == "zeitreise_effekt_an":
+                            # Build 352: Blitz, Wirbel und Sound.
+                            RE.toggle_an()
                             self._refresh_system_category()
                         elif kind == "zeitmaschine_an":
                             # Build 351: die Zeitmaschine (Vorgabe AN).

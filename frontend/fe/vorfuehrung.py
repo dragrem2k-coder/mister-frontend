@@ -130,7 +130,9 @@ GRUPPEN = (
       # Build 350
       "kultboy_an",
       # Build 351
-      "zeitmaschine_an"),
+      "zeitmaschine_an",
+      # Build 352
+      "zeitreise_effekt_an"),
      ("fremdquellen", "rom_filter", "multidisc")),
     ("performance", ("Performance", "Performance"),
      ("Was das Frontend schneller macht - Miniaturen, Auflösung, Scrollen.",

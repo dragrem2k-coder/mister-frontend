@@ -10,6 +10,7 @@ GEPRUEFT WIRD:
      die alte Datei - und nirgends mehr MIT als Lizenz von Dragend.
   4. Das Skript von sage2050 behaelt seinen eigenen MIT-Vermerk.
   5. Der Kopf von frontend.py nennt die Lizenz.
+  6. Der Zeitreise-Sound (Build 352) ist als Ausnahme vermerkt.
 
 Ausfuehren:
     python3 tools/test_lizenz.py
@@ -63,6 +64,16 @@ for name, muss in (("README.md", "Lizenz: [GPL-3.0-or-later](LICENSE)"),
     check("%s nennt MIT nicht mehr als Lizenz von Dragend" % name,
           "[MIT](LICENSE)" not in t and "unter der MIT-Lizenz (siehe" not in t
           and "under the MIT license (see" not in t)
+# Build 352: der Zeitreise-Sound steht unter der Pixabay-Lizenz.
+for name in ("README.md", "README_EN.md", "docs/HANDBUCH.md",
+             "docs/MANUAL_EN.md"):
+    t = lies(name)
+    check("%s nennt den Sound als Ausnahme von der GPL" % name,
+          "zeitreise.mp3" in t and "Pixabay" in t
+          and "QUELLEN.txt" in t)
+q = lies("frontend/sfx/QUELLEN.txt")
+check("frontend/sfx/QUELLEN.txt: Herkunft und Lizenz des Sounds",
+      "AudioPapkin" in q and "Pixabay" in q and "NICHT unter der GPL" in q)
 ra = lies("Scripts/MiSTer_RA.sh")
 check("Scripts/MiSTer_RA.sh (sage2050) behaelt seinen MIT-Vermerk",
       "License: MIT" in ra)

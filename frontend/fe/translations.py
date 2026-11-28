@@ -2019,6 +2019,11 @@ TRANSLATIONS = {
                   "de": "Zeitmaschine auf der Hauptseite: AN"},
     "sys_zm_aus": {"en": "Time machine on the main page: OFF",
                    "de": "Zeitmaschine auf der Hauptseite: AUS"},
+    # --- Build 352: der Reise-Effekt (fe/reiseeffekt.py) ---
+    "sys_zm_effekt_an": {"en": "Time travel effect (flash, vortex, sound): ON",
+                         "de": "Reise-Effekt (Blitz, Wirbel, Sound): AN"},
+    "sys_zm_effekt_aus": {"en": "Time travel effect (flash, vortex, sound): OFF",
+                          "de": "Reise-Effekt (Blitz, Wirbel, Sound): AUS"},
 }
 
 def _load_language():

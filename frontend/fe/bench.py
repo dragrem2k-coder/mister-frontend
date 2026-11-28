@@ -1067,6 +1067,28 @@ def _abschnitt_c(b, A):
         b.posten("Dasselbe in Python (zum Vergleich)", ms_py, None,
                  "Faktor %.0f" % (ms_py / ms_c) if ms_c > 0 else "")
 
+    # Build 352: der Wirbel der Zeitmaschine (c/dragend.c, ab Fassung
+    # 9). In einen EIGENEN Puffer, nicht auf den Schirm - gemessen wird
+    # das Rechnen, das Bild sieht niemand. Das erste Bild baut die
+    # Tabelle und steht deshalb getrennt da.
+    if getattr(A, "wirbel_da", lambda: False)():
+        _wb, _wh = 1280, 720
+        _puf = bytearray(_wb * _wh * 4)
+        try:
+            t = time.monotonic()
+            A.wirbel_zeichnen(_puf, _wb * 4, _wb, _wh, 0, 0)
+            _erst = (time.monotonic() - t) * 1000.0
+            ms, best = messen(
+                lambda: A.wirbel_zeichnen(_puf, _wb * 4, _wb, _wh, 500, 0),
+                WDH_BILLIG)
+            b.posten("Zeitreise-Wirbel 1280x720 je Bild (C)", ms, best,
+                     "erstes Bild mit Tabelle %.0f ms" % _erst)
+        finally:
+            A.wirbel_freigeben()
+    else:
+        b("   Zeitreise-Wirbel: kein C (Fassung 9 fehlt) - die Zeitreise "
+          "zeigt den Ringtunnel aus Python")
+
     # Der Cache-Weg: schreiben und lesen, so wie eine Miniatur
     # tatsaechlich abgelegt wird. In einem TEMPORAEREN Ordner.
     klein = A._verkleinern(pix, QUELL_B, QUELL_H, ZIEL_B, ZIEL_H)

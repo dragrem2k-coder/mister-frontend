@@ -1813,6 +1813,17 @@ letzten Reiseziel.
 Die Spiele darin sind die echten Einträge – starten, Kontextmenü,
 Favoriten, alles geht wie gewohnt.
 
+**Der Reise-Effekt (Build 352):** Beim Druck auf A blitzt es, ein Wirbel
+dreht sich, die Jahreszahl rattert bis zum Ziel, es blitzt noch einmal –
+dazu ein Zeitreise-Sound, die Musik wird dabei leiser. Das dauert knapp
+drei Sekunden; **jede Taste überspringt** den Rest und beendet den Sound.
+Den weichen Wirbel rechnet das C-Modul (`libdragend.so` ab Fassung 9);
+ohne C-Modul zeigt Dragend stattdessen einen Tunnel aus farbigen Ringen.
+Abschalten: System → Statistiken & Erfolge → `Reise-Effekt (Blitz,
+Wirbel, Sound): AN` (Vorgabe AN; Merker beim Ausschalten:
+`/media/fat/frontend/zeitreise_effekt_aus`). Dann geht die Reise ohne
+Umweg direkt ins Jahr.
+
 **Zurück in die Gegenwart:** über den Punkt ganz oben oder mit **B** auf
 der obersten Ebene der Zeitmaschine. In einem Ordner geht B wie immer
 nur eine Ebene hoch. Auch Ausschalten und ein Neu-Einlesen der Spiele
@@ -3413,6 +3424,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Testarchiv als CSV speichern | `wertung_csv` |
 | Heft-Tests von kultboy.com: AN/AUS | `kultboy_an` |
 | Zeitmaschine auf der Hauptseite: AN/AUS | `zeitmaschine_an` |
+| Reise-Effekt (Blitz, Wirbel, Sound): AN/AUS | `zeitreise_effekt_an` |
 
 ### Anzeige & Sound
 
@@ -3550,5 +3562,8 @@ darauf aufbaut, muss das ebenfalls unter der GPL und mit Quelltext tun.
 Bis einschließlich Build 350 stand Dragend unter der MIT-Lizenz; diese
 Fassungen und die bis dahin eingebrachten Beiträge behalten sie (siehe
 `LICENSE_MIT_bis_Build_350.txt`). `Scripts/MiSTer_RA.sh` stammt von
-sage2050 und steht weiter unter MIT. Was sich
+sage2050 und steht weiter unter MIT. Der Zeitreise-Sound
+`frontend/sfx/zeitreise.mp3` stammt von AudioPapkin (pixabay.com) und
+steht unter der Pixabay-Inhaltslizenz, nicht unter der GPL (siehe
+`frontend/sfx/QUELLEN.txt`). Was sich
 zwischen den Versionen getan hat: siehe `CHANGELOG.md`.

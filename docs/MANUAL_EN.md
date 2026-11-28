@@ -1560,6 +1560,17 @@ shows:
 The games in there are the real entries – launching, context menu,
 favourites all work as usual.
 
+**The travel effect (Build 352):** when you press A there is a flash, a
+vortex spins, the year counts down to the destination, another flash –
+with a time travel sound, and the music is turned down meanwhile. It
+takes just under three seconds; **any button skips** the rest and stops
+the sound. The smooth vortex is computed by the C module
+(`libdragend.so` version 9 or later); without the C module Dragend shows
+a tunnel of coloured rings instead. Switch it off: System → Statistics &
+achievements → `Time travel effect (flash, vortex, sound): ON` (default
+ON; marker file when off: `/media/fat/frontend/zeitreise_effekt_aus`).
+The trip then goes straight to the year.
+
 **Back to the present:** via the item at the top or with **B** on the
 top level of the time machine. Inside a folder B goes up one level as
 always. Switching it off and rescanning the games also end the trip.
@@ -3005,6 +3016,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Save test archive as CSV | `wertung_csv` |
 | Magazine reviews from kultboy.com: ON/OFF | `kultboy_an` |
 | Time machine on the main page: ON/OFF | `zeitmaschine_an` |
+| Time travel effect (flash, vortex, sound): ON/OFF | `zeitreise_effekt_an` |
 
 ### Display & Sound
 
@@ -3141,5 +3153,8 @@ it must do so under the GPL as well, with source code. Up to and
 including Build 350 Dragend was MIT-licensed; those versions and the
 contributions made up to then keep that licence (see
 `LICENSE_MIT_bis_Build_350.txt`). `Scripts/MiSTer_RA.sh` is by sage2050
-and keeps its MIT licence. What has changed
+and keeps its MIT licence. The time travel sound
+`frontend/sfx/zeitreise.mp3` is by AudioPapkin (pixabay.com) and is under
+the Pixabay Content License, not the GPL (see
+`frontend/sfx/QUELLEN.txt`). What has changed
 between versions: see `CHANGELOG.md`.

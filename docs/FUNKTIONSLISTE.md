@@ -58,7 +58,7 @@ Frontend liest diese Datei, legt sie aber nie an und
 aendert darin hoechstens die eine Zeile, um die es
 gerade geht.
 
-### Statistiken & Erfolge (9 Eintraege)
+### Statistiken & Erfolge (10 Eintraege)
 
 - `Top 10: meistgespielt`
 - `Top 10: meistgestartet`
@@ -69,6 +69,7 @@ gerade geht.
 - `Wertungen: AUS`
 - `Heft-Tests von kultboy.com: AUS`
 - `Zeitmaschine auf der Hauptseite: AN`
+- `Reise-Effekt (Blitz, Wirbel, Sound): AN`
 
 ### Anzeige & Sound (35 Eintraege)
 
@@ -414,6 +415,7 @@ Quelltext selbst beschrieben ist.
 - **playtime** - Spielzeit-Tracking, Tagebuch, Jahresrueckblick, Meilensteine
 - **prewarm** - Cover-Miniaturen im Leerlauf vorberechnen
 - **ra_settings** - RetroAchievements-Einstellungen der MiSTer-Hauptanwendung lesen und schreiben (Build 95)
+- **reiseeffekt** - Der Reise-Effekt der Zeitmaschine (Build 352)
 - **reset_trigger** - Reset im laufenden Core ueber F5 - Nutzerwunsch, gilt fuer
 - **retroachievements** - RetroAchievements-Integration (optional - komplett unsichtbar, solange nicht eingerichtet): Konfiguration, Fortschritts-/Erfolgs-Abruf per RA-Web-API, Erfolgs-Cache, Name/System-Zuordnung zwischen unseren Spielenamen und RAs ...
 - **romwacht** - Der ROM-Waechter (Build 258)

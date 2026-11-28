@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Die Zeitreise mit Effekt.** Beim Reisen mit der Zeitmaschine blitzt
+  es, ein Wirbel dreht sich, die Jahreszahl rattert bis zum Ziel, es
+  blitzt noch einmal – mit eigenem Zeitreise-Sound, die Musik wird dabei
+  leiser. Knapp drei Sekunden, jede Taste überspringt. Den Wirbel rechnet
+  das C-Modul (neue Fassung 9); ohne C-Modul ein Tunnel aus farbigen
+  Ringen. Schalter unter System → Statistiken & Erfolge, Vorgabe AN.
+  Der Sound stammt von AudioPapkin (pixabay.com, Pixabay-Lizenz, siehe
+  `frontend/sfx/QUELLEN.txt`).
+
 - **Die Zeitmaschine.** Eine neue Kategorie auf der Hauptseite: Jahr am
   Drehrad wählen (Links/Rechts ein Jahr, Hoch/Runter zehn, A reist), und
   die Sammlung zeigt sich, wie sie damals war – „Neu in 1991“, je System

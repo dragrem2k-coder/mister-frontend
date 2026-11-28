@@ -405,8 +405,11 @@ for datei in ("libdragend.so", "libdragend_neon.so", "libdragend_x86.so"):
           "frontend/c/ gebaut, frontend/ geladen")
 
 _qc = open(os.path.join(_REPO, "frontend", "c", "dragend.c")).read()
+# GEAENDERT (Build 352): die Nummer kommt aus fe/art.py - C-Datei und
+# Python muessen dieselbe nennen, welche es gerade ist.
 check("die C-Fassung ist hochgezaehlt",
-      "return 8; }" in _qc or "return 8;" in _qc)
+      "int dragend_version(void) { return %d; }" % A.DRAGEND_LIB_VERSION
+      in _qc and A.DRAGEND_LIB_VERSION >= 8)
 check("und rechtecke_farben steht drin", "int rechtecke_farben(" in _qc)
 check("und zeilen_kopieren ebenfalls (Build 225)",
       "int zeilen_kopieren(" in _qc)

@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Time travel with an effect.** Travelling with the time machine now
+  flashes, a vortex spins, the year counts down to the destination,
+  another flash – with its own time travel sound, the music is turned
+  down meanwhile. Just under three seconds, any button skips. The vortex
+  is computed by the C module (new version 9); without the C module a
+  tunnel of coloured rings. Switch under System → Statistics &
+  achievements, ON by default. The sound is by AudioPapkin (pixabay.com,
+  Pixabay licence, see `frontend/sfx/QUELLEN.txt`).
+
 - **The time machine.** A new category on the main page: pick a year on
   the wheel (left/right one year, up/down ten, A travels), and your
   collection shows itself as it was back then – "New in 1991", per system

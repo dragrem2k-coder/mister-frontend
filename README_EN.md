@@ -140,7 +140,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Year in review** | Statistics for the current calendar year |
 | **Playtime tracker** | How long, how often, when last — per game and per system |
 | **Top 10 lists** | By playtime, launch count, systems |
-| **Time machine** | Pick a year on the wheel and your collection shows itself as it was: "New in 1991", per system everything up to then, your ratings from back then. "Back to the present" with one press. Costs nothing unless you travel |
+| **Time machine** | Pick a year on the wheel and your collection shows itself as it was: "New in 1991", per system everything up to then, your ratings from back then. "Back to the present" with one press. Flash, vortex and time travel sound on the way (can be switched off, any button skips). Costs nothing unless you travel |
 | **Magazine reviews from kultboy.com** | The reviews of each game from old German games magazines: list with magazine, issue and rating, plus the **scanned magazine page** with zoom – online on demand, nothing is stored. A switch, OFF by default |
 | **Your own ratings** | Like an old games magazine: fun in percent, plus graphics, sound/music and controls depending on the device if you like, a "Dragend hit" stamp from 85%. A short question after playing (A saves, B later), verdict, second opinion, "then and now", a test archive per system, a **monthly issue** and CSV export. **Can be switched off — and starts off after an update** |
 | **RetroAchievements** | Progress, achievement showcase (F6), popup when you earn one |
@@ -439,3 +439,6 @@ it must do so under the GPL as well, with source code. Versions up to
 Build 350 were MIT-licensed and stay that way
 ([LICENSE_MIT_bis_Build_350.txt](LICENSE_MIT_bis_Build_350.txt)).
 `Scripts/MiSTer_RA.sh` is by sage2050 and keeps its MIT licence.
+The time travel sound `frontend/sfx/zeitreise.mp3` (AudioPapkin,
+pixabay.com) is under the Pixabay Content License, not the GPL
+([QUELLEN.txt](frontend/sfx/QUELLEN.txt)).

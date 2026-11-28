@@ -31,11 +31,17 @@
  *      Alpha bleibt also 0. Beim Vergroessern dagegen werden alle vier
  *      Bytes kopiert.
  *
- * Keine Abhaengigkeiten ausser <string.h> (memset/memcpy).
+ * Keine Abhaengigkeiten ausser <string.h> (memset/memcpy) und - seit
+ * Build 352, nur fuer den Wirbel der Zeitmaschine - malloc/free aus
+ * <stdlib.h>. Beides steckt in der libc selbst. Die Mathebibliothek
+ * (libm) wird bewusst NICHT gebraucht: Wurzel, Winkel und Sinus rechnet
+ * der Wirbel unten selbst, so dass die .so auf jedem MiSTer-Linux
+ * laedt, egal welche libm-Fassung dort liegt.
  * Uebersetzen: siehe bauen.sh
  * ===========================================================================
  */
 #include <string.h>
+#include <stdlib.h>
 
 /* Rueckgabe: 0 = ok, -1 = unsinnige Masse (dann faellt Python zurueck) */
 int skalieren_flaechenmittel(const unsigned char *pix, int w, int h,
@@ -644,6 +650,7 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * 6 = zeilen_kopieren() dazugekommen (Build 225).
  * 7 = rechtecke_maske() dazugekommen (Build 226).
  * 8 = texte_zeichnen() dazugekommen (Build 227).
+ * 9 = wirbel_zeichnen() und wirbel_freigeben() dazugekommen (Build 352).
  *
  * WICHTIG BEI EINEM TEIL-UPDATE, und das ist seit Build 219 anders
  * geloest: bisher verwarf die Python-Seite jede Fassung, deren Nummer
@@ -654,7 +661,7 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * voll genutzt, nur rechtecke_farben() fehlt dann und die betroffenen
  * Zeichenwege rechnen in Python. Das ist der Unterschied zwischen
  * "etwas langsamer" und "alles langsam". */
-int dragend_version(void) { return 8; }
+int dragend_version(void) { return 9; }
 
 /* ------------------------------------------------------------------
  * FLAECHEN FUELLEN (Build 219)
@@ -811,4 +818,224 @@ int fremd_zaehlen(const unsigned char *mm, const unsigned char *buf,
         }
     }
     return treffer;
+}
+
+/* ------------------------------------------------------------------
+ * DER WIRBEL DER ZEITMASCHINE (Build 352)
+ * ------------------------------------------------------------------
+ * Nutzerwunsch: beim Start einer Zeitreise ein Wirbel "wie bei einer
+ * Zeitreise im Rollenspiel" - weich, drehend, mit Licht in der Mitte.
+ * Das braucht JEDEN Bildpunkt in jedem Bild; in Python waere das auf
+ * dem DE10-Nano eine Diashow. Hier in C, in HALBER Aufloesung (je
+ * Rasterzelle 2x2 Bildpunkte) - ein Viertel der Arbeit, und auf dem
+ * Fernseher sieht man den Unterschied bei einem bewegten Wirbel kaum.
+ *
+ * ZWEI SCHRITTE:
+ *   1. Einmal je Bildgroesse eine Tabelle je Rasterzelle: zwei Phasen
+ *      (Abstand und Winkel zur Mitte, schon zum Muster verrechnet),
+ *      Helligkeit nach aussen, Glut in der Mitte. Das ist der teure
+ *      Teil (Wurzel, Winkel) und passiert nur beim ersten Bild.
+ *   2. Je Bild: zwei Nachschlagungen im Sinus, eine in der Farbtafel,
+ *      ein paar Multiplikationen. Keine Fliesskommarechnung.
+ *
+ * Die Tabelle liegt im Heap (malloc) und wird mit wirbel_freigeben()
+ * zurueckgegeben, sobald der Effekt vorbei ist - 1280x720 sind rund
+ * 1,4 MB, die zwischen zwei Reisen niemand braucht.
+ *
+ * KEINE libm: die Wurzel kommt aus einem Startwert ueber die Bits der
+ * Gleitkommazahl plus Newton-Schritten, der Winkel aus einem Polynom,
+ * der Sinus fuer die Tafel aus einer Reihe. Fuer ein Muster reicht das
+ * mehr als aus, und die .so bleibt frei von libm-Versionen.
+ *
+ * t_ms  : Zeit seit Beginn in Millisekunden - die Bewegung haengt an
+ *         der Zeit, nicht an der Bildnummer. Ein langsames Geraet
+ *         zeigt weniger Bilder, aber denselben Wirbel zur selben Zeit.
+ * blitz : 0..256, wie weit das Bild zu Weiss aufgehellt wird (256 =
+ *         ganz weiss). Damit entstehen die Blitze am Anfang und Ende.
+ *
+ * Rueckgabe 0 = gezeichnet, -1 = unsinnige Masse, Puffer zu klein
+ * oder kein Speicher (dann nimmt Python den Ringtunnel).
+ */
+#define WIRBEL_MAX 4096
+
+typedef struct {
+    unsigned short p1;        /* Phase der Ringe (256 = eine Welle) */
+    unsigned short p2;        /* Phase der Spiralarme */
+    unsigned char hell;       /* 0..255, aussen hell, innen dunkler */
+    unsigned char glut;       /* 0..255, Licht in der Mitte */
+} wirbel_zelle;
+
+static wirbel_zelle *w_tab = 0;
+static int w_breite = 0, w_hoehe = 0;
+static unsigned char w_sinus[256];
+static unsigned char w_farbe[256][3];
+static int w_tafeln = 0;
+
+static double w_wurzel(double x)
+{
+    float f;
+    unsigned int i;
+    double g;
+    int k;
+    if (x <= 0.0) return 0.0;
+    f = (float)x;
+    memcpy(&i, &f, 4);
+    i = 0x1fbd1df5u + (i >> 1);          /* grober Startwert */
+    memcpy(&f, &i, 4);
+    g = (double)f;
+    for (k = 0; k < 4; k++) g = 0.5 * (g + x / g);
+    return g;
+}
+
+static double w_atan01(double z)          /* |z| <= 1 */
+{
+    double z2 = z * z;
+    return z * (0.99997726 + z2 * (-0.33262347 + z2 * (0.19354346
+           + z2 * (-0.11643287 + z2 * (0.05265332 + z2 * -0.01172120)))));
+}
+
+static double w_winkel(double y, double x)  /* wie atan2 */
+{
+    const double PI = 3.14159265358979323846;
+    double ax = x < 0 ? -x : x, ay = y < 0 ? -y : y, a;
+    if (ax == 0.0 && ay == 0.0) return 0.0;
+    if (ax >= ay) a = w_atan01(ay / ax);
+    else a = PI / 2.0 - w_atan01(ax / ay);
+    if (x < 0) a = PI - a;
+    if (y < 0) a = -a;
+    return a;
+}
+
+static double w_sin(double x)             /* x in [-PI, PI] */
+{
+    double x2 = x * x, t = x, s = x;
+    int n;
+    for (n = 1; n < 9; n++) {
+        t *= -x2 / (double)((2 * n) * (2 * n + 1));
+        s += t;
+    }
+    return s;
+}
+
+static void w_tafeln_bauen(void)
+{
+    /* Fuenf Farben von dunkel nach hell: Nachtblau, Blau, Violett,
+     * Tuerkis, fast Weiss. Dazwischen linear. */
+    static const unsigned char stufen[5][3] = {
+        {20, 20, 70}, {60, 40, 190}, {150, 60, 230},
+        {70, 200, 240}, {220, 230, 255}};
+    const double PI = 3.14159265358979323846;
+    int i, k;
+    for (i = 0; i < 256; i++) {
+        double w = 2.0 * PI * (double)i / 256.0;
+        double sv;
+        int pos, ab;
+        if (w > PI) w -= 2.0 * PI;
+        sv = w_sin(w) * 0.5 + 0.5;
+        if (sv < 0) sv = 0;
+        if (sv > 1) sv = 1;
+        w_sinus[i] = (unsigned char)(sv * 255.0 + 0.5);
+        pos = i * 4;                       /* 0 .. 1020, 255 je Stufe */
+        ab = pos / 255;
+        if (ab > 3) ab = 3;
+        for (k = 0; k < 3; k++) {
+            int a = stufen[ab][k], b = stufen[ab + 1][k];
+            int rest = pos - ab * 255;
+            w_farbe[i][k] = (unsigned char)(a + (b - a) * rest / 255);
+        }
+    }
+    w_tafeln = 1;
+}
+
+static int w_tabelle(int breite, int hoehe)
+{
+    const double PI2 = 6.28318530717958647692;
+    int gb = (breite + 1) / 2, gh = (hoehe + 1) / 2;
+    int x, y;
+    double halb = breite / 2.0;
+    if (w_tab && w_breite == breite && w_hoehe == hoehe) return 0;
+    free(w_tab);
+    w_tab = (wirbel_zelle *)malloc((size_t)gb * gh * sizeof(wirbel_zelle));
+    w_breite = w_hoehe = 0;
+    if (!w_tab) return -1;
+    for (y = 0; y < gh; y++) {
+        double dy = ((double)(2 * y + 1) - hoehe / 2.0) / halb;
+        for (x = 0; x < gb; x++) {
+            wirbel_zelle *z = w_tab + (size_t)y * gb + x;
+            double dx = ((double)(2 * x + 1) - halb) / halb;
+            double r = w_wurzel(dx * dx + dy * dy) + 1e-3;
+            double a = w_winkel(dy, dx);
+            double v = 0.35 / r;                        /* Wellen */
+            double u = a / PI2 + 0.15 / r;              /* Spirale */
+            double p2 = 6.0 * u + 4.0 * v / PI2;
+            double h = r * 2.2, g = 1.0 - r * 6.0;
+            if (h < 0.15) h = 0.15;
+            if (h > 1.0) h = 1.0;
+            if (g < 0.0) g = 0.0;
+            z->p1 = (unsigned short)((unsigned long)(v * 256.0) & 0xFFFFu);
+            z->p2 = (unsigned short)((unsigned long)(p2 * 256.0 + 65536.0)
+                                     & 0xFFFFu);
+            z->hell = (unsigned char)(h * 255.0);
+            z->glut = (unsigned char)(g * 255.0);
+        }
+    }
+    w_breite = breite;
+    w_hoehe = hoehe;
+    return 0;
+}
+
+void wirbel_freigeben(void)
+{
+    free(w_tab);
+    w_tab = 0;
+    w_breite = w_hoehe = 0;
+}
+
+int wirbel_zeichnen(unsigned char *dst, int stride, int grenze,
+                    int breite, int hoehe, int t_ms, int blitz)
+{
+    int gb, gh, x, y;
+    unsigned int tv, tu;
+    if (!dst || breite <= 0 || hoehe <= 0) return -1;
+    if (breite > WIRBEL_MAX || hoehe > WIRBEL_MAX) return -1;
+    if (stride < breite * 4 || grenze < 0) return -1;
+    if ((long)(hoehe - 1) * stride + (long)breite * 4 > (long)grenze)
+        return -1;
+    if (t_ms < 0) t_ms = 0;
+    if (blitz < 0) blitz = 0;
+    if (blitz > 256) blitz = 256;
+    if (!w_tafeln) w_tafeln_bauen();
+    if (w_tabelle(breite, hoehe) != 0) return -1;
+    gb = (breite + 1) / 2;
+    gh = (hoehe + 1) / 2;
+    /* 2,25 Wellen und 3,68 Spiralumlaeufe je Sekunde, in 1/256 */
+    tv = (unsigned int)(((unsigned long)t_ms * 576u) / 1000u);
+    tu = (unsigned int)(((unsigned long)t_ms * 943u) / 1000u);
+    for (y = 0; y < gh; y++) {
+        int zeile = 2 * y;
+        unsigned char *ziel = dst + (size_t)zeile * stride;
+        const wirbel_zelle *z = w_tab + (size_t)y * gb;
+        for (x = 0; x < gb; x++, z++) {
+            unsigned int b = w_sinus[(z->p1 + tv) & 255u];
+            unsigned int s = w_sinus[(z->p2 + tu) & 255u];
+            unsigned int m = (b * 179u + s * 77u) >> 8;
+            unsigned int k[3], farbe;
+            int c, px = 2 * x;
+            for (c = 0; c < 3; c++) {
+                unsigned int v = (w_farbe[m][c] * (unsigned int)z->hell)
+                                 / 255u + z->glut;
+                if (v > 255u) v = 255u;
+                v += ((255u - v) * (unsigned int)blitz) >> 8;
+                k[c] = v;
+            }
+            /* Bildspeicher: B, G, R, 0 */
+            farbe = k[2] | (k[1] << 8) | (k[0] << 16);
+            memcpy(ziel + (size_t)px * 4, &farbe, 4);
+            if (px + 1 < breite)
+                memcpy(ziel + (size_t)(px + 1) * 4, &farbe, 4);
+        }
+        if (zeile + 1 < hoehe)
+            memcpy(ziel + stride, ziel, (size_t)breite * 4);
+    }
+    return 0;
 }

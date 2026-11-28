@@ -123,6 +123,9 @@ _KB._an[0] = None
 import fe.zeitmaschine as _ZM                           # noqa: E402
 _ZM.AUS_FLAG = os.path.join(_WT_ORDNER, "zeitmaschine_aus")
 _ZM._aus[0] = None
+import fe.reiseeffekt as _RE                            # noqa: E402
+_RE.AUS_FLAG = os.path.join(_WT_ORDNER, "zeitreise_effekt_aus")
+_RE._aus[0] = None
 
 # BUILD 342: die Weihnachts-Deko AUS - sonst sehen im Dezember alle
 # Bild-Vergleiche Schnee, Muetze und Lichterkette. Wer sie pruefen will,

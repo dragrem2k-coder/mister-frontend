@@ -239,10 +239,12 @@ print("Test 8: die Bibliothek passt zur Erwartung")
 # GEAENDERT (Build 227): 8, seit texte_zeichnen() dazugekommen ist -
 # der Textzeichner in C. Davor: 7 fuer rechtecke_maske() (Build 226,
 # MiSTers Lochmasken), 6 fuer zeilen_kopieren() (Build 225).
-check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 8,
+# GEAENDERT (Build 352): 9, seit wirbel_zeichnen() dazugekommen ist -
+# der Wirbel der Zeitmaschine.
+check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 9,
       str(A.DRAGEND_LIB_VERSION))
 check("die C-Datei meldet dieselbe",
-      "int dragend_version(void) { return 8; }" in quelle)
+      "int dragend_version(void) { return 9; }" in quelle)
 check("und es gibt eine Untergrenze darunter",
       getattr(A, "DRAGEND_LIB_VERSION_MIN", None) == 4,
       "eine 4er-Fassung muss weiter voll nutzbar bleiben")
