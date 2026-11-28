@@ -13,10 +13,24 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.1 — noch nicht veröffentlicht
 
+- **Zeitmaschine: nur das gewählte Jahr, einmal lesen.** Auf der Reise
+  stehen jetzt nur noch die Spiele, die in genau diesem Jahr erschienen
+  sind – „Alle Spiele aus 1991“, je System ein Ordner, deine Wertungen
+  aus diesem Jahr. Das Drehrad überspringt Jahre ohne Spiele. Die Jahre
+  werden nur noch einmal gelesen und gemerkt
+  (`zeitmaschine_jahre.json`), auch über einen Neustart; danach nur
+  Neues oder ein System mit geänderten Spieledaten. Ein Neuaufbau der
+  Kategorien im Hintergrund beendet keine Reise mehr. Der Reise-Effekt
+  läuft so lange wie der ganze Sound (gut sechs Sekunden).
+
+- **Abzeichen für Testarchiv und Zeitmaschine**, rechts neben der
+  Kategorienliste wie bei allen anderen; dazu das Gerätefoto für das
+  Famicom Disk System in den Hauptseiten-Stilen.
+
 - **Die Zeitreise mit Effekt.** Beim Reisen mit der Zeitmaschine blitzt
   es, ein Wirbel dreht sich, die Jahreszahl rattert bis zum Ziel, es
   blitzt noch einmal – mit eigenem Zeitreise-Sound, die Musik wird dabei
-  leiser. Knapp drei Sekunden, jede Taste überspringt. Den Wirbel rechnet
+  leiser. Gut sechs Sekunden (seit Build 353), jede Taste überspringt. Den Wirbel rechnet
   das C-Modul (neue Fassung 9); ohne C-Modul ein Tunnel aus farbigen
   Ringen. Schalter unter System → Statistiken & Erfolge, Vorgabe AN.
   Der Sound stammt von AudioPapkin (pixabay.com, Pixabay-Lizenz, siehe
@@ -24,11 +38,10 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 - **Die Zeitmaschine.** Eine neue Kategorie auf der Hauptseite: Jahr am
   Drehrad wählen (Links/Rechts ein Jahr, Hoch/Runter zehn, A reist), und
-  die Sammlung zeigt sich, wie sie damals war – „Neu in 1991“, je System
-  alles bis zu diesem Jahr, deine Wertungen von damals. „Zurück in die
-  Gegenwart“ ganz oben oder mit B. Kostet nichts, solange man nicht
-  reist: die Jahre werden erst bei der ersten Reise gelesen (B bricht
-  ab) und für die Sitzung gemerkt. Ausblendbar wie jede Kategorie,
+  Dragend zeigt die Spiele aus diesem Jahr und deine Wertungen von
+  damals. „Zurück in die Gegenwart“ ganz oben oder mit B. Kostet nichts,
+  solange man nicht reist: die Jahre werden erst bei der ersten Reise
+  gelesen (B bricht ab) und gemerkt. Ausblendbar wie jede Kategorie,
   Schalter unter System → Statistiken & Erfolge, Vorgabe AN.
 
 - **Neue Lizenz: GPL-3.0-or-later** statt MIT. Dragend bleibt frei

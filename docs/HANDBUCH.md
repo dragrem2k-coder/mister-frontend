@@ -1781,53 +1781,54 @@ Heftseiten liegen nur im Arbeitsspeicher und sind beim Verlassen weg.
 Bilder-Ordner aus, in dem die Scans liegen. Deshalb ist der Schalter
 von Haus aus AUS – einschalten, wenn Kultboy einverstanden ist.
 
-## 8j-4. Die Zeitmaschine (Build 351)
+## 8j-4. Die Zeitmaschine (Build 351, überarbeitet in Build 353)
 
-Ein Jahr wählen – und die Sammlung zeigt sich, wie sie damals war: welche
-Spiele es bis dahin gab, was in genau diesem Jahr neu war, und wie du sie
-bewertet hast.
+Ein Jahr wählen – und Dragend zeigt die Spiele deiner Sammlung, die in
+genau diesem Jahr erschienen sind, dazu deine Wertungen von damals.
 
 **So geht's:** Auf der Hauptseite die Kategorie `Zeitmaschine` öffnen →
 `Zeitreise starten ...`. Es erscheint das Drehrad mit der Jahreszahl:
 
 | Taste | Wirkung |
 |---|---|
-| Links / Rechts | ein Jahr zurück / vor |
-| Hoch / Runter | zehn Jahre vor / zurück |
+| Links / Rechts | zum vorigen / nächsten Jahr mit Spielen |
+| Hoch / Runter | zehn Jahre vor / zurück (dann das nächste Jahr mit Spielen) |
 | A | reisen |
 | B | abbrechen |
 
-Unter der Zahl steht, wie viele Spiele es bis zu diesem Jahr gibt und wie
-viele davon neu sind, dazu der Bereich deiner Sammlung. Das Rad beginnt
-beim Jahr mit den meisten Neuerscheinungen, ab der zweiten Reise beim
-letzten Reiseziel.
+Jahre ohne ein einziges Spiel überspringt das Rad. Unter der Zahl steht,
+wie viele Spiele aus diesem Jahr es gibt, dazu der Bereich deiner
+Sammlung. Das Rad beginnt beim Jahr mit den meisten Spielen, ab der
+zweiten Reise beim letzten Reiseziel.
 
-**Auf der Reise** heißt die Kategorie `Zeitmaschine · 1991` und zeigt:
+**Auf der Reise** heißt die Kategorie `Zeitmaschine · 1991` und zeigt
+**nur Spiele aus 1991**:
 
 - `Zurück in die Gegenwart` und `Anderes Jahr ...` ganz oben,
-- `Neu in 1991` – alles, was in diesem Jahr erschienen ist,
-- `Deine Wertungen` – deine bewerteten Spiele bis zu diesem Jahr, die
+- `Alle Spiele aus 1991` – alle Systeme zusammen, nach Name,
+- `Deine Wertungen` – deine bewerteten Spiele aus diesem Jahr, die
   besten zuerst (nur bei eingeschalteten Wertungen, siehe 8j-2),
-- je System ein Ordner mit allem bis zu diesem Jahr, das Neueste zuerst.
+- je System ein Ordner mit seinen Spielen aus diesem Jahr.
 
 Die Spiele darin sind die echten Einträge – starten, Kontextmenü,
 Favoriten, alles geht wie gewohnt.
 
-**Der Reise-Effekt (Build 352):** Beim Druck auf A blitzt es, ein Wirbel
-dreht sich, die Jahreszahl rattert bis zum Ziel, es blitzt noch einmal –
-dazu ein Zeitreise-Sound, die Musik wird dabei leiser. Das dauert knapp
-drei Sekunden; **jede Taste überspringt** den Rest und beendet den Sound.
-Den weichen Wirbel rechnet das C-Modul (`libdragend.so` ab Fassung 9);
-ohne C-Modul zeigt Dragend stattdessen einen Tunnel aus farbigen Ringen.
-Abschalten: System → Statistiken & Erfolge → `Reise-Effekt (Blitz,
-Wirbel, Sound): AN` (Vorgabe AN; Merker beim Ausschalten:
+**Der Reise-Effekt (Build 352, seit Build 353 so lang wie der Sound):**
+Beim Druck auf A blitzt es, ein Wirbel dreht sich, die Jahreszahl
+rattert bis zum Ziel, es blitzt noch einmal – dazu ein Zeitreise-Sound,
+die Musik wird dabei leiser. Das dauert gut sechs Sekunden; **jede
+Taste überspringt** den Rest und beendet den Sound. Den weichen Wirbel
+rechnet das C-Modul (`libdragend.so` ab Fassung 9); ohne C-Modul zeigt
+Dragend stattdessen einen Tunnel aus farbigen Ringen. Abschalten:
+System → Statistiken & Erfolge → `Reise-Effekt (Blitz, Wirbel, Sound):
+AN` (Vorgabe AN; Merker beim Ausschalten:
 `/media/fat/frontend/zeitreise_effekt_aus`). Dann geht die Reise ohne
 Umweg direkt ins Jahr.
 
 **Zurück in die Gegenwart:** über den Punkt ganz oben oder mit **B** auf
 der obersten Ebene der Zeitmaschine. In einem Ordner geht B wie immer
 nur eine Ebene hoch. Auch Ausschalten und ein Neu-Einlesen der Spiele
-beenden die Reise.
+(System → Spieleliste neu einlesen) beenden die Reise.
 
 **Woher die Jahre kommen:** aus den Spieledaten, die Dragend ohnehin hat
 (System → `Spieledaten nachladen`, eine eigene `gamelist.xml`, bei
@@ -1835,16 +1836,29 @@ Arcade die `.mra`-Datei). Spiele ohne bekanntes Jahr fahren nicht mit –
 wie viele das sind, steht unter dem Drehrad. Hat noch kein Spiel ein
 Jahr, sagt die Zeitmaschine das, statt ein leeres Rad zu zeigen.
 
+**Gelesen wird nur einmal (Build 353).** Die erste Reise liest die Jahre
+aller Spiele (mit Fortschrittsanzeige, **B** bricht ab – das bis dahin
+Gelesene bleibt gemerkt) und merkt sie sich in
+`/media/fat/frontend/zeitmaschine_jahre.json`. Danach – auch nach einem
+Neustart – liest Dragend nur noch, was neu dazugekommen ist, und ein
+System neu, dessen Spieledaten sich geändert haben (neu geladen, eigene
+`gamelist.xml` geändert). Die Datei darf jederzeit gelöscht werden; dann
+liest die nächste Reise eben wieder alles.
+
 **Kostet nichts, solange man nicht reist.** Beim Start steht nur die
-Kategorie mit einem einzigen Eintrag da – kein Lesen, kein Rechnen.
-Erst die erste Reise liest die Jahre (mit Fortschrittsanzeige, **B**
-bricht ab) und merkt sie sich bis zum nächsten Start bzw. Neu-Einlesen.
-Gespeichert wird nichts, ins Netz geht nichts.
+Kategorie mit einem einzigen Eintrag da – kein Lesen, kein Rechnen,
+auch der Merker wird erst bei der ersten Reise geladen. Ins Netz geht
+nichts.
 
 **Ausblenden:** wie jede Kategorie (System → Verhalten & Optionen →
-„Hauptseite: Kategorien sortieren und ausblenden“), oder ganz abschalten: System → Statistiken & Erfolge → `Zeitmaschine auf der
-Hauptseite: AN` (Vorgabe AN; Merker beim Ausschalten:
+„Hauptseite: Kategorien sortieren und ausblenden“), oder ganz abschalten:
+System → Statistiken & Erfolge → `Zeitmaschine auf der Hauptseite: AN`
+(Vorgabe AN; Merker beim Ausschalten:
 `/media/fat/frontend/zeitmaschine_aus`).
+
+**Abzeichen (Build 353):** Zeitmaschine und Testarchiv haben rechts
+neben der Kategorienliste ein eigenes Abzeichen wie alle anderen
+Kategorien.
 
 ## 8k. RetroAchievements-Fortschritt
 
@@ -2260,7 +2274,7 @@ und erst dann das Abzeichen aus `sysart`. Mitgeliefert werden 20
 Fotos (NES, SNES, Super Game Boy, Game Boy, GBC, GBA, N64, Virtual
 Boy, Mega Drive, Mega CD, 32X, Master System, PlayStation, Saturn,
 TurboGrafx-16, Neo Geo, Atari 2600, Arcade, Computer, externes
-Laufwerk). Kategorien ohne Foto — Favoriten, Weiterspielen, Game Gear
+Laufwerk, seit Build 353 auch das Famicom Disk System). Kategorien ohne Foto — Favoriten, Weiterspielen, Game Gear
 … — behalten ihr Abzeichen, und Liste, Raster und Galerie bleiben
 ganz bei den Abzeichen. Eigene Fotos legt
 `PC-Tools/sysart_foto_convert.py` im richtigen Format ab; siehe

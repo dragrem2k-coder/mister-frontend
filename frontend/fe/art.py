@@ -6479,6 +6479,16 @@ def _category_art_key(name, syskey):
     # des echten RetroAchievements-Markenlogos).
     if name.startswith(t("ra_hunter_cat")):
         return "RA_HUNTER"
+    # Build 353 (Nutzerwunsch: "fuer Testarchiv und Zeitmaschine ...
+    # dort steht jetzt ja nur der Name"): beide mit syskey=None, beide
+    # mit eigenem Abzeichen (PC-Tools/sysart_eigene_abzeichen.py). Die
+    # Zeitmaschine heisst auf der Reise "Zeitmaschine \xb7 1991" - der
+    # Teil vor dem Punkt zaehlt. Beide Sprachen, wie beim Zufalls-Zock:
+    # der gespeicherte Name kann aus der anderen Sprache stammen.
+    if name in alle_fassungen("testarchiv_cat"):
+        return "TESTARCHIV"
+    if name.split(" \xb7 ")[0] in alle_fassungen("zm_cat"):
+        return "ZEITMASCHINE"
     # NEU (Build 112, Nutzerwunsch: zwei weitere Abzeichen fuer "Custom
     # Cores" und "Physical Disc Cores").
     #
@@ -6841,6 +6851,38 @@ def get_meta(syskey, rom_basename):
     zusammen = dict(fremd)
     zusammen.update(eigene)
     return zusammen
+
+
+def meta_stand(syskey):
+    """Der Stand der Quellen, aus denen get_meta() fuer dieses System
+    liest - als Text, gleich solange sich keine Datei geaendert hat
+    (Build 353, fuer den Merker der Zeitmaschine).
+
+    Genau die Dateien, die get_meta() auch fragt: unsere Tabelle, die
+    gamelist.xml des Nutzers, die fremde gameinfo.tsv - und ob die
+    beiden letzten ueberhaupt gefragt werden. Je Datei Pfad, Zeitstempel
+    und Groesse; fehlt eine, steht sie nicht drin. Nur os.stat(), nichts
+    wird gelesen."""
+    teile = []
+
+    def _st(pfad):
+        try:
+            s = os.stat(pfad)
+        except OSError:
+            return
+        teile.append("%s:%d:%d" % (pfad, int(s.st_mtime), s.st_size))
+    _st(os.path.join(META_BASE, str(syskey) + ".json"))
+    if gamelist_enabled():
+        for pfad in _gamelist_dateien(syskey):
+            _st(pfad)
+    else:
+        teile.append("gamelist:aus")
+    if fremdquellen_enabled():
+        for pfad in _docs_info_pfade(syskey):
+            _st(pfad)
+    else:
+        teile.append("fremd:aus")
+    return "|".join(teile)
 
 
 def metadaten_vorwaermen(syskey):

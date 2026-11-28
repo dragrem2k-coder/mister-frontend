@@ -123,8 +123,14 @@ check("dann ganz weiss",
 check("danach fertig", RE.phase(RE.GESAMT)[2] is True
       and RE.phase(99)[2] is True)
 check("negative Zeit wie Beginn", RE.phase(-1) == RE.phase(0))
-check("gesamt rund 3 Sekunden (zum Sound mit 3,4 s)",
-      2.5 <= RE.GESAMT <= 3.4, RE.GESAMT)
+# Build 353: "kann ruhig laenger dauern, quasi so lange wie der
+# Soundeffekt". Die MP3 hat 192 kbit/s fest - ihre Laenge steht damit in
+# der Dateigroesse.
+_mp3 = os.path.join(_REPO, "frontend", "sfx", "zeitreise.mp3")
+_sound_s = os.path.getsize(_mp3) * 8 / 192000.0
+check("so lang wie der Sound (bis zu 1 s Ausklingen ueber der Liste)",
+      _sound_s - 1.0 <= RE.GESAMT <= _sound_s and RE.GESAMT > 5.5,
+      "%.2f s Effekt, %.2f s Sound" % (RE.GESAMT, _sound_s))
 check("Jahreszahl: Anfang, Ende, geklemmt",
       RE.jahr_bei(2026, 1991, 0) == 2026 and RE.jahr_bei(2026, 1991, 1)
       == 1991 and RE.jahr_bei(2026, 1991, 7) == 1991
@@ -287,18 +293,20 @@ class Uhr(object):
 
 
 def lauf(tasten=(), uhr=None, c_da=None, c_zeichnen=None,
-         seiten=None, b_h=(1280, 720)):
+         seiten=None, b_h=(1280, 720), merken=True):
     H.set_screen(*b_h)
     fe = H.make_frontend(page=0)
     fe._zm_uhr = uhr or Uhr()
     toene = []
-    fe._play_ducked_sfx = lambda name, griff=None: toene.append(
-        (name, griff))
+    FOLGE[:] = []
+    fe._play_ducked_sfx = lambda name, griff=None: (
+        toene.append((name, griff)), FOLGE.append("ton"))
     bilder = []
     echt_flip = fe.fb.flip
 
     def _flip(*a, **k):
-        bilder.append(bytes(fe.fb.buf))
+        bilder.append(bytes(fe.fb.buf) if merken else None)
+        FOLGE.append("bild")
         return echt_flip(*a, **k)
     fe.fb.flip = _flip
     frei = []
@@ -317,6 +325,9 @@ def lauf(tasten=(), uhr=None, c_da=None, c_zeichnen=None,
     return fe, erg, bilder, toene, frei
 
 
+FOLGE = []
+
+
 def bunt(roh, w, h):
     stride = len(roh) // h
     return len(set(roh[y * stride + x * 4:y * stride + x * 4 + 3]
@@ -325,8 +336,13 @@ def bunt(roh, w, h):
 
 fe, erg, bilder, toene, frei = lauf()
 n_soll = int(RE.GESAMT / 0.05)
-check("mit C: ganz gelaufen, Bilder nach der Uhr",
-      erg is True and abs(len(bilder) - n_soll) <= 2, len(bilder))
+check("mit C: ganz gelaufen, Bilder nach der Uhr (plus das weisse "
+      "Vorbild)", erg is True and abs(len(bilder) - 1 - n_soll) <= 2,
+      len(bilder))
+check("mit C: erst das weisse Bild (Tabelle gebaut), DANN der Sound",
+      FOLGE[:2] == ["bild", "ton"]
+      and all(z == b"\xff\xff\xff\x00" * 1280
+              for z in (bilder[0][:1280 * 4],)), FOLGE[:3])
 check("der Sound 'zeitreise' mit Griff, nicht abgebrochen",
       len(toene) == 1 and toene[0][0] == "zeitreise"
       and toene[0][1] is not None and not toene[0][1].abgebrochen())
@@ -334,8 +350,8 @@ check("der Wirbel (viele Farben) in der Mitte des Effekts",
       bunt(bilder[len(bilder) // 2], 1280, 720) > 300,
       bunt(bilder[len(bilder) // 2], 1280, 720))
 _st = len(bilder[0]) // 720
-check("erstes Bild hell (der Blitz klingt ab), letztes ganz weiss",
-      sum(bilder[0][::97]) / len(bilder[0][::97]) > 150
+check("zweites Bild hell (der Blitz klingt ab), letztes ganz weiss",
+      sum(bilder[1][::97]) / len(bilder[1][::97]) > 150
       and all(bilder[-1][y * _st:y * _st + 1280 * 4]
               == b"\xff\xff\xff\x00" * 1280 for y in (0, 360, 719)))
 check("die Tabelle wird freigegeben", frei == [1])
@@ -348,8 +364,8 @@ check("die Jahreszahl steht im Kasten (weisse Schrift auf Dunkel)",
       b"\xff\xff\xff\x00" in zeile and b"\x14\x08\x08\x00" in zeile)
 
 fe, erg, bilder, toene, frei = lauf(c_da=lambda: False)
-check("ohne C: der Ringtunnel, ganz gelaufen",
-      erg is True and abs(len(bilder) - n_soll) <= 2
+check("ohne C: der Ringtunnel, ganz gelaufen, Sound sofort",
+      erg is True and abs(len(bilder) - n_soll) <= 2 and FOLGE[0] == "ton"
       and 5 < bunt(bilder[len(bilder) // 2], 1280, 720) < 200,
       bunt(bilder[len(bilder) // 2], 1280, 720))
 
@@ -364,21 +380,29 @@ def _faellt_aus(*a):
 fe, erg, bilder, toene, frei = lauf(c_zeichnen=_faellt_aus)
 check("C faellt mittendrin aus: weiter mit dem Tunnel, C nicht mehr "
       "gefragt", erg is True and len(aufrufe) == 5
-      and abs(len(bilder) - n_soll) <= 2)
+      and abs(len(bilder) - 1 - n_soll) <= 2)
+aufrufe2 = []
+fe, erg, bilder, toene, frei = lauf(
+    c_zeichnen=lambda *a: aufrufe2.append(1) and False)
+check("C scheitert schon am Vorbild: gleich der Tunnel, kein weisses "
+      "Vorbild", erg is True and len(aufrufe2) == 1
+      and FOLGE[0] == "ton" and abs(len(bilder) - n_soll) <= 2)
 
 fe, erg, bilder, toene, frei = lauf(tasten=["ok", "ok", "ok", "ok", "ok",
                                             None, None, "back"])
 check("Taste in den ersten 0,3 s zaehlt nicht, danach ueberspringt sie",
-      erg is False and len(bilder) == 8, len(bilder))
+      erg is False and len(bilder) == 1 + 8, len(bilder))
 check("uebersprungen: der Sound wird beendet, die Tabelle freigegeben",
       toene[0][1].abgebrochen() and frei == [1])
 
-fe, erg, bilder, toene, frei = lauf(uhr=Uhr(schritt=0.0))
-check("stehende Uhr: endet trotzdem (MAX_BILDER)",
+fe, erg, bilder, toene, frei = lauf(uhr=Uhr(schritt=0.0), merken=False)
+check("stehende Uhr: endet trotzdem (MAX_BILDER, Vorbild mitgezaehlt)",
       len(bilder) == RE.MAX_BILDER, len(bilder))
-fe, erg, bilder, toene, frei = lauf(uhr=Uhr(schritt=-0.1))
+fe, erg, bilder, toene, frei = lauf(uhr=Uhr(schritt=-0.1), merken=False)
 check("rueckwaerts laufende Uhr: endet trotzdem",
       len(bilder) == RE.MAX_BILDER)
+check("MAX_BILDER reicht fuer den ganzen Effekt bei 60 Bildern je Sekunde",
+      RE.MAX_BILDER >= RE.GESAMT * 60 * 1.2, RE.MAX_BILDER)
 
 fe, erg, bilder, toene, frei = lauf(b_h=(320, 240))
 check("Roehre 320x240: Wirbel, ganz gelaufen",
@@ -438,7 +462,7 @@ sfx = os.path.join(_REPO, "frontend", "sfx")
 mp3 = os.path.join(sfx, "zeitreise.mp3")
 roh = open(mp3, "rb").read() if os.path.exists(mp3) else b""
 check("sfx/zeitreise.mp3 da, klein, MP3 ohne Tags",
-      20000 < len(roh) < 150000 and roh[:3] != b"ID3"
+      20000 < len(roh) < 250000 and roh[:3] != b"ID3"
       and roh[0] == 0xFF and (roh[1] & 0xE0) == 0xE0, len(roh))
 q = open(os.path.join(sfx, "QUELLEN.txt"), encoding="utf-8").read()
 check("Herkunft vermerkt: Pixabay, Nummer, Urheber, nicht GPL",

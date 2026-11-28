@@ -427,7 +427,7 @@ Quelltext selbst beschrieben ist.
 - **weihnachten** - Die Weihnachts-Deko (Build 342)
 - **wertungen** - Eigene Wertungen im Heft-Stil (Build 346)
 - **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
-- **zeitmaschine** - Die Zeitmaschine (Build 351)
+- **zeitmaschine** - Die Zeitmaschine (Build 351, ueberarbeitet in Build 353)
 - **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
 
 ### Das Overlay fuer OBS und den Browser

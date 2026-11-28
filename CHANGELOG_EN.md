@@ -13,22 +13,34 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.1 — not released yet
 
+- **Time machine: only the chosen year, read once.** A trip now shows
+  only the games that came out in exactly that year – "All games from
+  1991", one folder per system, your ratings from that year. The wheel
+  skips years without games. The years are read only once and
+  remembered (`zeitmaschine_jahre.json`), also across a restart; after
+  that only new games or a system whose game info changed. A rebuild of
+  the categories in the background no longer ends a trip. The travel
+  effect runs as long as the whole sound (a good six seconds).
+
+- **Badges for the test archive and the time machine**, next to the
+  category list like all the others; plus the console photo for the
+  Famicom Disk System in the main page styles.
+
 - **Time travel with an effect.** Travelling with the time machine now
   flashes, a vortex spins, the year counts down to the destination,
   another flash – with its own time travel sound, the music is turned
-  down meanwhile. Just under three seconds, any button skips. The vortex
+  down meanwhile. A good six seconds (since Build 353), any button skips. The vortex
   is computed by the C module (new version 9); without the C module a
   tunnel of coloured rings. Switch under System → Statistics &
   achievements, ON by default. The sound is by AudioPapkin (pixabay.com,
   Pixabay licence, see `frontend/sfx/QUELLEN.txt`).
 
 - **The time machine.** A new category on the main page: pick a year on
-  the wheel (left/right one year, up/down ten, A travels), and your
-  collection shows itself as it was back then – "New in 1991", per system
-  everything up to that year, your ratings from back then. "Back to the
-  present" at the top or with B. Costs nothing unless you travel: the
-  years are read on the first trip only (B cancels) and kept for the
-  session. Can be hidden like any category, switch under System →
+  the wheel (left/right one year, up/down ten, A travels), and Dragend
+  shows the games from that year and your ratings from back then. "Back
+  to the present" at the top or with B. Costs nothing unless you travel:
+  the years are read on the first trip only (B cancels) and
+  remembered. Can be hidden like any category, switch under System →
   Statistics & achievements, ON by default.
 
 - **New licence: GPL-3.0-or-later** instead of MIT. Dragend stays free

@@ -1527,53 +1527,54 @@ the scans in its `robots.txt`. That is why the switch is OFF by default
 – switch it on once Kultboy agrees.
 
 
-## 8j-4. The time machine (Build 351)
+## 8j-4. The time machine (Build 351, reworked in Build 353)
 
-Pick a year – and your collection shows itself as it was back then: which
-games existed up to that year, what was new in exactly that year, and how
-you rated them.
+Pick a year – and Dragend shows the games of your collection that came
+out in exactly that year, plus your ratings from back then.
 
 **How it works:** on the main page open the `Time machine` category →
 `Start a time trip ...`. The year wheel appears:
 
 | Button | Effect |
 |---|---|
-| Left / Right | one year back / forward |
-| Up / Down | ten years forward / back |
+| Left / Right | previous / next year with games |
+| Up / Down | ten years forward / back (then the nearest year with games) |
 | A | travel |
 | B | cancel |
 
-Below the number you see how many games exist up to that year and how
-many of them are new, plus the range of your collection. The wheel starts
-at the year with the most releases, from the second trip on at the last
-destination.
+The wheel skips years without a single game. Below the number you see
+how many games from that year there are, plus the range of your
+collection. The wheel starts at the year with the most games, from the
+second trip on at the last destination.
 
 **While travelling** the category is called `Time machine · 1991` and
-shows:
+shows **only games from 1991**:
 
 - `Back to the present` and `Another year ...` at the very top,
-- `New in 1991` – everything released in that year,
-- `Your ratings` – your rated games up to that year, best first (only
+- `All games from 1991` – all systems together, by name,
+- `Your ratings` – your rated games from that year, best first (only
   with ratings switched on, see 8j-2),
-- one folder per system with everything up to that year, newest first.
+- one folder per system with its games from that year.
 
 The games in there are the real entries – launching, context menu,
 favourites all work as usual.
 
-**The travel effect (Build 352):** when you press A there is a flash, a
-vortex spins, the year counts down to the destination, another flash –
-with a time travel sound, and the music is turned down meanwhile. It
-takes just under three seconds; **any button skips** the rest and stops
-the sound. The smooth vortex is computed by the C module
-(`libdragend.so` version 9 or later); without the C module Dragend shows
-a tunnel of coloured rings instead. Switch it off: System → Statistics &
-achievements → `Time travel effect (flash, vortex, sound): ON` (default
-ON; marker file when off: `/media/fat/frontend/zeitreise_effekt_aus`).
-The trip then goes straight to the year.
+**The travel effect (Build 352, since Build 353 as long as the sound):**
+when you press A there is a flash, a vortex spins, the year counts down
+to the destination, another flash – with a time travel sound, and the
+music is turned down meanwhile. It takes a good six seconds; **any
+button skips** the rest and stops the sound. The smooth vortex is
+computed by the C module (`libdragend.so` version 9 or later); without
+the C module Dragend shows a tunnel of coloured rings instead. Switch it
+off: System → Statistics & achievements → `Time travel effect (flash,
+vortex, sound): ON` (default ON; marker file when off:
+`/media/fat/frontend/zeitreise_effekt_aus`). The trip then goes straight
+to the year.
 
 **Back to the present:** via the item at the top or with **B** on the
 top level of the time machine. Inside a folder B goes up one level as
-always. Switching it off and rescanning the games also end the trip.
+always. Switching it off and rescanning the games (System → rescan game
+list) also end the trip.
 
 **Where the years come from:** the game info Dragend already has (System
 → `Download game info`, your own `gamelist.xml`, the `.mra` file for
@@ -1581,17 +1582,26 @@ arcade). Games without a known year stay at home – the count is shown
 below the wheel. If no game has a year yet, the time machine says so
 instead of showing an empty wheel.
 
+**Read only once (Build 353).** The first trip reads the years of all
+games (with a progress screen, **B** cancels – what was read so far is
+kept) and remembers them in `/media/fat/frontend/zeitmaschine_jahre.json`.
+From then on – also after a restart – Dragend only reads what is new, and
+re-reads a system whose game info has changed (downloaded again, your own
+`gamelist.xml` edited). The file may be deleted at any time; the next
+trip then simply reads everything again.
+
 **Costs nothing unless you travel.** At startup there is just the
-category with a single entry – no reading, no computing. Only the first
-trip reads the years (with a progress screen, **B** cancels) and keeps
-them until the next start or rescan. Nothing is saved, nothing goes to
-the network.
+category with a single entry – no reading, no computing, and the memory
+file is only loaded on the first trip. Nothing goes to the network.
 
 **Hiding it:** like any category (System → Options → "Main page: sort and
-hide categories"), or switch it
-off completely: System → Statistics & achievements → `Time machine on
-the main page: ON` (default ON; marker file when off:
-`/media/fat/frontend/zeitmaschine_aus`).
+hide categories"), or switch it off completely: System → Statistics &
+achievements → `Time machine on the main page: ON` (default ON; marker
+file when off: `/media/fat/frontend/zeitmaschine_aus`).
+
+**Badges (Build 353):** the time machine and the test archive have their
+own badge next to the category list, like every other category.
+
 ## 8k. RetroAchievements progress
 
 Shows in the info area how many achievements you've already earned in a
@@ -1944,7 +1954,8 @@ from `/media/fat/frontend/sysart_foto` first and only then from
 `sysart`. 20 photos ship with it (NES, SNES, Super Game Boy, Game
 Boy, GBC, GBA, N64, Virtual Boy, Mega Drive, Mega CD, 32X, Master
 System, PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600,
-arcade, computer, external drive). Categories without a photo -
+arcade, computer, external drive, and since Build 353 the Famicom Disk
+System). Categories without a photo -
 favourites, continue, Game Gear ... - keep their badge, and list,
 grid and gallery stay on the badges entirely.
 `PC-Tools/sysart_foto_convert.py` converts your own photos; see

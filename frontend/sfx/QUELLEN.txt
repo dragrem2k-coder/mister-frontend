@@ -4,8 +4,8 @@ Herkunft fremder Klaenge / Origin of third-party sounds
 zeitreise.mp3  (Build 352, die Zeitreise der Zeitmaschine)
     "Science Fiction Effect 015" von AudioPapkin, pixabay.com
     (Sound-Effekt Nr. 305473), unter der Pixabay-Inhaltslizenz.
-    Fuer Dragend auf 3,4 Sekunden gekuerzt und ab 2,6 Sekunden
-    ausgeblendet.
+    Fuer Dragend auf 6,6 Sekunden gekuerzt (das Hoerbare, ohne die
+    Stille am Ende) und ab 6,0 Sekunden ausgeblendet.
 
     Diese Datei steht NICHT unter der GPL von Dragend, sondern unter
     der Pixabay-Inhaltslizenz: Nutzung frei, auch in Software; die
@@ -14,7 +14,8 @@ zeitreise.mp3  (Build 352, die Zeitreise der Zeitmaschine)
 
     "Science Fiction Effect 015" by AudioPapkin, pixabay.com (sound
     effect no. 305473), under the Pixabay Content License. Shortened
-    to 3.4 seconds with a fade-out from 2.6 seconds for Dragend.
+    to 6.6 seconds (the audible part, without the silence at the end)
+    with a fade-out from 6.0 seconds for Dragend.
 
     This file is NOT covered by Dragend's GPL but by the Pixabay
     Content License: free to use, also in software; the file may not

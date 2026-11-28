@@ -30,19 +30,22 @@ import os
 ORDNER = "/media/fat/frontend"
 AUS_FLAG = os.path.join(ORDNER, "zeitreise_effekt_aus")
 
-# Der Ablauf in Sekunden. Abgestimmt auf den Sound: der ist zwischen
-# 0,5 und 1,5 s am lautesten und wird ab 2,6 s ausgeblendet.
-BLITZ_EIN = 0.18        # Weiss -> Wirbel
-RATTERN = 2.20          # die Jahreszahl laeuft zum Ziel
-HALTEN = 0.30           # das Ziel steht, der Wirbel dreht weiter
-BLITZ_AUS = 0.22        # Wirbel -> Weiss
-WEISS = 0.10            # ganz weiss, dann die Liste
+# Der Ablauf in Sekunden. Abgestimmt auf den Sound (Build 353: in
+# voller Laenge, 6,6 s - Nutzerwunsch "kann ruhig laenger dauern, quasi
+# so lange wie der Soundeffekt"): laut von 0,5 bis 3 s, leiser bis 5,6 s,
+# ab 6 s ausgeblendet. Die Zahl rattert durch den lauten Teil, das Ziel
+# steht im leisen, der zweite Blitz faellt in das Ausklingen.
+BLITZ_EIN = 0.25        # Weiss -> Wirbel
+RATTERN = 4.30          # die Jahreszahl laeuft zum Ziel
+HALTEN = 0.90           # das Ziel steht, der Wirbel dreht weiter
+BLITZ_AUS = 0.40        # Wirbel -> Weiss
+WEISS = 0.15            # ganz weiss, dann die Liste
 GESAMT = BLITZ_EIN + RATTERN + HALTEN + BLITZ_AUS + WEISS
 
 # Sicherheitsgrenze: so viele Bilder hoechstens, egal was die Uhr sagt.
 # Steht die Uhr (Pruefstand) oder springt sie zurueck, endet der Effekt
 # trotzdem.
-MAX_BILDER = 240
+MAX_BILDER = 900        # 6 s bei 60 Bildern je Sekunde passen sicher
 
 SOUND = "zeitreise"
 

@@ -12373,3 +12373,85 @@ rueckwaerts laufende Uhr, Roehre, AUS; die Reise mit Effekt, mit
 kaputtem Effekt, das Startjahr; der Sound. `tools/test_lizenz.py`: der
 Sound als Ausnahme von der GPL. `tools/_harness.py` lenkt den Schalter
 um.
+
+## Nachtrag Build 353 - Zeitmaschine: nur das Jahr, ein Merker, Abzeichen
+
+**Stand:** 28.11.2026, `Dragend_Build_353.zip` (build_id
+`2026-11-28-353`). Version bleibt 5.1. C-Bibliothek unveraendert
+(Fassung 9).
+
+Vier Nutzerwuensche nach Build 352: (1) "nur die Spiele, die wirklich in
+dem ausgewaehlten Jahr erschienen sind"; (2) die Animation "kann ruhig
+laenger dauern, quasi so lange wie der Soundeffekt"; (3) Abzeichen fuer
+Testarchiv und Zeitmaschine; (4) das Geraetefoto fuer das Famicom Disk
+System. Dazu die Meldung mitten im Bau: "wenn ich die Zeitmaschine neu
+starte, liest er immer wieder die Spiele neu ein".
+
+### Warum immer wieder gelesen wurde
+
+Das Verzeichnis galt nur bis zum naechsten `build_categories()` - und
+das ruft nicht nur das Neu-Einlesen, sondern auch
+`_maybe_rebuild_ra_categories()` (RetroAchievements im Hintergrund, auf
+Seite 0 bei ruhiger Eingabe) und `_rom_nachscan_pruefen()`. Nach einem
+Neustart war es ohnehin weg. Bei 41 469 Spielen (Bench 27 des Nutzers)
+heisst das jedes Mal Sekunden.
+
+### fe/zeitmaschine.py
+
+- MERKER `zeitmaschine_jahre.json`: `{"version": 1, "stand": {syskey:
+  str}, "jahre": {syskey: {label: jahr}}}`. Gemerkt wird das ROHE Jahr
+  (0 = keines), die Plausibilitaet (ab 1970, nicht in der Zukunft)
+  wird beim Einsortieren geprueft. Geladen erst bei der ersten Reise
+  einer Sitzung; kaputte oder fremde Datei: von vorn.
+- `stand_fn(syskey)` = `fe/art.meta_stand()`: Pfad, mtime und Groesse
+  von `meta/<SYS>.json`, der gamelist.xml-Dateien und der gameinfo.tsv
+  (plus ob gamelist/fremde Quellen an sind) - nur `os.stat()`. Aendert
+  er sich, wird NUR dieses System neu gelesen.
+- `offen()` zaehlt, was noch zu lesen ist; bei 0 baut das Frontend ohne
+  Fortschrittsanzeige.
+- `bauen()` liest nur Unbekanntes; `zwischendurch` zaehlt Gelesenes.
+  Abbruch: das bis dahin Gelesene bleibt im Merker.
+- `merker_speichern()` schreibt einen ABZUG im Hintergrund (.tmp +
+  os.replace) - das Drehrad wartet nicht auf 1,5 MB JSON.
+- `knoten()` zeigt NUR das Jahr: "Alle Spiele aus <Jahr>", "Deine
+  Wertungen" (aus diesem Jahr), je System ein Ordner nach Name.
+- `Verzeichnis.weiter(jahr, schritt)`: +-1 zum naechsten Jahr mit
+  Spielen, +-10 und dann das naechste mit Spielen, 0 = naechstes.
+
+### Frontend
+
+- `build_categories()`: das Verzeichnis gilt als veraltet
+  (`_zm_veraltet`), die Reise bleibt; nur `force_rescan` beendet sie.
+- `_zm_vorbereiten()`: aktuell -> nichts; sonst `ZM.offen()`, bei 0 still
+  aus dem Merker, sonst mit Fortschritt; danach `merker_speichern()`.
+  Beim ersten Mal in der Sitzung ein kurzer Bildschirm, waehrend der
+  Merker von der Karte kommt.
+- Drehrad ueber `vz.weiter()`; Zeile "Spiele aus <Jahr>: n".
+- Reise-Effekt: der Sound jetzt in voller Laenge (6,6 s, ab 6,0 s
+  ausgeblendet), Ablauf 0,25 / 4,3 / 0,9 / 0,4 / 0,15 s = 6,0 s,
+  `MAX_BILDER` 900. Mit C wird das erste Bild (Tabelle, bei 1080p rund
+  0,4 s) VOR Uhr und Sound als weisses Bild gezeigt - sonst liefe der
+  Sound dem Bild davon.
+
+### Bilder
+
+- `PC-Tools/sysart_eigene_abzeichen.py` (neu): Taschenuhr mit
+  Rueckwaerts-Pfeil und Heftstapel mit "91%" als Pixelgrafik, auf dem
+  Oval und mit der Schrift aus `sysart_karten.py` ->
+  `sysart/ZEITMASCHINE.art`, `sysart/TESTARCHIV.art`.
+- `fe/art._category_art_key()`: Testarchiv und Zeitmaschine (auch mit
+  " · <Jahr>"), beide Sprachen.
+- `sysart_foto/FDS.art` aus dem Foto des Nutzers mit
+  `sysart_foto_convert.py` (Vorgaben). Herkunft wie bei den anderen
+  Geraetefotos vermutlich Evan Amos/Wikimedia - nicht nachgeprueft.
+
+### Pruefungen
+
+`tools/test_zeitmaschine.py` neu geschrieben (Merker samt Neustart,
+geaenderter Quelle, kaputter Datei, Hintergrund-Speichern; Knoten nur
+fuer das Jahr; Drehrad ueber leere Jahre; Neuaufbau laesst die Reise
+stehen, Neu-Einlesen beendet sie; Abzeichen-Schluessel).
+`tools/test_reiseeffekt.py`: Dauer an der Sound-Laenge, weisses
+Vorbild vor dem Sound, C scheitert schon am Vorbild. Die Abzeichen in
+`test_sysart_logos.py` und `test_kategorie_abzeichen.py`. Der Harness
+lenkt den Merker um.

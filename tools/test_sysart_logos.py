@@ -136,7 +136,7 @@ schluessel = set(k for _n, k, *_r in alle_systeme())
 # Die Sonderkategorien haben eigene, in fe/art.py vergebene Schluessel.
 SONDER = {"RECENT", "CONTINUE", "FAVORITES", "COLLECTIONS", "RA_HUNTER",
           "ZUFALLSZOCK", "SYSTEM", "ARCADE", "COMPUTER", "SMW_HACKS",
-          "SNES_ALTTP_TRACKER"}
+          "SNES_ALTTP_TRACKER", "TESTARCHIV", "ZEITMASCHINE"}
 for key in NEU_IN_BUILD_80:
     check("%s ist ein bekannter Systemschluessel" % key,
           key in schluessel or key in SONDER)

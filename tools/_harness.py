@@ -123,6 +123,7 @@ _KB._an[0] = None
 import fe.zeitmaschine as _ZM                           # noqa: E402
 _ZM.AUS_FLAG = os.path.join(_WT_ORDNER, "zeitmaschine_aus")
 _ZM._aus[0] = None
+_ZM.MERKER_DATEI = os.path.join(_WT_ORDNER, "zeitmaschine_jahre.json")
 import fe.reiseeffekt as _RE                            # noqa: E402
 _RE.AUS_FLAG = os.path.join(_WT_ORDNER, "zeitreise_effekt_aus")
 _RE._aus[0] = None

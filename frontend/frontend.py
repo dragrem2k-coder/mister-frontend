@@ -1307,6 +1307,9 @@ from fe.input import (
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, metadaten_vorwaermen, ART, ART_BASE,
+    # Build 353: der Stand der Spieldaten je System (Merker der
+    # Zeitmaschine).
+    meta_stand,
     # Build 334: Attract-Modus nur mit Cover.
     cover_bekannt,
     # Build 325: siehe stream_state() und _meta_im_hintergrund().
@@ -3104,10 +3107,17 @@ class Frontend:
         # BUILD 338: wo der Nutzer gerade steht - VOR dem Neuaufbau
         # gemerkt, danach wiedergefunden. Siehe _position_wiederfinden().
         _vorher = self._position_merken()
-        # Build 351: ein neuer Spielebaum - das Verzeichnis der
-        # Zeitmaschine gilt nicht mehr, eine laufende Reise endet.
-        self._zm_vz = None
-        self._zm_jahr = None
+        # Build 351/353: ein neuer Spielebaum. Das Verzeichnis der
+        # Zeitmaschine gilt als veraltet und wird bei der naechsten
+        # Jahreswahl aus dem Merker neu gebaut (ohne Lesen, siehe
+        # fe/zeitmaschine.py). Eine laufende Reise bleibt - den Neuaufbau
+        # loesen auch die RetroAchievements im Hintergrund aus, und
+        # davon soll niemand aus 1991 gerissen werden. Nur ein echtes
+        # Neu-Einlesen beendet sie: dann koennen Spiele weg sein.
+        self._zm_veraltet = True
+        if force_rescan or not hasattr(self, "_zm_jahr"):
+            self._zm_vz = None
+            self._zm_jahr = None
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
         # welche entfernt worden sein.
@@ -5854,7 +5864,7 @@ class Frontend:
         return t("zm_cat") + (" \xb7 %d" % jahr if jahr else "")
 
     def _zm_texte(self):
-        return {"neu": t("zm_neu"), "wertungen": t("zm_wertungen"),
+        return {"alle": t("zm_alle"), "wertungen": t("zm_wertungen"),
                 "zurueck": t("zm_zurueck"), "anderes": t("zm_anderes")}
 
     def _zm_knoten(self):
@@ -5960,11 +5970,34 @@ class Frontend:
         fb.flip()
 
     def _zm_vorbereiten(self):
-        """Das Verzeichnis bauen - einmal je Sitzung. B bricht ab
-        (dann bleibt alles, wie es war). True, wenn es steht."""
-        if getattr(self, "_zm_vz", None) is not None:
+        """Das Verzeichnis bauen. Was der Merker kennt (Build 353, auch
+        ueber einen Neustart hinweg), wird nicht gelesen; nur wenn etwas
+        zu lesen bleibt, steht der Fortschritt da. B bricht ab - das
+        bis dahin Gelesene bleibt gemerkt. True, wenn es steht."""
+        if getattr(self, "_zm_vz", None) is not None \
+                and not getattr(self, "_zm_veraltet", False):
             return True
-        gesamt = max(1, ZM.anzahl(self.cats, mra_meta))
+        if not ZM._merker["geladen"]:
+            # Beim ersten Mal in der Sitzung wird der Merker von der
+            # Karte gelesen - ein Augenblick, der nicht stumm sein soll.
+            self._zm_schirm([t("zm_vorbereiten")], "")
+        gesamt = ZM.offen(self.cats, mra_meta, meta_stand)
+        try:
+            return self._zm_bauen(gesamt)
+        finally:
+            ZM.merker_speichern()
+
+    def _zm_bauen(self, gesamt):
+        bis = int(time.strftime("%Y")) + 1
+        t0 = time.monotonic()
+        if gesamt <= 0:
+            vz = ZM.bauen(self.cats, get_meta, mra_meta, bis,
+                          stand_fn=meta_stand)
+            self._zm_vz = vz
+            self._zm_veraltet = False
+            LOG("Zeitmaschine: %d Jahre aus dem Merker, %.0f ms"
+                % (len(vz.jahre), (time.monotonic() - t0) * 1000.0))
+            return True
         letzt = [0.0]
 
         def _zwischendurch(n):
@@ -5980,15 +6013,16 @@ class Frontend:
             return True
         self._zm_schirm([t("zm_vorbereiten"),
                          t("zm_fortschritt", 0, gesamt)], t("zm_abbrechen"))
-        t0 = time.monotonic()
-        vz = ZM.bauen(self.cats, get_meta, mra_meta,
-                      int(time.strftime("%Y")) + 1, _zwischendurch)
+        vz = ZM.bauen(self.cats, get_meta, mra_meta, bis, _zwischendurch,
+                      stand_fn=meta_stand)
         if vz is None:
             LOG("Zeitmaschine: Vorbereitung abgebrochen")
             return False
         self._zm_vz = vz
-        LOG("Zeitmaschine: %d Jahre, %d Spiele ohne Jahr, %.0f ms"
-            % (len(vz.jahre), vz.ohne, (time.monotonic() - t0) * 1000.0))
+        self._zm_veraltet = False
+        LOG("Zeitmaschine: %d Jahre, %d gelesen, %d ohne Jahr, %.0f ms"
+            % (len(vz.jahre), gesamt, vz.ohne,
+               (time.monotonic() - t0) * 1000.0))
         return True
 
     def _zm_rad_zeichnen(self, jahr, von, bis):
@@ -6015,8 +6049,8 @@ class Frontend:
             fb.text(px, pfeil_y, zeichen, 2 * s, C_TITLE if ok else C_DIM,
                     C_BG)
         y += 10 * gross + 10 * s
-        n_bis, n_neu = vz.zaehlen(jahr)
-        for zeile, farbe in ((t("zm_zaehlen", jahr, n_bis, n_neu), C_TEXT),
+        for zeile, farbe in ((t("zm_zaehlen", jahr, vz.zaehlen(jahr)),
+                              C_TEXT),
                              (t("zm_bereich", von, bis), C_DIM)):
             zeile = zeile[:maxc]
             fb.text((W - len(zeile) * 8 * s) // 2, y, zeile, s, farbe, C_BG)
@@ -6030,11 +6064,14 @@ class Frontend:
     def _zm_waehlen(self):
         """Das Drehrad: Links/Rechts ein Jahr, Hoch/Runter zehn, A reist,
         B bricht ab. Das gewaehlte Jahr oder None."""
-        von, bis = self._zm_vz.bereich()
-        jahr = getattr(self, "_zm_jahr", None) or self._zm_vz.startjahr()
+        vz = self._zm_vz
+        von, bis = vz.bereich()
+        jahr = getattr(self, "_zm_jahr", None) or vz.startjahr()
+        # Build 353: nur Jahre mit Spielen - das letzte Reiseziel kann
+        # nach einem Neu-Einlesen leer sein, dann das naechste.
+        jahr = vz.weiter(max(von, min(bis, jahr)), 0)
         leer = 0
         while True:
-            jahr = max(von, min(bis, jahr))
             self._zm_rad_zeichnen(jahr, von, bis)
             akt = self.inp.read_action(timeout=None)
             if akt is None:
@@ -6044,9 +6081,9 @@ class Frontend:
                 continue
             leer = 0
             if akt in ("left", "right"):
-                jahr += 1 if akt == "right" else -1
+                jahr = vz.weiter(jahr, 1 if akt == "right" else -1)
             elif akt in ("up", "down"):
-                jahr += 10 if akt == "up" else -10
+                jahr = vz.weiter(jahr, 10 if akt == "up" else -10)
             elif akt == "ok":
                 return jahr
             elif akt == "back" or akt == "exit":
@@ -6126,6 +6163,17 @@ class Frontend:
         fb = self.fb
         W, H = fb.width, fb.height
         mit_c = _c_wirbel_da()
+        bilder = 0
+        if mit_c:
+            # Build 353: das erste Bild baut in C die Tabelle - bei 1080p
+            # rund 0,4 s (Bench 27: 176 ms bei 720p). Das passiert JETZT,
+            # unter einem weissen Bild und VOR Uhr und Sound, sonst liefe
+            # der Sound dem Bild davon und der erste Blitz waere weg.
+            if _c_wirbel_zeichnen(fb.buf, fb.stride, W, H, 0, 256):
+                fb.flip()
+                bilder += 1
+            else:
+                mit_c = False
         griff = SoundGriff()
         try:
             self._play_ducked_sfx(RE.SOUND, griff=griff)
@@ -6134,7 +6182,6 @@ class Frontend:
             griff.stoppen()
         uhr = self._zm_uhr
         t0 = uhr()
-        bilder = 0
         uebersprungen = False
         try:
             while bilder < RE.MAX_BILDER:
